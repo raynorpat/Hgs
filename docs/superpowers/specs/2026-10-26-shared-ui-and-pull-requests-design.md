@@ -243,6 +243,10 @@ Meaningful acceptance cases include:
 
 Choose concrete shared partial/module names, exact responsive breakpoints, compatible local icon implementation, query indexes, schema/migration mechanics within the fresh-database baseline, bounded artifact formats, job scheduling, and process/time/disk quotas. Tune typography and spacing against the visual reference. Choose exact Mercurial commands only after testing the supported versions and proving the transaction/safety contracts. These choices must not change the product behavior or weaken a prerequisite.
 
+## Requested follow-on phase
+
+The user subsequently requested a public landing-page refactor and a Mercurial-focused replacement for `public/img/gogs-lg.png` after the application UI work. A beaver-and-beaker logo is a tentative concept, with composition still open. Record this phase in the implementation handoff, but design/review it separately once the shared UI work is complete; do not treat the existing application mockup as approval of new branding artwork. Preserve the Gogs name and attribution unless separately requested. [The design system](../../DESIGN.md#follow-on-landing-page-and-mercurial-identity) records the landing-page context and visual constraints.
+
 ## Technical references
 
 The following are command-level evidence, not proof of our complete merge design:

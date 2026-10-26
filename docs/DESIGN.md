@@ -8,7 +8,7 @@ Updated: 2026-10-26
 
 Use one visual and interaction system across workspace, repositories, **Issues**, pull requests, organizations, accounts, and administration. Retain the Go server-rendered application and Mercurial terminology.
 
-The visual direction comes from the user's Bitbucket screenshots: blue navigation on the left, a slim utility rail, white content, restrained borders, and compact readable lists. Keep Gogs branding and attribution. Do not introduce Bitbucket logos or proprietary assets.
+The visual direction comes from the user's Bitbucket screenshots: blue navigation on the left, a slim utility rail, white content, restrained borders, and compact readable lists. Keep the Gogs name and attribution. A Mercurial-focused replacement for the main logo is scheduled as a follow-on phase below. Do not introduce Bitbucket logos or proprietary assets.
 
 - [Project design and behavior](superpowers/specs/2026-10-26-shared-ui-and-pull-requests-design.md)
 - [Saved interactive layout study](superpowers/specs/references/2026-10-26-bitbucket-layout-study.html)
@@ -212,3 +212,13 @@ Implement shared Go template partials, semantic CSS variables, and small scoped 
 Verify representative pages together: workspace, Explore, source, **global and repository Issues lists, issue creation/detail, labels and milestones**, PR list/detail, account/settings forms, Admin overview/users/configuration, and sign-in/errors. Inspect desktop and narrow layouts, real avatars and initials, long names, translated text, empty/loading/error states, keyboard operation, and permission-dependent actions.
 
 The visual prototype is not evidence that backend workflows work. Production acceptance additionally requires the regression, authorization, native Mercurial, concurrency, and recovery checks in the project design. Design approval and the existing transport prerequisite still govern implementation.
+
+## Follow-on: landing page and Mercurial identity
+
+After the shared application UI work, refactor the public landing page (`templates/home.tmpl`) and replace its main logo (`public/img/gogs-lg.png`) to match the service's Mercurial focus. The user suggested a beaver-and-beaker concept; the composition and final artwork are still to be decided.
+
+The current landing page combines the large logo, product heading, sign-in form, conditional registration, social sign-in, and feature descriptions. Its redesign should use this system's typography, colors, spacing, forms, and responsive rules with an appropriate public-page layout. Preserve authentication/registration policy and supported sign-in paths. Update product and feature copy to describe the actual Mercurial service rather than unsupported Git-era features or deployment claims.
+
+Explore a distinctive, readable beaver/beaker mark that works on white and beside the blue navigation palette. Review the composition, silhouette, transparency, and small-size legibility before replacing the current PNG. The existing Gogs name and legal attribution remain; product renaming and favicon/navigation-icon replacement are not implied by this request.
+
+This section records the requested next phase, not an approved logo design or permission to replace assets before that phase is designed. Present landing-page and logo concepts for review when that work begins.
