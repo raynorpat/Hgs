@@ -75,8 +75,9 @@ Task completion record (commit ranges are `start..end`, end inclusive):
 - Task 8 — complete 2026-10-26 (`d8a398c..5a9bd8a`), reviewed; ID-based repository lifecycle and transfer/deletion fixes.
 - Task 9 — complete 2026-10-26 (`5a9bd8a..4fae7f4`), reviewed; inherited implementation adopted with encoding/branch-ancestry fixes. Windows/Mercurial 7.2.4 checks pass; native Linux/macOS and Mercurial 5.0.2 remain unverified.
 - Task 10 — complete 2026-10-26 (`ec877fd..126145e`), reviewed; snapshot history, file ancestry, and bounded diffs verified on Windows/Mercurial 7.2.4.
-- Task 11 — runtime composition, session cleanup, database-format guard, and installation wiring implemented and verified locally; independent review pending.
-- Tasks 12–15 — not started. User authorized continuation with subagents on 2026-10-26; execution ledger: `.superpowers/sdd/2026-10-25-mercurial-hosting/progress.md`.
+- Task 11 — complete 2026-10-26 (`126145e..07afdf7`), reviewed; runtime composition, bounded session cleanup, password-version revocation, database-format guard, and installation wiring verified locally.
+- Task 12 — complete 2026-10-26 (`07afdf7..cc4fbf4`), reviewed; Mercurial UI, metadata-only issue workflows, path/cursor identity, and streaming cleanup verified locally. Native Unix UI/latency remains unverified.
+- Tasks 13–15 — not started. User authorized continuation with subagents on 2026-10-26; execution ledger: `.superpowers/sdd/2026-10-25-mercurial-hosting/progress.md`.
 - User decisions (resolved 2026-10-26): the stream-bundle revocation gap is accepted as a documented limitation (spec, Task 15 docs, local upstream proposal draft `docs/mercurial/upstream-stream-push-proposal.md`); writers drop the per-changeset close hooks (`pretxnclose-phase`, `pretxnclose-bookmark`), readers keep all deny hooks.
 
 ## Continuation implementation clarifications (2026-10-26)
