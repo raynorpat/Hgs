@@ -253,7 +253,15 @@ func (l *limitedWriter) Write(p []byte) (int, error) {
 // session ceiling. Callers that do not Stop the child must close Stdout and
 // Stderr after reading them.
 func (r *Runner) Start(ctx context.Context, repoPath string, args []string, env map[string]string) (*Child, error) {
-	cmd, err := r.command(repoPath, args, env)
+	return r.StartWithConfig(ctx, repoPath, args, env, "")
+}
+
+// StartWithConfig is Start with one more configuration file, the absolute
+// path rc, read after the managed one; "" adds none. It carries settings
+// Mercurial refuses on the command line: hg serve --stdio runs only as
+// exactly "-R <repo> serve --stdio".
+func (r *Runner) StartWithConfig(ctx context.Context, repoPath string, args []string, env map[string]string, rc string) (*Child, error) {
+	cmd, err := r.command(repoPath, args, env, rc)
 	if err != nil {
 		return nil, err
 	}
@@ -283,7 +291,17 @@ func (r *Runner) Start(ctx context.Context, repoPath string, args []string, env 
 	return c, nil
 }
 
-func (r *Runner) command(repoPath string, args []string, env map[string]string) (*exec.Cmd, error) {
+func (r *Runner) command(repoPath string, args []string, env map[string]string, rc string) (*exec.Cmd, error) {
+	hgrcPath := r.cfg.ConfigPath
+	if rc != "" {
+		if !filepath.IsAbs(rc) || strings.ContainsRune(rc, os.PathListSeparator) {
+			return nil, fmt.Errorf("hg: session config path %q must be absolute and contain no %q", rc, os.PathListSeparator)
+		}
+		if err := CheckPath(rc); err != nil {
+			return nil, err
+		}
+		hgrcPath += string(os.PathListSeparator) + rc
+	}
 	dir := filepath.Dir(r.cfg.ConfigPath)
 	if repoPath != "" {
 		if !filepath.IsAbs(repoPath) {
@@ -293,11 +311,11 @@ func (r *Runner) command(repoPath string, args []string, env map[string]string) 
 			return nil, err
 		}
 		dir = repoPath
-		args = append([]string{"--repository", repoPath}, args...)
+		args = append([]string{"-R", repoPath}, args...)
 	}
 
 	environ := []string{
-		"HGRCPATH=" + r.cfg.ConfigPath,
+		"HGRCPATH=" + hgrcPath,
 		"HGPLAIN=1",
 		"HGENCODING=" + localEncoding(),
 		"PYTHONNOUSERSITE=1",

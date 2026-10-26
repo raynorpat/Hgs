@@ -39,7 +39,7 @@ const fakeHooksHelp = `hooks
 `
 
 func fakeHg(args []string) int {
-	if len(args) > 2 && args[0] == "--repository" {
+	if len(args) > 2 && args[0] == "-R" {
 		args = args[2:]
 	}
 	// Tests steer the probes through files beside the managed configuration.
@@ -49,6 +49,12 @@ func fakeHg(args []string) int {
 			return def
 		}
 		return string(b)
+	}
+	if args[0] == "argv" {
+		for _, a := range os.Args[1:] {
+			fmt.Println(a)
+		}
+		return 0
 	}
 	switch args[0] {
 	case "env":
@@ -343,5 +349,34 @@ func TestNewRunnerValidates(t *testing.T) {
 	// No ANSI code page holds an emoji; this assumes the host's is not UTF-8.
 	if _, err := r.Start(context.Background(), filepath.Join(dir, "😀"), []string{"env"}, nil); (err == nil) == (runtime.GOOS == "windows") {
 		t.Errorf("non-ANSI repository path on %s: %v", runtime.GOOS, err)
+	}
+}
+
+func TestRunnerSessionConfig(t *testing.T) {
+	r := newTestRunner(t, Config{})
+	rc := filepath.Join(t.TempDir(), "hooks.rc")
+	c, err := r.StartWithConfig(context.Background(), "", []string{"env"}, nil, rc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _ := io.ReadAll(c.Stdout)
+	c.Stop(context.Background())
+	if want := "HGRCPATH=" + r.cfg.ConfigPath + string(os.PathListSeparator) + rc; !strings.Contains(string(out), want+"\n") {
+		t.Errorf("environment lacks %q:\n%s", want, out)
+	}
+	for _, bad := range []string{"hooks.rc", rc + string(os.PathListSeparator) + rc} {
+		if _, err := r.StartWithConfig(context.Background(), "", []string{"env"}, nil, bad); err == nil {
+			t.Errorf("session config %q was accepted", bad)
+		}
+	}
+
+	// dispatch.py serves stdio only for exactly "-R <repo> serve --stdio".
+	repo := t.TempDir()
+	var stdout bytes.Buffer
+	if err := r.Run(context.Background(), repo, []string{"argv"}, nil, &stdout); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := stdout.String(), "-R\n"+repo+"\nargv\n"; got != want {
+		t.Errorf("argv %q, want %q", got, want)
 	}
 }
