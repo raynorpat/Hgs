@@ -5,6 +5,7 @@
 package repo
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"github.com/gogits/gogs/modules/auth"
 	"github.com/gogits/gogs/modules/base"
 	"github.com/gogits/gogs/modules/git"
+	"github.com/gogits/gogs/modules/hosting"
 	"github.com/gogits/gogs/modules/log"
 	"github.com/gogits/gogs/modules/mailer"
 	"github.com/gogits/gogs/modules/middleware"
@@ -39,7 +41,7 @@ func Settings(ctx *middleware.Context) {
 	ctx.HTML(200, SETTINGS_OPTIONS)
 }
 
-func SettingsPost(ctx *middleware.Context, form auth.RepoSettingForm) {
+func SettingsPost(ctx *middleware.Context, form auth.RepoSettingForm, provider hosting.Provider) {
 	ctx.Data["Title"] = ctx.Tr("repo.settings")
 	ctx.Data["PageIsSettingsOptions"] = true
 
@@ -152,7 +154,14 @@ func SettingsPost(ctx *middleware.Context, form auth.RepoSettingForm) {
 			}
 		}
 
-		if err := models.DeleteRepository(ctx.Repo.Owner.Id, ctx.Repo.Repository.Id, ctx.Repo.Owner.Name); err != nil {
+		service := provider.Service()
+		if service == nil {
+			ctx.Error(503)
+			return
+		}
+		drainCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		if err := models.DeleteHgRepository(drainCtx, service.RepositoryRoot(), ctx.Repo.Repository.Id, service.DrainRepository); err != nil {
 			ctx.Handle(500, "DeleteRepository", err)
 			return
 		}

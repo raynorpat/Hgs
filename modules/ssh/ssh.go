@@ -46,9 +46,10 @@ type ResolveTarget func(ctx context.Context, principal hgbridge.Principal, owner
 // Server accepts SSH connections, each allowed one session running one
 // Mercurial stdio worker.
 type Server struct {
-	config *ssh.ServerConfig
-	repos  ResolveTarget
-	bridge *hgbridge.StdioBridge
+	Registrar hgbridge.Registrar
+	config    *ssh.ServerConfig
+	repos     ResolveTarget
+	bridge    *hgbridge.StdioBridge
 	// execTimeout bounds the time from handshake to the command; tests
 	// shorten it.
 	execTimeout time.Duration
@@ -191,6 +192,14 @@ func (s *Server) serveConn(conn net.Conn) {
 
 	ctx, cancel := context.WithCancel(s.base)
 	defer cancel()
+	if s.Registrar != nil {
+		release, err := s.Registrar.Register(hgbridge.Grant{Principal: p}, func() { cancel(); sc.Close() })
+		if err != nil {
+			return
+		}
+		defer release()
+	}
+
 	go func() {
 		sc.Wait()
 		cancel()

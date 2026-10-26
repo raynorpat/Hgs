@@ -7,7 +7,6 @@ package routers
 import (
 	"errors"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"strings"
@@ -19,7 +18,6 @@ import (
 	"github.com/gogits/gogs/models"
 	"github.com/gogits/gogs/modules/auth"
 	"github.com/gogits/gogs/modules/base"
-	"github.com/gogits/gogs/modules/cron"
 	"github.com/gogits/gogs/modules/log"
 	"github.com/gogits/gogs/modules/mailer"
 	"github.com/gogits/gogs/modules/middleware"
@@ -48,7 +46,7 @@ func NewServices() {
 }
 
 // GlobalInit is for global configuration reload-able.
-func GlobalInit() {
+func GlobalInit() error {
 	setting.NewConfigContext()
 	log.Trace("Custom path: %s", setting.CustomPath)
 	log.Trace("Log path: %s", setting.LogRootPath)
@@ -58,17 +56,16 @@ func GlobalInit() {
 
 	if setting.InstallLock {
 		models.LoadRepoConfig()
-		models.NewRepoContext()
 
 		if err := models.NewEngine(); err != nil {
-			log.Fatal(4, "Fail to initialize ORM engine: %v", err)
+			return err
 		}
 
 		models.HasEngine = true
-		cron.NewCronContext()
 		log.NewGitLogger(path.Join(setting.LogRootPath, "http.log"))
 	}
 	checkRunMode()
+	return nil
 }
 
 func InstallInit(ctx *middleware.Context) {
@@ -115,16 +112,13 @@ func Install(ctx *middleware.Context) {
 	ctx.HTML(200, INSTALL)
 }
 
-func InstallPost(ctx *middleware.Context, form auth.InstallForm) {
+type InitializeHosting func() error
+
+func InstallPost(ctx *middleware.Context, form auth.InstallForm, initialize InitializeHosting) {
 	ctx.Data["CurDbOption"] = form.DbType
 
 	if ctx.HasError() {
 		ctx.HTML(200, INSTALL)
-		return
-	}
-
-	if _, err := exec.LookPath("git"); err != nil {
-		ctx.RenderWithErr(ctx.Tr("install.test_git_failed", err), INSTALL, &form)
 		return
 	}
 
@@ -229,7 +223,10 @@ func InstallPost(ctx *middleware.Context, form auth.InstallForm) {
 		return
 	}
 
-	GlobalInit()
+	if err := GlobalInit(); err != nil {
+		ctx.Handle(500, "Initialize database", err)
+		return
+	}
 
 	// Create admin account.
 	if err := models.CreateUser(&models.User{Name: form.AdminName, Email: form.AdminEmail, Passwd: form.AdminPasswd,
@@ -242,6 +239,11 @@ func InstallPost(ctx *middleware.Context, form auth.InstallForm) {
 			return
 		}
 		log.Info("Admin account already exist")
+	}
+
+	if err := initialize(); err != nil {
+		ctx.Handle(500, "Initialize Mercurial hosting", err)
+		return
 	}
 
 	log.Info("First-time run install finished!")

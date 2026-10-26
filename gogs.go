@@ -1,3 +1,4 @@
+//go:build go1.2
 // +build go1.2
 
 // Copyright 2014 The Gogs Authors. All rights reserved.
@@ -31,8 +32,6 @@ func main() {
 	app.Version = APP_VER
 	app.Commands = []cli.Command{
 		cmd.CmdWeb,
-		cmd.CmdServ,
-		cmd.CmdUpdate,
 		cmd.CmdDump,
 		cmd.CmdCert,
 		cmd.CmdHGHook,

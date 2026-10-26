@@ -47,17 +47,19 @@ var (
 	AppSubUrl string
 
 	// Server settings.
-	Protocol           Scheme
-	Domain             string
-	HttpAddr, HttpPort string
-	DisableSSH         bool
-	SSHPort            int
-	OfflineMode        bool
-	DisableRouterLog   bool
-	CertFile, KeyFile  string
-	StaticRootPath     string
-	EnableGzip         bool
-	LandingPageUrl     LandingPage
+	Protocol                                      Scheme
+	Domain                                        string
+	HttpAddr, HttpPort                            string
+	DisableSSH                                    bool
+	SSHPort                                       int
+	SSHAddress, SSHAdvertisedHost, SSHHostKeyPath string
+	TrustedProxyCIDRs                             []string
+	OfflineMode                                   bool
+	DisableRouterLog                              bool
+	CertFile, KeyFile                             string
+	StaticRootPath                                string
+	EnableGzip                                    bool
+	LandingPageUrl                                LandingPage
 
 	// Security settings.
 	InstallLock          bool
@@ -226,7 +228,20 @@ func NewConfigContext() {
 	HttpAddr = sec.Key("HTTP_ADDR").MustString("0.0.0.0")
 	HttpPort = sec.Key("HTTP_PORT").MustString("3000")
 	DisableSSH = sec.Key("DISABLE_SSH").MustBool()
-	SSHPort = sec.Key("SSH_PORT").MustInt(22)
+	SSHPort = sec.Key("SSH_PORT").MustInt(2222)
+	SSHAddress = sec.Key("SSH_ADDRESS").String()
+	SSHAdvertisedHost = sec.Key("SSH_HOST").MustString(Domain)
+	SSHHostKeyPath = sec.Key("SSH_HOST_KEY_PATH").MustString("data/ssh/host_ed25519")
+	if !filepath.IsAbs(SSHHostKeyPath) {
+		SSHHostKeyPath = filepath.Join(workDir, SSHHostKeyPath)
+	}
+	TrustedProxyCIDRs = nil
+	for _, cidr := range strings.Split(sec.Key("TRUSTED_PROXY_CIDRS").String(), ",") {
+		if cidr = strings.TrimSpace(cidr); cidr != "" {
+			TrustedProxyCIDRs = append(TrustedProxyCIDRs, cidr)
+		}
+	}
+
 	OfflineMode = sec.Key("OFFLINE_MODE").MustBool()
 	DisableRouterLog = sec.Key("DISABLE_ROUTER_LOG").MustBool()
 	StaticRootPath = sec.Key("STATIC_ROOT_PATH").MustString(workDir)
@@ -320,7 +335,12 @@ func NewConfigContext() {
 	}
 
 	sec = Cfg.Section("mercurial")
-	Mercurial.Executable = sec.Key("EXECUTABLE").String()
+	Mercurial.Executable = sec.Key("EXECUTABLE").MustString("hg")
+	if !filepath.IsAbs(Mercurial.Executable) {
+		if resolved, err := exec.LookPath(Mercurial.Executable); err == nil {
+			Mercurial.Executable = resolved
+		}
+	}
 	Mercurial.ConfigPath = sec.Key("CONFIG_PATH").MustString(filepath.Join(workDir, "data", "hg", "hgrc"))
 	if !filepath.IsAbs(Mercurial.ConfigPath) {
 		Mercurial.ConfigPath = filepath.Join(workDir, Mercurial.ConfigPath)

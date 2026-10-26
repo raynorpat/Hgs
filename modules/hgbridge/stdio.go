@@ -24,6 +24,7 @@ import (
 // StdioBridge serves Mercurial's stdio wire protocol, as SSH sessions carry
 // it, through one private hg serve --stdio per session.
 type StdioBridge struct {
+	Registrar  Registrar
 	runner     *hg.Runner
 	controller *Controller
 	// rc holds the session config file of readers (false) and writers (true).
@@ -110,6 +111,22 @@ func (b *StdioBridge) ServeStdio(ctx context.Context, target Target, grant Grant
 	defer cancel()
 	defer context.AfterFunc(b.base, cancel)()
 
+	if b.Registrar != nil {
+		stop := func() {
+			cancel()
+			if closer, ok := input.(io.Closer); ok {
+				closer.Close()
+			}
+		}
+		release, err := b.Registrar.Register(grant, stop)
+		if err != nil {
+			return -1, err
+		}
+		defer release()
+	}
+	if err := ctx.Err(); err != nil {
+		return -1, err
+	}
 	rc, env := b.rc[false], map[string]string(nil)
 	// The capability must exist before the worker it is passed to.
 	var child atomic.Pointer[hg.Child]

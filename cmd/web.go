@@ -5,15 +5,19 @@
 package cmd
 
 import (
+	"context"
 	"crypto/tls"
-	"fmt"
+	"errors"
 	"html/template"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/http/fcgi"
 	"os"
+	"os/signal"
 	"path"
 	"strings"
+	"syscall"
 
 	"github.com/Unknwon/macaron"
 	"github.com/codegangsta/cli"
@@ -35,6 +39,8 @@ import (
 	"github.com/gogits/gogs/modules/avatar"
 	"github.com/gogits/gogs/modules/base"
 	"github.com/gogits/gogs/modules/git"
+	"github.com/gogits/gogs/modules/hg"
+	"github.com/gogits/gogs/modules/hosting"
 	"github.com/gogits/gogs/modules/log"
 	"github.com/gogits/gogs/modules/middleware"
 	"github.com/gogits/gogs/modules/setting"
@@ -166,18 +172,107 @@ func newMacaron() *macaron.Macaron {
 }
 
 func runWeb(ctx *cli.Context) {
+	if err := runWebServer(ctx); err != nil {
+		log.Fatal(4, "Web server failed: %v", err)
+	}
+}
+
+// All resources are released before the CLI reports a fatal startup error.
+func runWebServer(ctx *cli.Context) error {
 	checkVersion()
 
 	if ctx.IsSet("config") {
 		setting.CustomConf = ctx.String("config")
 	}
-	routers.GlobalInit()
+	if err := routers.GlobalInit(); err != nil {
+		return err
+	}
+	holder := &hostingHolder{errors: make(chan error, 1)}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), hg.ShutdownTimeout)
+		defer cancel()
+		holder.Shutdown(ctx)
+		models.CloseEngine()
+	}()
 
+	handler := newWebHandler(holder)
+
+	// Flag for port number in case first time run conflict.
+	if ctx.IsSet("port") {
+		setting.AppUrl = strings.Replace(setting.AppUrl, setting.HttpPort, ctx.String("port"), 1)
+		setting.HttpPort = ctx.String("port")
+	}
+
+	listenAddr := net.JoinHostPort(setting.HttpAddr, setting.HttpPort)
+	log.Info("Listen: %v://%s%s", setting.Protocol, listenAddr, setting.AppSubUrl)
+	ln, err := net.Listen("tcp", listenAddr)
+	if err != nil {
+		return err
+	}
+	defer ln.Close()
+	server := &http.Server{Handler: handler, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
+	if setting.Protocol != setting.HTTP && setting.Protocol != setting.HTTPS && setting.Protocol != setting.FCGI {
+		return errors.New("invalid server protocol: " + string(setting.Protocol))
+	}
+	if setting.Protocol == setting.HTTPS {
+		certificate, err := tls.LoadX509KeyPair(setting.CertFile, setting.KeyFile)
+		if err != nil {
+			return err
+		}
+		server.TLSConfig.Certificates = []tls.Certificate{certificate}
+	}
+	if setting.InstallLock {
+		if err := holder.Initialize(); err != nil {
+			return err
+		}
+	}
+	served := make(chan error, 1)
+	switch setting.Protocol {
+	case setting.HTTP:
+		go func() { served <- server.Serve(ln) }()
+	case setting.HTTPS:
+		go func() { served <- server.ServeTLS(ln, "", "") }()
+	case setting.FCGI:
+		go func() { served <- fcgi.Serve(ln, server.Handler) }()
+	default:
+		return errors.New("invalid server protocol: " + string(setting.Protocol))
+	}
+	signals, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	select {
+	case <-signals.Done():
+	case err = <-served:
+	case err = <-holder.errors:
+	}
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Error(4, "Server stopped: %v", err)
+	}
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), hg.ShutdownTimeout)
+	defer cancel()
+	// The raw holder rejects new admissions while HTTP and SSH drain together.
+	done := make(chan error, 1)
+	go func() { done <- holder.Shutdown(shutdownCtx) }()
+	ln.Close()
+	if setting.Protocol != setting.FCGI {
+		server.Shutdown(shutdownCtx)
+	}
+	if shutdownErr := <-done; shutdownErr != nil {
+		log.Warn("Hosting shutdown: %v", shutdownErr)
+	}
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
+}
+
+// newWebHandler is the production registration path used by startup and route tests.
+func newWebHandler(holder *hostingHolder) http.Handler {
 	m := newMacaron()
+	m.MapTo(holder, (*hosting.Provider)(nil))
+	m.Map(routers.InitializeHosting(holder.Initialize))
 
 	reqSignIn := middleware.Toggle(&middleware.ToggleOptions{SignInRequire: true})
 	ignSignIn := middleware.Toggle(&middleware.ToggleOptions{SignInRequire: setting.Service.RequireSignInView})
-	ignSignInAndCsrf := middleware.Toggle(&middleware.ToggleOptions{DisableCsrf: true})
 	reqSignOut := middleware.Toggle(&middleware.ToggleOptions{SignOutRequire: true})
 
 	bind := binding.Bind
@@ -452,7 +547,6 @@ func runWeb(ctx *cli.Context) {
 
 	m.Group("/:username", func() {
 		m.Get("/:reponame", ignSignIn, middleware.RepoAssignment(true, true), middleware.RepoRef(), repo.Home)
-		m.Any("/:reponame/*", ignSignInAndCsrf, repo.Http)
 	})
 
 	// robots.txt
@@ -467,28 +561,5 @@ func runWeb(ctx *cli.Context) {
 	// Not found handler.
 	m.NotFound(routers.NotFound)
 
-	// Flag for port number in case first time run conflict.
-	if ctx.IsSet("port") {
-		setting.AppUrl = strings.Replace(setting.AppUrl, setting.HttpPort, ctx.String("port"), 1)
-		setting.HttpPort = ctx.String("port")
-	}
-
-	var err error
-	listenAddr := fmt.Sprintf("%s:%s", setting.HttpAddr, setting.HttpPort)
-	log.Info("Listen: %v://%s%s", setting.Protocol, listenAddr, setting.AppSubUrl)
-	switch setting.Protocol {
-	case setting.HTTP:
-		err = http.ListenAndServe(listenAddr, m)
-	case setting.HTTPS:
-		server := &http.Server{Addr: listenAddr, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS10}, Handler: m}
-		err = server.ListenAndServeTLS(setting.CertFile, setting.KeyFile)
-	case setting.FCGI:
-		err = fcgi.Serve(nil, m)
-	default:
-		log.Fatal(4, "Invalid protocol: %s", setting.Protocol)
-	}
-
-	if err != nil {
-		log.Fatal(4, "Fail to start server: %v", err)
-	}
+	return holder.Handler(m)
 }

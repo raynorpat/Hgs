@@ -66,6 +66,7 @@ var wireCommands = map[string]bool{
 // HTTPBridge serves Mercurial's HTTP wire protocol by starting one private
 // hg serve per request for exactly the request's repository and grant.
 type HTTPBridge struct {
+	Registrar                  Registrar
 	controller                 *Controller
 	readerConfig, writerConfig []string
 
@@ -77,7 +78,7 @@ type HTTPBridge struct {
 	holdInterval time.Duration
 
 	// start launches a worker; tests replace it with an in-process backend.
-	start func(ctx context.Context, repoPath string, args []string, env map[string]string) (*worker, error)
+	start func(ctx, base context.Context, repoPath string, args []string, env map[string]string) (*worker, error)
 }
 
 // worker is a started backend: its loopback address, a way to tell the
@@ -109,8 +110,8 @@ func NewHTTPBridge(runner *hg.Runner, controller *Controller, hookExecutable str
 		writerConfig: workerArgs(writer, "web.allow-push=*", "web.push_ssl=false"),
 	}
 	b.base, b.cancelBase = context.WithCancel(context.Background())
-	b.start = func(ctx context.Context, repoPath string, args []string, env map[string]string) (*worker, error) {
-		return startWorker(ctx, b.base, runner, repoPath, args, env)
+	b.start = func(ctx, base context.Context, repoPath string, args []string, env map[string]string) (*worker, error) {
+		return startWorker(ctx, base, runner, repoPath, args, env)
 	}
 	return b, nil
 }
@@ -172,6 +173,19 @@ func (b *HTTPBridge) Serve(ctx context.Context, w http.ResponseWriter, r *http.R
 		return errors.New("hgbridge: HTTP bridge is closed")
 	}
 
+	// This context is owned by the worker, never by the request after readiness.
+	workerCtx, cancelWorker := context.WithCancel(b.base)
+	defer cancelWorker()
+	if b.Registrar != nil {
+		release, err := b.Registrar.Register(grant, cancelWorker)
+		if err != nil {
+			return err
+		}
+		defer release()
+	}
+	if err := workerCtx.Err(); err != nil {
+		return err
+	}
 	args, env := b.readerConfig, map[string]string(nil)
 	// The capability must exist before the worker it is passed to.
 	var started atomic.Pointer[worker]
@@ -187,7 +201,7 @@ func (b *HTTPBridge) Serve(ctx context.Context, w http.ResponseWriter, r *http.R
 		defer revoke()
 		args, env = b.writerConfig, sessionEnv
 	}
-	wk, err := b.start(ctx, target.Path, args, env)
+	wk, err := b.start(ctx, workerCtx, target.Path, args, env)
 	if err != nil {
 		return err
 	}
@@ -201,7 +215,7 @@ func (b *HTTPBridge) Serve(ctx context.Context, w http.ResponseWriter, r *http.R
 	} else {
 		close(bodyDone)
 	}
-	out, err := http.NewRequestWithContext(b.base, r.Method, "http://"+wk.addr+"/?"+query, body)
+	out, err := http.NewRequestWithContext(workerCtx, r.Method, "http://"+wk.addr+"/?"+query, body)
 	if err != nil {
 		return err
 	}

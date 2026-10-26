@@ -34,6 +34,7 @@ var (
 	x         *xorm.Engine
 	tables    []interface{}
 	HasEngine bool
+	xormLog   *os.File
 
 	DbCfg struct {
 		Type, Host, Name, User, Passwd, Path, SSLMode string
@@ -52,7 +53,7 @@ func init() {
 		new(Issue), new(Comment), new(Attachment), new(IssueUser), new(Label), new(Milestone),
 		new(Mirror), new(Release), new(LoginSource), new(Webhook),
 		new(UpdateTask), new(HookTask), new(Team), new(OrgUser), new(TeamUser),
-		new(Notice), new(EmailAddress))
+		new(Notice), new(EmailAddress), new(HostingFormat))
 }
 
 func LoadModelsConfig() {
@@ -98,11 +99,19 @@ func getEngine() (*xorm.Engine, error) {
 }
 
 func SetEngine() (err error) {
-	x, err = getEngine()
+	e, err := getEngine()
 	if err != nil {
 		return fmt.Errorf("connect to database: %v", err)
 	}
 
+	if err := setEngine(e); err != nil {
+		e.Close()
+		return err
+	}
+	return nil
+}
+
+func setEngine(e *xorm.Engine) error {
 	// WARNING: for serv command, MUST remove the output to os.stdout,
 	// so use log file to instead print to stdout.
 	logPath := path.Join(setting.LogRootPath, "xorm.log")
@@ -112,6 +121,11 @@ func SetEngine() (err error) {
 	if err != nil {
 		return fmt.Errorf("models.init(fail to create xorm.log): %v", err)
 	}
+	if xormLog != nil {
+		xormLog.Close()
+	}
+	xormLog = f
+	x = e
 	x.Logger = xorm.NewSimpleLogger(f)
 
 	x.ShowSQL = true
@@ -123,9 +137,24 @@ func SetEngine() (err error) {
 }
 
 func NewEngine() (err error) {
-	if err = SetEngine(); err != nil {
+	e, err := getEngine()
+	if err != nil {
 		return err
 	}
+	if err = checkHostingFormat(e); err != nil {
+		e.Close()
+		return err
+	}
+	if err = setEngine(e); err != nil {
+		e.Close()
+		return err
+	}
+
+	defer func() {
+		if err != nil {
+			CloseEngine()
+		}
+	}()
 
 	// if err = migrations.Migrate(x); err != nil {
 	// 	return err
@@ -133,6 +162,14 @@ func NewEngine() (err error) {
 
 	if err = x.StoreEngine("InnoDB").Sync2(tables...); err != nil {
 		return fmt.Errorf("sync database struct error: %v\n", err)
+	}
+	marker := &HostingFormat{Id: 1, Version: 1}
+	if has, getErr := x.Id(1).Get(new(HostingFormat)); getErr != nil {
+		return getErr
+	} else if !has {
+		if _, err = x.Insert(marker); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -181,4 +218,17 @@ func Ping() error {
 // DumpDatabase dumps all data from database to file system.
 func DumpDatabase(filePath string) error {
 	return x.DumpAllToFile(filePath)
+}
+
+// CloseEngine releases the process-owned database and its log.
+func CloseEngine() error {
+	HasEngine = false
+	if xormLog != nil {
+		xormLog.Close()
+		xormLog = nil
+	}
+	if x != nil {
+		return x.Close()
+	}
+	return nil
 }

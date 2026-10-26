@@ -57,7 +57,7 @@ func newTestBridge(t *testing.T, backend http.HandlerFunc) (*HTTPBridge, *Contro
 		t.Fatal(err)
 	}
 	f := &fakeWorkers{}
-	b.start = func(ctx context.Context, repoPath string, args []string, env map[string]string) (*worker, error) {
+	b.start = func(ctx, base context.Context, repoPath string, args []string, env map[string]string) (*worker, error) {
 		if repoPath != testTarget.Path {
 			t.Errorf("worker for %q, want %q", repoPath, testTarget.Path)
 		}

@@ -75,8 +75,8 @@ func checkHTTPBridge(t *testing.T, serverExe, clientExe, gogs string) {
 	}
 	var active, started atomic.Int64
 	start := b.start
-	b.start = func(ctx context.Context, repoPath string, args []string, env map[string]string) (*worker, error) {
-		wk, err := start(ctx, repoPath, args, env)
+	b.start = func(ctx, base context.Context, repoPath string, args []string, env map[string]string) (*worker, error) {
+		wk, err := start(ctx, base, repoPath, args, env)
 		if err == nil {
 			started.Add(1)
 			active.Add(1)
