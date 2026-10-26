@@ -16,10 +16,11 @@ import (
 
 // Branches enumerates each named branch, including closed/secret heads.
 // Recompute that branch's heads after excluding secrets: subtracting secrets
-// from head() would fail to promote their served ancestors. Mercurial's %d
+// from head() would fail to promote their served ancestors. Include ancestors
+// so heads() sees paths that leave and return to the branch. Mercurial's %d
 // formatting selects a revision without interpolating branch names.
 // Hidden revisions stay out because no browse command passes --hidden.
-const branchHeadsTemplate = `{revset("heads(branch(%d) and not secret())", rev) % '{dict(rev, node, branch, bookmarks, tags, head="1", closed=get(extras, "close"))|json}\n'}`
+const branchHeadsTemplate = `{revset("heads(ancestors(branch(%d) and not secret()))", rev) % '{dict(rev, node, branch, bookmarks, tags, head="1", closed=get(extras, "close"))|json}\n'}`
 
 // referencesRevset is fixed text; reference names never reach a revset.
 const referencesRevset = "sort((bookmark() or tag()) and not secret(), -rev)"

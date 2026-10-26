@@ -323,3 +323,44 @@ func TestReferencesPromoteServedBranchHead(t *testing.T) {
 	side := commit("side child")
 	check([]Reference{{Kind: RefBranch, Name: "side", Node: side, Revision: 2}, defaultRef})
 }
+
+func TestReferencesFollowBranchAncestry(t *testing.T) {
+	r, root := newIntegrationRunner(t)
+	ctx := context.Background()
+	repo := filepath.Join(root, "return-to-branch")
+	hg := func(path string, args ...string) string {
+		t.Helper()
+		var out bytes.Buffer
+		if err := r.Run(ctx, path, args, nil, &out); err != nil {
+			t.Fatalf("hg %q: %v", args, err)
+		}
+		return out.String()
+	}
+	commit := func(message string, args ...string) NodeID {
+		t.Helper()
+		hg(repo, append([]string{"commit", "-q", "-u", "t", "-d", "0 0", "-m", message, "--config", "ui.allowemptycommit=1"}, args...)...)
+		return NodeID(hg(repo, "log", "-r", ".", "-T", "{node}"))
+	}
+	hg("", "init", repo)
+	commit("default ancestor")
+	hg(repo, "branch", "-q", "side")
+	side := commit("side head")
+	hg(repo, "branch", "-q", "--force", "default")
+	closed := commit("closed default return", "--close-branch")
+
+	// The original default changeset has a same-branch descendant through
+	// side. It must not reappear as an open default head and win landing.
+	want := []Reference{
+		{Kind: RefBranch, Name: "default", Node: closed, Revision: 2, Closed: true},
+		{Kind: RefBranch, Name: "side", Node: side, Revision: 1},
+	}
+	if refs, err := r.References(ctx, repo); err != nil || !reflect.DeepEqual(refs, want) {
+		t.Errorf("returning branch references = %v, %v; want %v", refs, err, want)
+	}
+	if n, err := r.Landing(ctx, repo); err != nil || n != side {
+		t.Errorf("landing = %s, %v; want open side head %s", n, err, side)
+	}
+	if n, err := r.Resolve(ctx, repo, RefSelection{RefBranch, "default"}); err != nil || n != closed {
+		t.Errorf("default = %s, %v; want closed default head %s", n, err, closed)
+	}
+}
