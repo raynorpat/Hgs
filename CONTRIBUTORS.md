@@ -1,0 +1,121 @@
+# Contributors
+
+## Hgs
+
+- Pat Raynor <raynorpat@raynorpat.com>
+
+## Gogs 0.5.13
+
+Hgs is built on the Gogs 0.5.13 source. The people below authored commits in the upstream [gogs/gogs](https://github.com/gogs/gogs) history up to the `v0.5.13` tag, ordered by commit count. Translators are listed separately in [TRANSLATORS](conf/locale/TRANSLATORS.md).
+
+- Joe Chen (Unknwon) <joe2010xtmf@163.com>
+- Lunny Xiao <xiaolunwen@gmail.com>
+- FuXiaoHei <fuxiaohei@hexiaz.com>
+- slene <vslene@gmail.com>
+- codeskyblue <codeskyblue@gmail.com>
+- Justin Nuß <nuss.justin@gmail.com>
+- Peter Smit <peter@smitmail.eu>
+- Thomas Fanninger <thomas@fanninger.at>
+- Christopher Brickley <brickley@gmail.com>
+- crystaldust <juzhenatpku@gmail.com>
+- Meaglith Ma <genedna@gmail.com>
+- Alexey Makhov <makhov.alex@gmail.com>
+- Andrew Patton <andrew@acusti.ca>
+- Tony Tsang <tony@tcnhk.com>
+- Tristan Storch <tstorch@math.uni-bielefeld.de>
+- Lance Ju <lance@crenolab.com>
+- Michael Dyrynda <michael@nucleus.com.au>
+- Vyacheslav Bakhmutov <m0sth8@yandex-team.ru>
+- Cyril Rohr <cyril.rohr@gmail.com>
+- Sebastian Jackel <sjackel@trustinternational.com>
+- xiaoxiao <xiaoxiao@gmail.com>
+- Marios Andreopoulos <opensource@andmarios.com>
+- evolvedlight <steve@evolvedlight.co.uk>
+- fundon <cfddream@gmail.com>
+- laofo <laofo521@gmail.com>
+- Ciaran Downey <me@ciarand.me>
+- Eryx <evorui@gmail.com>
+- Martin van Beurden <chadoe@gmail.com>
+- Michael Boke <michael@mbict.nl>
+- Andrew Burns <ErebusBat@gmail.com>
+- Clint Armstrong <clint@clintarmstrong.net>
+- James Anderson <james@jamesanderson.me>
+- James Cracknell <james.h.cracknell@gmail.com>
+- Raphael Randschau <nicolai86@me.com>
+- crackcomm <crackcomm@gmail.com>
+- jack <ac861219@gmail.com>
+- jacksonpan <530933208@qq.com>
+- zhsso <zhssoge@gmail.com>
+- André Grötschel <a.groetschel@phurosy.com>
+- Arpemedia <arens@arpemedia.com>
+- Baiju Muthukadan <baiju.m.mail@gmail.com>
+- Chris Lee <clee@mg8.org>
+- Danny B <silverkorn@gmail.com>
+- Deiwin Sarjas <deiwin.sarjas@gmail.com>
+- Dominik Schulz <dominik.schulz@gauner.org>
+- Luca Beltrame <lbeltrame@kde.org>
+- Mageti <etienne@mageti.fr>
+- Philippe Barsalou <philippe@purecobalt.com>
+- Stefan-Code <Stefan-Code@users.noreply.github.com>
+- dennis-smurf <dnnssmth8@netscape.net>
+- euank <euank@euank.com>
+- toby.zxj <toby.zxj@gmail.com>
+- Adel Qalieh <aqalieh95@gmail.com>
+- Alukardd <alukardd@alukardd.org>
+- Andy Leap <andyleap@gmail.com>
+- António Meireles <antonio.meireles@reformi.st>
+- Bas Stottelaar <basstottelaar@gmail.com>
+- Benjamin Peng <j100002ben@gmail.com>
+- Bruno Bigras <bigras.bruno@gmail.com>
+- Bryan Johnson <bryan.johnson2@td.com>
+- Cedric Ziel <cedric@cedric-ziel.com>
+- Chance Zibolski <chance.zibolski@gmail.com>
+- Chen Chao Shih <jcfrank7@gmail.com>
+- Christoph Burgdorf <christoph.burgdorf@bvsn.org>
+- Dominik Liebler <liebler.dominik@googlemail.com>
+- Etienne Bruines <etienne.bruines@huperwebs.nl>
+- Florian Hülsmann <fh@cbix.de>
+- Girish Ramakrishnan <girish@forwardbias.in>
+- Henry <cryptix@riseup.net>
+- Jake Scott <jake.net@gmail.com>
+- Jan Oliver Oelerich <janoliver@oelerich.org>
+- Jason <j20@users.noreply.github.com>
+- Joseph Crail <jbcrail@gmail.com>
+- Josh Kalderimis <josh.kalderimis@gmail.com>
+- Justin Clift <justin@gluster.org>
+- Kyle P Davis <me@KylePDavis.com>
+- Lars Gregori <lars.gregori@gmail.com>
+- Linquize <linquize@yahoo.com.hk>
+- Martin Garton <martin.garton@ft.com>
+- Mathieu Gagnon <mathieu@gagnon.name>
+- Matthew Baird <mattbaird@gmail.com>
+- Michael Crosby <michael@crosbymichael.com>
+- Michael Litvak <mlitbk@gmail.com>
+- Michel Roux <xefir@crystalyx.net>
+- Miguel de la Cruz <mgdelacroix@gmail.com>
+- Pierre Baillet <oct@zoy.org>
+- Robert Speicher <rspeicher@gmail.com>
+- Sean Keery <skibum55@hotmail.com>
+- Steven Pav <shabbychef@gmail.com>
+- Thomas Laroche <tho.laroche@gmail.com>
+- Vitaliy Vasilenko <vvitalvas@yandex.ru>
+- W-Mark Kubacki <wmark@hurrikane.de>
+- Will Glynn <will@willglynn.com>
+- Wind0r <Wind0r@users.noreply.github.com>
+- chai2010 <chaishushan@gmail.com>
+- estetsenko <Stetsenkoem@gmail.com>
+- fzerorubigd <fzerorubigd@gmail.com>
+- gima <gima@iki.fi>
+- isotas38 <isotas38@example.com>
+- jiangjianxiao <jiangjianxiao@gmail.com>
+- juju2013 <cahterinedesienne@gmail.com>
+- luto <m@luto.at>
+- mcheng89 <mcheng827@gmail.com>
+- morpheyesh <morpheyesh@gmail.com>
+- niphor <niphor@gmail.com>
+- omeid <public@omeid.me>
+- rojaro <rojaro@gmail.com>
+- semlanik <semlanik@gmail.com>
+- shxsun <shxsun@gmail.com>
+- taziden <taziden@flexiden.org>
+- twitchyliquid64 <twitchyliquid64@ciphersink.net>
