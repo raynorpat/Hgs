@@ -253,7 +253,7 @@ func checkRealHooks(t *testing.T, exe, gogs string) {
 
 	// The authorizer allows the first allowCalls checks of a session; -1
 	// allows all. Allowing exactly one lets pretxnopen pass so that the
-	// transaction-close hooks are what must reject.
+	// transaction-close hook is what must reject.
 	var allowCalls, calls atomic.Int64
 	authorize := func(context.Context, Grant) error {
 		if n := allowCalls.Load(); n >= 0 && calls.Add(1) > n {

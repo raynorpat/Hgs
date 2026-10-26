@@ -340,6 +340,35 @@ is unchanged.
   integration tests) override the setting with `--config http_proxy.host=`
   on their own command lines.
 
+## Writer hook set (user decision 2026-10-26)
+
+Writers get `pretxnopen`, `prepushkey` and `pretxnclose` in `check` mode; no
+`pretxnclose-bookmark` or `pretxnclose-phase`. Mercurial 7.2.4 runs those once
+per moved bookmark and once per changeset whose phase changes, inside the same
+`validate` step and immediately before `pretxnclose`
+(`localrepo.py:2359-2421`); a `pretxnclose` refusal rolls back everything they
+would have guarded. Readers keep all five hooks in `deny` mode.
+
+Revocation still rolls back bookmark-only and phase-only pushes:
+`TestTransportRevocationWithoutChangesets` pushes a bookmark move of an
+existing changeset and a draft → public phase move (no changesets) over
+HTTPS and SSH, bundle2 and bundle1 (pushkey). For each case it revokes the
+writer after the first, second, … allowed callback until the push succeeds,
+and requires every refused push to leave the repository unchanged and
+verifiable; the last refusal is at the final callback, `pretxnclose`. All
+8 cases passed (Windows, 7.2.4): 3 callbacks for every case except bundle2
+phase-only, which has 2 (`pretxnopen`, `pretxnclose`). RED check: with
+`pretxnclose` also removed from writers, all 4 bundle2 cases failed (the push
+succeeded after a single callback despite revocation).
+
+Push of 500 new changesets into an empty repository over HTTPS (writer, 7.2.4
+client and server, Windows; three runs each):
+
+| Writer hooks | Hook callbacks | Wall time |
+| --- | --- | --- |
+| before: five hooks | 502 | 55.0 s, 52.3 s, 54.0 s |
+| after: three hooks | 2 | 12.4 s, 11.3 s, 11.2 s |
+
 ## Process cleanup
 
 Each test stack shuts down in production order (SSH `Shutdown`, frontend

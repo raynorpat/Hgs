@@ -85,7 +85,7 @@ func fakeStdioServe(args []string) int {
 // fakeHookCallback makes the callback a check hook makes.
 func fakeHookCallback() error {
 	id, _ := strconv.ParseInt(os.Getenv(EnvRepoID), 10, 64)
-	body, _ := json.Marshal(HookRequest{Hook: "pretxnclose-phase", RepoID: id})
+	body, _ := json.Marshal(HookRequest{Hook: "pretxnclose", RepoID: id})
 	req, _ := http.NewRequest(http.MethodPost, "http://"+os.Getenv(EnvControl)+ControlPath, bytes.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+os.Getenv(EnvCapability))
 	resp, err := http.DefaultClient.Do(req)

@@ -484,7 +484,7 @@ func TestHTTPBridgeHookCallbacksAreActivity(t *testing.T) {
 		f.mu.Unlock()
 		for i := 0; i < 10; i++ {
 			time.Sleep(100 * time.Millisecond)
-			if err := ctl.Check(r.Context(), capability, testWriter.RepoID, "pretxnclose-phase"); err != nil {
+			if err := ctl.Check(r.Context(), capability, testWriter.RepoID, "pretxnclose"); err != nil {
 				http.Error(w, err.Error(), http.StatusForbidden)
 				return
 			}

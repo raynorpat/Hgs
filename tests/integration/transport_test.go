@@ -94,6 +94,83 @@ func TestTransportRevocation(t *testing.T) {
 	}
 }
 
+// TestTransportRevocationWithoutChangesets revokes the writer after each
+// hook callback in turn of a bookmark-only and a phase-only push, which
+// writers' pretxnclose alone must guard. Every refused push must leave the
+// repository unchanged; the last one is refused by pretxnclose itself.
+func TestTransportRevocationWithoutChangesets(t *testing.T) {
+	v := matrix(t)[0]
+	s := newStack(t, v, stackOptions{})
+	tp := newTemplate(s)
+	for _, transport := range []string{transportHTTP, transportSSH} {
+		for _, exchange := range []struct {
+			name string
+			args []string
+		}{{"bundle2", nil}, {"bundle1", bundle1}} {
+			for _, kind := range []string{"bookmark", "phase"} {
+				t.Run(transport+" "+exchange.name+" "+kind, func(t *testing.T) {
+					c := newCase(t, s, tp, transport, "writer", "close-"+transport+"-"+exchange.name+"-"+kind)
+					args := exchange.args
+					if kind == "bookmark" {
+						// Publish the draft on the server first, or bundle1 would
+						// push its phase in a separate pushkey transaction.
+						s.server.must(t, c.server, "phase", "--public", "-r", tp.nodes[3])
+						c.s.client.must(t, c.client, "bookmark", "-f", "-r", tp.nodes[3], "main")
+						args = append([]string{"-B", "main"}, args...)
+					}
+					// The client sees the server's draft changeset as public
+					// (publishing server), so a plain push only publishes it.
+					// Mercurial runs pretxnclose last, so the last refused push,
+					// which reached as many callbacks as the successful one, was
+					// refused by pretxnclose after the change was applied.
+					var last string
+					lastCalls := 0
+					for allowed := 1; ; allowed++ {
+						before := snapshotRepository(t, s.server, c.server)
+						s.authz.reset(func(_ context.Context, call int) {
+							if call == allowed {
+								s.authz.setWriter(writerID, false)
+							}
+						})
+						ok, out := c.push(args...)
+						calls := s.authz.callCount()
+						s.authz.reset(nil)
+						s.authz.setWriter(writerID, true)
+						if ok {
+							if calls != allowed || lastCalls != calls {
+								t.Fatalf("push succeeded after %d callbacks, %d allowed, last refusal at callback %d:\n%s", calls, allowed, lastCalls, out)
+							}
+							t.Logf("refused after each of the first %d of %d callbacks, then succeeded", allowed-1, calls)
+							break
+						}
+						if after := snapshotRepository(t, s.server, c.server); !reflect.DeepEqual(before.withoutJournal(), after.withoutJournal()) {
+							t.Fatalf("push refused after %d allowed callbacks changed the repository:\n%s\n%s", allowed, before.diff(after), out)
+						}
+						s.server.must(t, c.server, "verify", "-q")
+						last, lastCalls = out, calls
+						if allowed == 10 {
+							t.Fatalf("push still refused after %d allowed callbacks:\n%s", allowed, out)
+						}
+					}
+					// HTTP bundle1 pushkey failures reach the client as a bare 500.
+					if strings.Contains(last, "hook exited") && !strings.Contains(last, "pretxnclose hook") {
+						t.Fatalf("the last refusal did not come from pretxnclose:\n%s", last)
+					}
+					after := snapshotRepository(t, s.server, c.server)
+					if kind == "bookmark" && !bookmark(after, "main", tp.nodes[3]) {
+						t.Fatalf("authorized bookmark push did not land: %s", after.Bookmarks)
+					}
+					if kind == "phase" {
+						if err := publishedDraft(c, after, after); err != nil {
+							t.Fatal(err)
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
 // TestTransportAmbiguousCompletion drops the connection of a push after
 // Mercurial committed it but before the client read the result. The push
 // must be present exactly once, the bridge must not replay it, nothing may

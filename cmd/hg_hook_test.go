@@ -105,7 +105,7 @@ func TestHookFailsClosed(t *testing.T) {
 	if err := RunHGHook(context.Background(), "pretxnclose", sessionEnv(env)); err != nil {
 		t.Fatalf("authorized writer denied: %v", err)
 	}
-	if err := hgHook(context.Background(), []string{"check", "pretxnclose-phase"}, sessionEnv(env)); err != nil {
+	if err := hgHook(context.Background(), []string{"check", "prepushkey"}, sessionEnv(env)); err != nil {
 		t.Fatalf("authorized writer denied through the command: %v", err)
 	}
 

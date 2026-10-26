@@ -216,12 +216,12 @@ func TestAllowedCheckTouchesSession(t *testing.T) {
 	}
 	defer revoke()
 
-	if err := c.Check(context.Background(), capability, 42, "pretxnclose-phase"); err != nil || touches != 1 {
+	if err := c.Check(context.Background(), capability, 42, "pretxnclose"); err != nil || touches != 1 {
 		t.Fatalf("allowed check: %v, %d touches; want 1", err, touches)
 	}
-	c.Check(context.Background(), capability, 43, "pretxnclose-phase")
+	c.Check(context.Background(), capability, 43, "pretxnclose")
 	auth.set(errors.New("demoted to read access"))
-	c.Check(context.Background(), capability, 42, "pretxnclose-phase")
+	c.Check(context.Background(), capability, 42, "pretxnclose")
 	if touches != 1 {
 		t.Errorf("denied checks touched the session: %d touches", touches)
 	}
