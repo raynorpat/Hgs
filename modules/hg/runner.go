@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -65,6 +66,16 @@ func NewRunner(cfg Config) (*Runner, error) {
 	}
 	if err := checkPath(cfg.ConfigPath); err != nil {
 		return nil, err
+	}
+	// Repository-less commands run in the config directory, and Mercurial
+	// versions without HGRCSKIPREPO would load an enclosing repository's hgrc.
+	for d := filepath.Dir(cfg.ConfigPath); ; d = filepath.Dir(d) {
+		if _, err := os.Lstat(filepath.Join(d, ".hg")); !errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("hg: managed config directory must not be inside a Mercurial repository (%s): %v", d, err)
+		}
+		if filepath.Dir(d) == d {
+			break
+		}
 	}
 	if cfg.MaxProcesses < 0 || cfg.SessionTimeout < 0 {
 		return nil, errors.New("hg: process limits must not be negative")
@@ -290,6 +301,11 @@ func (r *Runner) command(repoPath string, args []string, env map[string]string) 
 		"HGPLAIN=1",
 		"HGENCODING=" + localEncoding(),
 		"PYTHONNOUSERSITE=1",
+	}
+	if repoPath == "" {
+		// Commands without a repository must not read one found from the
+		// working directory; NewRunner also refuses such a directory.
+		environ = append(environ, "HGRCSKIPREPO=1")
 	}
 	for _, k := range append(inheritedEnv, platformEnv...) {
 		if v, ok := os.LookupEnv(k); ok {

@@ -124,9 +124,9 @@ func newTestRunner(t *testing.T, cfg Config) *Runner {
 	return r
 }
 
-func readEnv(t *testing.T, r *Runner, env map[string]string) map[string]string {
+func readEnv(t *testing.T, r *Runner, repoPath string, env map[string]string) map[string]string {
 	t.Helper()
-	c, err := r.Start(context.Background(), "", []string{"env"}, env)
+	c, err := r.Start(context.Background(), repoPath, []string{"env"}, env)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,11 +154,12 @@ func TestRunnerIgnoresAmbientConfig(t *testing.T) {
 	}
 	r := newTestRunner(t, Config{})
 
-	vars := readEnv(t, r, map[string]string{"GOGS_HG_ACTOR": "42"})
+	vars := readEnv(t, r, "", map[string]string{"GOGS_HG_ACTOR": "42"})
 	want := map[string]string{
 		"HGRCPATH":         r.cfg.ConfigPath,
 		"HGPLAIN":          "1",
 		"HGENCODING":       localEncoding(),
+		"HGRCSKIPREPO":     "1",
 		"PYTHONNOUSERSITE": "1",
 		"GOGS_HG_ACTOR":    "42",
 	}
@@ -177,6 +178,12 @@ func TestRunnerIgnoresAmbientConfig(t *testing.T) {
 	}
 	if runtime.GOOS == "windows" && vars["SYSTEMROOT"] == "" {
 		t.Error("SystemRoot was not preserved")
+	}
+
+	// A repository's own hgrc carries its managed hooks; neither the runner nor
+	// the ambient environment may skip it.
+	if v, ok := readEnv(t, r, t.TempDir(), nil)["HGRCSKIPREPO"]; ok {
+		t.Errorf("HGRCSKIPREPO = %q for a repository command", v)
 	}
 
 	for _, k := range []string{"HGRCPATH", "PYTHONPATH", "FOO", "GOGS_HG_X=Y"} {
@@ -271,7 +278,12 @@ func TestParseVersion(t *testing.T) {
 func TestNewRunnerValidates(t *testing.T) {
 	exe, _ := os.Executable()
 	dir := t.TempDir()
+	enclosing := t.TempDir()
+	if err := os.Mkdir(filepath.Join(enclosing, ".hg"), 0700); err != nil {
+		t.Fatal(err)
+	}
 	bad := []Config{
+		{Executable: exe, ConfigPath: filepath.Join(enclosing, "data", "hg", "hgrc")},
 		{Executable: "hg", ConfigPath: filepath.Join(dir, "hgrc")},
 		{Executable: filepath.Join(dir, "missing-hg"), ConfigPath: filepath.Join(dir, "hgrc")},
 		{Executable: exe, ConfigPath: "hgrc"},

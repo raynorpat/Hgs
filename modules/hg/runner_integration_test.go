@@ -62,6 +62,32 @@ func checkRealMercurial(t *testing.T, exe string) {
 		t.Fatalf("repository not created at %q: %v", repo, err)
 	}
 
+	// An enclosing repository's hgrc must not reach repository-less commands.
+	bogus := "[extensions]\nmissingrepoext = " + filepath.Join(root, "nope.py") + "\n"
+	if err := os.WriteFile(filepath.Join(repo, ".hg", "hgrc"), []byte(bogus), 0600); err != nil {
+		t.Fatal(err)
+	}
+	inside := filepath.Join(repo, "data", "hgrc")
+	if _, err := NewRunner(Config{Executable: exe, ConfigPath: inside}); err == nil {
+		t.Error("NewRunner accepted a config directory inside a repository")
+	}
+	// Bypass that refusal to show HGRCSKIPREPO alone also keeps it out.
+	os.MkdirAll(filepath.Dir(inside), 0700)
+	os.WriteFile(inside, []byte(managedConfig), 0600)
+	skipped := *r
+	skipped.cfg.ConfigPath = inside
+	c, err := skipped.Start(ctx, "", []string{"version", "-T", "json"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go io.Copy(io.Discard, c.Stdout)
+	if stderr, _ := io.ReadAll(c.Stderr); c.Wait() != nil || len(stderr) > 0 {
+		t.Errorf("enclosing repository config loaded: %q", stderr)
+	}
+	c.Stop(ctx)
+	// Repository commands do read their own hgrc; drop the bogus one.
+	os.Remove(filepath.Join(repo, ".hg", "hgrc"))
+
 	for _, probe := range []struct {
 		repo string
 		args []string
