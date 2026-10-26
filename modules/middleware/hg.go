@@ -92,6 +92,10 @@ func ParseHgPath(u *url.URL, prefix string) (string, error) {
 // BrowserResponseController preserves the net/http writer underneath Macaron.
 // It is request-scoped and is used only to interrupt canceled raw transfers.
 type browserControllerKey struct{}
+type browserResponse struct {
+	controller *http.ResponseController
+	aborted    bool
+}
 type browserURLKey struct{}
 
 func HgRequestURL(r *http.Request) *url.URL {
@@ -103,11 +107,26 @@ func HgRequestURL(r *http.Request) *url.URL {
 func WithBrowserResponseController(r *http.Request, w http.ResponseWriter) *http.Request {
 	u := *r.URL
 	c := context.WithValue(r.Context(), browserURLKey{}, &u)
-	return r.WithContext(context.WithValue(c, browserControllerKey{}, http.NewResponseController(w)))
+	return r.WithContext(context.WithValue(c, browserControllerKey{}, &browserResponse{controller: http.NewResponseController(w)}))
 }
 func BrowserResponseController(r *http.Request) *http.ResponseController {
-	c, _ := r.Context().Value(browserControllerKey{}).(*http.ResponseController)
-	return c
+	response, _ := r.Context().Value(browserControllerKey{}).(*browserResponse)
+	if response == nil {
+		return nil
+	}
+	return response.controller
+}
+
+// AbortBrowserResponse marks an incomplete stream for termination by the outer
+// HTTP handler, beyond Macaron's panic recovery and response wrappers.
+func AbortBrowserResponse(r *http.Request) {
+	if response, ok := r.Context().Value(browserControllerKey{}).(*browserResponse); ok {
+		response.aborted = true
+	}
+}
+func BrowserResponseAborted(r *http.Request) bool {
+	response, _ := r.Context().Value(browserControllerKey{}).(*browserResponse)
+	return response != nil && response.aborted
 }
 
 // RepoBrowse tracks filesystem readers separately from metadata-only routes.
@@ -149,18 +168,12 @@ func RepoBrowse() macaron.Handler {
 	}
 }
 
-func RepoRef() macaron.Handler {
+func RepoRef(action string) macaron.Handler {
 	return func(ctx *Context) {
 		q, err := url.ParseQuery(ctx.Req.URL.RawQuery)
 		if err != nil {
 			ctx.Error(400)
 			return
-		}
-		action := "src"
-		if strings.Contains(ctx.Req.URL.Path, "/raw/") {
-			action = "raw"
-		} else if strings.Contains(ctx.Req.URL.Path, "/commit/") {
-			action = "commit"
 		}
 		param := ctx.Params(":node")
 		prefix := ctx.Repo.RepoLink

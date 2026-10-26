@@ -35,6 +35,9 @@ type viewApp struct {
 
 func newViewApp(t *testing.T) *viewApp { return newViewAppHg(t, "") }
 func newViewAppHg(t *testing.T, executable string) *viewApp {
+	return newViewAppPrefix(t, executable, "/gogs")
+}
+func newViewAppPrefix(t *testing.T, executable, subURL string) *viewApp {
 	t.Helper()
 	root := t.TempDir()
 	source, _ := filepath.Abs("..")
@@ -80,8 +83,8 @@ func newViewAppHg(t *testing.T, executable string) *viewApp {
 	setting.Mercurial.SessionTimeout = time.Minute
 	setting.RepoRootPath = filepath.Join(root, "repos")
 	setting.SSHHostKeyPath = filepath.Join(root, "hostkey")
-	setting.AppUrl = "http://example.test/gogs/"
-	setting.AppSubUrl = "/gogs"
+	setting.AppUrl = "http://example.test" + subURL + "/"
+	setting.AppSubUrl = subURL
 	setting.DisableSSH = true
 	setting.InstallLock = true
 	a := &viewApp{root: root, config: filepath.Dir(setting.Mercurial.ConfigPath), alice: &models.User{Name: "alice", Email: "alice@example.test", Passwd: "password", IsActive: true}, bob: &models.User{Name: "bob", Email: "bob@example.test", Passwd: "password", IsActive: true}}
@@ -634,5 +637,59 @@ func TestMercurialViewReadAuthorization(t *testing.T) {
 	w = a.request(t, "GET", "/gogs/alice/project/issues", "", "")
 	if w.Code != 302 || w.Header().Get("Location") != "/gogs/user/login" {
 		t.Fatal("sign-in-required view", w.Code, w.Header())
+	}
+}
+
+func TestMercurialViewEndpointPathIdentity(t *testing.T) {
+	for _, tc := range []struct{ name, prefix, owner, repo, file string }{
+		{"raw directory", "/gogs", "alice", "project", "raw/file.txt"},
+		{"commit directory", "/gogs", "alice", "project", "commit/file.txt"},
+		{"commit owner", "/gogs", "commit", "project", "file.txt"},
+		{"commit repository", "/gogs", "alice", "commit", "file.txt"},
+		{"raw prefix", "/gogs/raw", "alice", "project", "file.txt"},
+		{"commit prefix", "/gogs/commit", "alice", "project", "file.txt"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := newViewAppPrefix(t, "", tc.prefix)
+			owner := a.alice
+			if tc.owner != "alice" {
+				owner = &models.User{Name: tc.owner, Email: tc.owner + "@example.test", Passwd: "password", IsActive: true}
+				if err := models.CreateUser(owner); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.owner != "alice" || tc.repo != "project" {
+				s := a.holder.Service()
+				if _, err := models.CreateHgRepository(context.Background(), s.Runner(), s.RepositoryRoot(), models.CreateHgRepositoryOptions{OwnerID: owner.Id, Name: tc.repo}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			a.populate(t, 1)
+			a.fixture(t, "manifest", "644   "+tc.file+"\n")
+			a.fixture(t, "content", "path identity\n")
+			base := tc.prefix + "/" + tc.owner + "/" + tc.repo
+			w := a.request(t, "GET", base+"/src/"+viewNode+"/"+tc.file, "", "")
+			if w.Code != 200 || !strings.Contains(w.Body.String(), "path identity") {
+				t.Fatalf("source path misclassified: %d %s", w.Code, w.Body.String())
+			}
+			w = a.request(t, "GET", base+"/raw/"+viewNode+"/"+tc.file, "", "")
+			if w.Code != 200 || w.Body.String() != "path identity\n" {
+				t.Fatalf("raw path misclassified: %d %q", w.Code, w.Body.String())
+			}
+			w = a.request(t, "GET", base+"/commit/"+viewNode, "", "")
+			if w.Code != 200 {
+				t.Fatalf("changeset path misclassified: %d %s", w.Code, w.Body.String())
+			}
+			w = a.request(t, "GET", base+"?ref_kind=branch&ref_name=default", "", "")
+			if w.Code != 302 || w.Header().Get("Location") != base+"/src/"+viewNode {
+				t.Fatalf("landing redirect endpoint: %d %s", w.Code, w.Header().Get("Location"))
+			}
+			// A decoded slash must still be rejected instead of becoming a path delimiter.
+			before := a.calls()
+			w = a.request(t, "GET", base+"/src/"+viewNode+"/x%2Fraw%2Ffile.txt", "", "")
+			if w.Code != 400 || a.calls() != before {
+				t.Fatalf("encoded slash accepted: %d calls %d", w.Code, a.calls()-before)
+			}
+		})
 	}
 }

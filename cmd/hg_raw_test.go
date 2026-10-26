@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -132,5 +133,76 @@ func TestMercurialViewReleasesBeforeBlockedErrorPage(t *testing.T) {
 	defer cancel()
 	if err := a.holder.Service().DrainRepository(ctx, a.repo.Id); err != nil {
 		t.Fatalf("completed Hg command retained read during HTML transfer: %v", err)
+	}
+}
+
+func TestRawFileNativeFailureAbortsResponse(t *testing.T) {
+	for _, transport := range []struct {
+		name       string
+		tls, http2 bool
+	}{{"HTTP", false, false}, {"TLS", true, false}, {"HTTP2", true, true}} {
+		t.Run(transport.name, func(t *testing.T) {
+			a := newViewApp(t)
+			a.populate(t, 1)
+			a.fixture(t, "cat_failure", "1")
+			server := httptest.NewUnstartedServer(a.handler)
+			server.EnableHTTP2 = transport.http2
+			if transport.tls {
+				server.StartTLS()
+			} else {
+				server.Start()
+			}
+
+			defer server.Close()
+			client := server.Client()
+			client.Timeout = 5 * time.Second
+			address := server.URL + "/gogs/alice/project/raw/" + viewNode + "/f000.txt"
+			// A failure before the first byte remains an ordinary error response.
+			response, err := client.Get(address)
+			if err != nil {
+				t.Fatal("prewrite failure aborted response", err)
+			}
+			data, readErr := io.ReadAll(response.Body)
+			response.Body.Close()
+			if response.StatusCode != 404 || readErr != nil {
+				t.Fatalf("prewrite response: %d %q %v", response.StatusCode, data, readErr)
+			}
+			prefix := strings.Repeat("native-prefix\n", 8192)
+			a.fixture(t, "content", prefix)
+			response, err = client.Get(address)
+			if err != nil {
+				t.Fatal("expected response headers and native prefix", err)
+			}
+			data, readErr = io.ReadAll(response.Body)
+			response.Body.Close()
+			if response.StatusCode != 200 || len(data) == 0 || !strings.HasPrefix(prefix, string(data)) {
+				t.Fatalf("native prefix response: status %d bytes %d", response.StatusCode, len(data))
+			}
+			if readErr == nil {
+				t.Fatalf("failed native read completed successfully with %d bytes", len(data))
+			}
+			if transport.http2 && response.ProtoMajor != 2 {
+				t.Fatalf("HTTP/2 regression negotiated %s", response.Proto)
+			}
+			t.Logf("%s partial native failure: %d bytes, body error: %v", response.Proto, len(data), readErr)
+			// The abort is request-scoped; subsequent healthy reads still work.
+			a.fixture(t, "cat_failure", "")
+			a.fixture(t, "content", "healthy after failure\n")
+			response, err = client.Get(address)
+			if err != nil {
+				t.Fatal("healthy read after native failure", err)
+			}
+			data, readErr = io.ReadAll(response.Body)
+			response.Body.Close()
+			if response.StatusCode != 200 || readErr != nil || string(data) != "healthy after failure\n" {
+				t.Fatalf("following response: %d %q %v", response.StatusCode, data, readErr)
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			if err := a.holder.Service().DrainRepository(ctx, a.repo.Id); err != nil {
+				t.Fatalf("failed native read retained registration: %v", err)
+			}
+		})
 	}
 }

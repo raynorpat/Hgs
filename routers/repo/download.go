@@ -63,7 +63,11 @@ func SingleDownload(ctx *middleware.Context) {
 	defer stopAbort()
 	// ReadFile joins the native process before the browse registration releases.
 	err = ctx.Repo.HgRunner.ReadFile(ctx.Repo.HgContext, ctx.Repo.HgPath, ctx.Repo.Node, ctx.Repo.TreeName, ctx.Resp)
-	if err != nil && !ctx.Written() {
-		ctx.Error(404)
+	if err != nil {
+		if !ctx.Written() {
+			ctx.Error(404)
+		} else {
+			middleware.AbortBrowserResponse(ctx.Req.Request)
+		}
 	}
 }

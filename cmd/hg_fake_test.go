@@ -37,6 +37,10 @@ func fakeViewHg(args []string) int {
 	case "manifest":
 		fmt.Print(read("manifest"))
 	case "cat":
+		if read("cat_failure") != "" {
+			fmt.Print(read("content"))
+			return 3
+		}
 		if read("large") != "" {
 			chunk := strings.Repeat("x", 32768)
 			for i := 0; i < 4096; i++ {

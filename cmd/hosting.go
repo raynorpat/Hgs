@@ -104,6 +104,12 @@ func (h *hostingHolder) Handler(browser http.Handler) http.Handler {
 			hgroutes.Handler(service).ServeHTTP(w, r)
 			return
 		}
-		browser.ServeHTTP(w, middleware.WithBrowserResponseController(r, w))
+		r = middleware.WithBrowserResponseController(r, w)
+		browser.ServeHTTP(w, r)
+		if middleware.BrowserResponseAborted(r) {
+			// net/http terminates the incomplete HTTP/1 response or HTTP/2 stream.
+			// Keep this outside Macaron Recovery, which consumes handler panics.
+			panic(http.ErrAbortHandler)
+		}
 	})
 }

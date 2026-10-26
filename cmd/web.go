@@ -497,17 +497,17 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 			m.Get("/branches", repo.Branches)
 			m.Get("/commits", repo.Commits)
 			m.Get("/commits/*", repo.Commits)
-			m.Get("/src/:node", middleware.RepoRef(), repo.Home)
-			m.Get("/src/:node/*", middleware.RepoRef(), repo.Home)
-			m.Get("/raw/:node/*", middleware.RepoRef(), repo.SingleDownload)
-			m.Get("/raw/:node", middleware.RepoRef(), repo.SingleDownload)
-			m.Get("/commit/:node", middleware.RepoRef(), repo.Diff)
+			m.Get("/src/:node", middleware.RepoRef("src"), repo.Home)
+			m.Get("/src/:node/*", middleware.RepoRef("src"), repo.Home)
+			m.Get("/raw/:node/*", middleware.RepoRef("raw"), repo.SingleDownload)
+			m.Get("/raw/:node", middleware.RepoRef("raw"), repo.SingleDownload)
+			m.Get("/commit/:node", middleware.RepoRef("commit"), repo.Diff)
 		}, middleware.RepoBrowse())
 
 	}, ignSignIn, middleware.RepoAssignment(true))
 
 	m.Group("/:username", func() {
-		m.Get("/:reponame", ignSignIn, middleware.RepoAssignment(true), middleware.RepoBrowse(), middleware.RepoRef(), repo.Home)
+		m.Get("/:reponame", ignSignIn, middleware.RepoAssignment(true), middleware.RepoBrowse(), middleware.RepoRef("src"), repo.Home)
 	})
 
 	// robots.txt
