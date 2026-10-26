@@ -45,5 +45,9 @@ jobs:
           pip install mercurial==5.0.2
           hg --version | head -1
       - run: |
-          pip install --target /opt/hg202 mercurial==2.0.2
-          PYTHONPATH=/opt/hg202 python /opt/hg202/bin/hg --version | head -1
+          # 2.0.2 is not on PyPI; fetch the release tarball and verify its checksum.
+          curl -fsSLO https://www.mercurial-scm.org/release/mercurial-2.0.2.tar.gz
+          echo "ca8b8fb93f2e3e8c3cdf2f81d87e92592f5f20c5bfcaaeb6a75550d4a69572c9  mercurial-2.0.2.tar.gz" | sha256sum -c -
+          tar xzf mercurial-2.0.2.tar.gz
+          (cd mercurial-2.0.2 && python setup.py install --home /opt/hg202)
+          PYTHONPATH=/opt/hg202/lib/python /opt/hg202/bin/hg --version | head -1

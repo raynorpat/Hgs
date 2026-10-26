@@ -7,7 +7,30 @@ Established 2026-10-25 on Windows 11 (amd64).
 - `CGO_ENABLED=0`; no C toolchain is needed.
 - Before this work `go build ./...` failed: there was no `go.mod` (only `.gopmfile`, GOPATH-era) and the tree did not compile with a modern toolchain.
 
+## Baseline record
+Before the module work (commit cb8e76e, the initial import, checked out in a temporary clone): no `go.mod` existed (`go env GOMOD` printed `NUL`, i.e. no module) and `go build ./...` failed immediately:
+
+```
+pattern ./...: directory prefix . does not contain main module or its selected dependencies
+```
+
+Now, in this repository:
+
+```
+$ go version
+go version go1.27.3 windows/amd64
+$ go env GOMOD
+D:\github\gogs\go.mod
+```
+
+## Release existence (checked 2026-10-25)
+- Go 1.27.3: the installed toolchain reports `go1.27.3` (`$GOROOT/VERSION`).
+- Mercurial 7.2.4 and 5.0.2: listed by `pip index versions mercurial` against PyPI (7.2.4 is also the installed version in `.venv-hg`).
+- Mercurial 2.0.2: **not on PyPI** (`pip download mercurial==2.0.2` found no distribution; the oldest PyPI release is 2.6.2). It exists as the upstream tarball `https://www.mercurial-scm.org/release/mercurial-2.0.2.tar.gz` (HTTP 200, sha256 `ca8b8fb93f2e3e8c3cdf2f81d87e92592f5f20c5bfcaaeb6a75550d4a69572c9`); CI installs it from there with the checksum verified.
+
 ## Dependency pins
+Timebox: the legacy-pin translation was budgeted at one working session and met. It needed no substitutions (see below), so the budget was never extended.
+
 The 27 direct dependencies in `.gopmfile` were translated 1:1 to pseudo-versions of the same legacy commits. No substitutions were needed; nothing was replaced or upgraded. Module resolution is pinned by `go.sum`; CI runs `go mod verify`.
 
 Modern, maintained modules added or bumped (needed by Go 1.27.3 and the SQLite driver):
