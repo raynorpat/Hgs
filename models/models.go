@@ -14,6 +14,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/go-xorm/xorm"
 	_ "github.com/lib/pq"
+	"modernc.org/sqlite"
 
 	// "github.com/gogits/gogs/models/migrations"
 	"github.com/gogits/gogs/modules/setting"
@@ -38,11 +39,13 @@ var (
 		Type, Host, Name, User, Passwd, Path, SSLMode string
 	}
 
-	EnableSQLite3 bool
-	UseSQLite3    bool
+	UseSQLite3 bool
 )
 
 func init() {
+	// xorm opens SQLite by the driver name "sqlite3"; modernc registers itself as "sqlite".
+	sql.Register("sqlite3", &sqlite.Driver{})
+
 	tables = append(tables,
 		new(User), new(PublicKey), new(Follow), new(Oauth2), new(AccessToken),
 		new(Repository), new(Watch), new(Star), new(Action), new(Access),
@@ -86,9 +89,6 @@ func getEngine() (*xorm.Engine, error) {
 		cnnstr = fmt.Sprintf("user=%s password=%s host=%s port=%s dbname=%s sslmode=%s",
 			DbCfg.User, DbCfg.Passwd, host, port, DbCfg.Name, DbCfg.SSLMode)
 	case "sqlite3":
-		if !EnableSQLite3 {
-			return nil, fmt.Errorf("Unknown database type: %s", DbCfg.Type)
-		}
 		os.MkdirAll(path.Dir(DbCfg.Path), os.ModePerm)
 		cnnstr = "file:" + DbCfg.Path + "?cache=shared&mode=rwc"
 	default:

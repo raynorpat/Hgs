@@ -95,11 +95,11 @@ go build -o gogs.exe .           # binary (gogs.exe is gitignored)
 ./gogs.exe web                   # start the web server; -c/--config overrides custom/conf/app.ini
 ```
 
-Build tags (each gates one file): `sqlite` (`models/models_sqlite.go`, SQLite3 driver), `cert` / `!cert` (`cmd/cert.go` vs stub), `redis`, `memcache` (cache backends). MySQL and PostgreSQL drivers are always compiled in. `cert redis memcache` build as pure Go. `sqlite` needs CGO and a C compiler, and none is installed here: with CGO off, `-tags sqlite` still compiles, but go-sqlite3 reduces to `doc.go` and the driver never registers, so SQLite fails at runtime.
+Build tags (each gates one file): `cert` / `!cert` (`cmd/cert.go` vs stub), `redis`, `memcache` (cache backends). MySQL, PostgreSQL, and SQLite drivers are always compiled in. Everything builds as pure Go with `CGO_ENABLED=0`; no C compiler is needed. SQLite uses `modernc.org/sqlite`, registered in `models/models.go` under the driver name `sqlite3` because that is the name xorm, `app.ini` (`DB_TYPE = sqlite3`) and the installer use. `mattn/go-sqlite3` still appears in `go.mod` only because xorm/core's own tests import it; it is not linked into the binary.
 
 ## Tests
 
-Very few tests exist, all in `modules/` (`cron`, `ldap`, `auth/ldap`, `avatar`, `httplib`, `uuid`); `models/`, `routers/`, and `cmd/` have none. `modules/ldap` tests dial a public LDAP server (`141.213.189.137:389`) that no longer responds, so they fail with connection timeouts (about 85s); everything else passes. Run one package or test with standard tooling:
+Very few tests exist, all in `modules/` (`cron`, `ldap`, `auth/ldap`, `avatar`, `httplib`, `uuid`); `routers/` and `cmd/` have none; `models/` has only `TestSQLiteEngineRoundTrip` (`go test ./models`). `modules/ldap` tests dial a public LDAP server (`141.213.189.137:389`) that no longer responds, so they fail with connection timeouts (about 85s); everything else passes. Run one package or test with standard tooling:
 
 ```sh
 go test ./modules/cron

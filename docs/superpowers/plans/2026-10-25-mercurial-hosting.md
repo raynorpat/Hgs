@@ -45,7 +45,7 @@ All file paths below are relative to `D:/github/gogs`. New package names are dec
 
 `integration` is a Go build tag for real Mercurial/native-client tests. Add `tests/integration` in Task 6 and extend it later. Tests must fail, rather than skip, if an explicitly requested integration prerequisite is missing. Ordinary unit tests need no installed Mercurial. Repository fixtures use temporary directories and an isolated hgrc; never use the operator's repository/config.
 
-For each test cycle, observe the expected failure before implementing. Infrastructure/build tasks use the failing build or diagnostic as their red check; do not invent a test that merely asserts a config file's contents. After each green task, run the affected package tests and `go build -tags sqlite ./...` to keep intermediate code compilable. Run the complete suite at integration milestones, not after every tiny edit.
+For each test cycle, observe the expected failure before implementing. Infrastructure/build tasks use the failing build or diagnostic as their red check; do not invent a test that merely asserts a config file's contents. After each green task, run the affected package tests and `go build ./...` to keep intermediate code compilable. Run the complete suite at integration milestones, not after every tiny edit.
 
 **Commit checkpoints:** Commit only the listed task's files if execution occurs in a real version-controlled checkout. This folder currently has no `.git` or `.hg`; do not initialize one automatically, invent a remote, or claim commits occurred. Record completed task/check results in this plan when commits are unavailable. Worktree setup belongs to execution, not plan authoring.
 
@@ -71,15 +71,15 @@ Dependency rule: `modules/hg` imports no models or web code. `modules/hgbridge` 
 
 **Interfaces:** Produces `newTestDatabase(t *testing.T)` in model tests, which initializes package `x` with a temporary SQLite database, restores globals on cleanup, and forbids parallel tests sharing `x`. No production API change.
 
-- [ ] **1. Record the failing baseline.** Run `go version`, `go env GOMOD`, and `go build -tags sqlite ./...`; record failures and legacy build tags in the baseline document. Inventory existing tests requiring live LDAP/network services.
-- [ ] **2. Establish pinned dependencies.** Use module path `github.com/gogits/gogs`, language/toolchain Go 1.27.3, and translate legacy commit pins to real module versions. Timebox this translation (record the budget in the baseline document); replace vanished 2014-era dependencies with the smallest maintained substitute rather than reconstructing them. Spike a pure-Go SQLite driver (e.g. `modernc.org/sqlite`) against the retained xorm version and adopt it if it works, removing the C toolchain requirement; otherwise keep the CGO driver and record why. Resolve missing/renamed modules explicitly; pin `x/crypto`/`x/sys` to maintained versions compatible with Go 1.27.3. Update only necessary call sites. Retain MySQL/PostgreSQL and the existing SQLite build tag. Write down each substitution and reason; do not guess nonexistent versions or fetch mutable dependencies on every build.
+- [ ] **1. Record the failing baseline.** Run `go version`, `go env GOMOD`, and `go build ./...`; record failures and legacy build tags in the baseline document. Inventory existing tests requiring live LDAP/network services.
+- [ ] **2. Establish pinned dependencies.** Use module path `github.com/gogits/gogs`, language/toolchain Go 1.27.3, and translate legacy commit pins to real module versions. Timebox this translation (record the budget in the baseline document); replace vanished 2014-era dependencies with the smallest maintained substitute rather than reconstructing them. Done 2026-10-25: SQLite uses the pure-Go `modernc.org/sqlite` driver (registered as `sqlite3` for xorm), built by default with no tag and no C toolchain. Resolve missing/renamed modules explicitly; pin `x/crypto`/`x/sys` to maintained versions compatible with Go 1.27.3. Update only necessary call sites. Retain MySQL/PostgreSQL. Write down each substitution and reason; do not guess nonexistent versions or fetch mutable dependencies on every build.
 - [ ] **3. Add meaningful baseline tests.** `TestFreshDatabasePreservesUsersAndIssues` creates user, repository row, issue, label, and comment; asserts lookup and ownership links survive database reload. `TestPasswordVerification` verifies correct/wrong password behavior. Repair the existing test-engine helper's shadowed engine argument if reused. External-service tests require an explicit integration opt-in and documented prerequisites.
   ```go
   if reloadedIssue.RepoId != repo.Id || reloadedIssue.PosterId != user.Id || len(reloadedComments) != 1 {
       t.Fatal("fresh database lost issue ownership or discussion")
   }
   ```
-- [ ] **4. Verify.** Run `go mod verify`, `go test -tags sqlite ./...`, `go build -tags sqlite ./...`; expect exit 0. Repeat native build/unit jobs on Windows amd64, Linux amd64, and macOS arm64 (with C tooling only if the CGO SQLite driver is kept). CI installs pinned Mercurial 7.2.4 and 5.0.2 (with a pinned Python 2.7) for later tagged server jobs, plus a pinned 2.0.2 client; record versions. Where a platform cannot run 5.0.2 or 2.0.2 (e.g. no Python 2.7 on macOS arm64), record that job as unavailable, not passed. Do not silently downgrade a dependency or bypass checksum verification.
+- [ ] **4. Verify.** Run `go mod verify`, `go test ./...`, `go build ./...`; expect exit 0. Repeat native build/unit jobs on Windows amd64, Linux amd64, and macOS arm64. CI installs pinned Mercurial 7.2.4 and 5.0.2 (with a pinned Python 2.7) for later tagged server jobs, plus a pinned 2.0.2 client; record versions. Where a platform cannot run 5.0.2 or 2.0.2 (e.g. no Python 2.7 on macOS arm64), record that job as unavailable, not passed. Do not silently downgrade a dependency or bypass checksum verification.
 - [ ] **5. Checkpoint:** `build: establish reproducible Go and database baseline`.
 
 ### Task 2: Isolated Mercurial runner and portable process supervision
@@ -181,7 +181,7 @@ Dependency rule: `modules/hg` imports no models or web code. `modules/hgbridge` 
       t.Fatal("reader access or credential revocation is incorrect")
   }
   ```
-- [ ] **2. Red:** `go test -tags sqlite ./models -run 'TestRepositoryAccess|TestHTTPSCredential|TestKeyStore' -count=1`.
+- [ ] **2. Red:** `go test ./models -run 'TestRepositoryAccess|TestHTTPSCredential|TestKeyStore' -count=1`.
 - [ ] **3. Implement.** Key access records by repository ID and user ID; delete the name-based lookup and lowercase name normalization. Preserve organization inheritance rules. Renames need no access-row changes; transfers update only rows whose ownership or team derivation changes. Use `ssh.ParseAuthorizedKey` and SHA-256 fingerprints in Go; reject key options/trailing multiple keys, remove authorized_keys and ssh-keygen side effects. Use existing password/login/token validation and disabled-account checks, not a new auth database. Keep callbacks fresh rather than cache a grant forever.
 - [ ] **4. Green:** repeat command with isolated SQLite fixtures; assert database outages return denial/errors, not public/private fallback. Verify current account/issue baseline still passes.
 - [ ] **5. Checkpoint:** `feat: share hosting authorization and portable key storage`.
@@ -198,7 +198,7 @@ Dependency rule: `modules/hg` imports no models or web code. `modules/hgbridge` 
       t.Fatal("rename/transfer moved storage or detached issues")
   }
   ```
-- [ ] **2. Red:** `go test -tags sqlite ./models -run 'TestRepositoryProvision|TestRepositoryRename|TestRepositoryDelete|TestRepositoryPath' -count=1`.
+- [ ] **2. Red:** `go test ./models -run 'TestRepositoryProvision|TestRepositoryRename|TestRepositoryDelete|TestRepositoryPath' -count=1`.
 - [ ] **3. Implement.** Add explicit state and unique owner/name constraint, stage on the repository volume with an ownership marker, initialize no working copy, and persist managed repo configuration. Path accepts positive IDs only. Hide non-ready rows from list/lookup/transport. Deletion tombstones first, blocks new sessions, drains without holding a database transaction, removes only validated owned storage, then deletes related rows. Reconcile states/markers idempotently, including crash after move. Never apply a fresh schema to an existing Git installation; installer rejects nonempty legacy databases/repository roots with a clear fresh-install message.
 - [ ] **4. Green:** repeat plus tagged real-init test; assert only `.hg` and managed metadata exist, no README checkout or Git execution. Retain SQLite/MySQL/PostgreSQL schema compatibility; backend integration coverage finishes in Task 14.
 - [ ] **5. Checkpoint:** `feat: manage Mercurial repositories by immutable ID`.
@@ -250,7 +250,7 @@ Dependency rule: `modules/hg` imports no models or web code. `modules/hgbridge` 
       t.Fatal("untrusted forwarding headers bypassed the TLS boundary")
   }
   ```
-- [ ] **2. Red:** `go test -tags sqlite ./modules/hosting ./routers/hg -run TestHosting -count=1`.
+- [ ] **2. Red:** `go test ./modules/hosting ./routers/hg -run TestHosting -count=1`.
 - [ ] **3. Wire the composition root.** Startup validates Mercurial, creates/loads a persistent Ed25519 host key with private permissions/ACLs, reconciles lifecycle states, starts control listener, then public services. Add configurable SSH address/advertised port (default 2222), hostname and trusted proxy CIDRs; minimum public TLS 1.2. Reserve `hg` in account/org name validation. Authentication runs before bridge/worker creation; transport uses Basic credentials/tokens only, not browser session auth, while ordinary forms keep CSRF protection. The hook authorizer calls both `ValidateRepositoryCredential` and `RepositoryAccessFor` on every veto-capable writer hook, checks ready state, and cannot elevate the original grant. The service tracks live sessions by user/key/token/repository and terminates them on revocation, visibility, or ownership changes; this is session cleanup, not write authorization. Register `/hg/:owner/:repo` before broad repo routes and strip only the known app sub-URL. Remove old Git HTTP catchall, startup Git checks, and forced-command entrypoints from live routing now. Keep old unused functions only until Task 13 removes them.
 - [ ] **4. Green:** repeat and tagged full-host transport smoke tests. Verify restart preserves SSH host fingerprint; missing/unsupported hg, invalid config, or host-key failure does not leave partial listeners/workers. Shutdown drains then cancels; repository deletion uses Service.DrainRepository.
 - [ ] **5. Checkpoint:** `feat: connect portable Mercurial hosting to Gogs`.
@@ -268,7 +268,7 @@ Dependency rule: `modules/hg` imports no models or web code. `modules/hgbridge` 
       t.Fatal("empty repository broke issues or lacked Mercurial instructions")
   }
   ```
-- [ ] **2. Red:** `go test -tags sqlite ./routers/repo -run 'TestEmptyRepository|TestMercurialView|TestFileRendering|TestRawPath|TestTreeView|TestIssueWorkflow|TestPrivateIssue' -count=1`.
+- [ ] **2. Red:** `go test ./routers/repo -run 'TestEmptyRepository|TestMercurialView|TestFileRendering|TestRawPath|TestTreeView|TestIssueWorkflow|TestPrivateIssue' -count=1`.
 - [ ] **3. Adapt handlers and templates.** Creation uses Task 8, no README/license/gitignore commit controls. Build HTTPS and SSH clone links from configured public addresses. Show all heads, branch closed state, parent links, and history/diff bounds. Resolve private access before content and template rendering. Remove assumptions about `master`, Git committers, refs, and tree object IDs. File reads use only Task 9. Keep issue/attachment authorization and existing sanitizers; every raw/history/diff route uses shared authorization.
 - [ ] **4. Green:** repeat tests and inspect rendered empty/populated/merge/binary/private pages in the browser with a local test database. Record page latency for the repository home and a 200-entry directory on Windows and one Unix platform. Verify keyboard navigation and links, including app sub-URL. Existing account/issue styling stays intact; no new UI framework.
 - [ ] **5. Checkpoint:** `feat: browse Mercurial repositories in the Gogs UI`.
@@ -283,9 +283,9 @@ Dependency rule: `modules/hg` imports no models or web code. `modules/hgbridge` 
   ```go
   if response.Code != 404 && response.Code != 405 { t.Fatal("removed endpoint is still reachable") }
   ```
-- [ ] **2. Red:** `go test -tags 'sqlite integration' ./tests/integration -run 'TestGitAndDeferred' -count=1`; also rerun the Task 12 issue tests, which must stay green throughout removal.
+- [ ] **2. Red:** `go test -tags integration ./tests/integration -run 'TestGitAndDeferred' -count=1`; also rerun the Task 12 issue tests, which must stay green throughout removal.
 - [ ] **3. Remove unreachable Git code and dependent features.** Replace Git version parsing with a small neutral version utility if still needed; remove `IsBare` in favor of empty-repository results, stale mirror/release context, Git maintenance/admin actions, hook editing, global Git config writes, and push auto-close/webhook calls. Audit org/user deletion and rename flows, search/API responses, mail/feed formatting, all locales, and deployment scripts. Keep generic issue notifications and account functions. For untranslated new copy use accurate English fallback; do not leave localized Git clone instructions visible. Document feature removals.
-- [ ] **4. Green:** repeat integration command; run `go test -tags sqlite ./...`, `go build -tags sqlite ./...`, then search executable Git invocations/imports/settings/routes with `rg`. Review matches individually: historical/license/module-host strings and the fact that `hg diff --git` names a patch format are not Git executable support. A runtime smoke test uses a PATH without Git or SSH server utilities; startup, create, push, browse, and issues must work.
+- [ ] **4. Green:** repeat integration command; run `go test ./...`, `go build ./...`, then search executable Git invocations/imports/settings/routes with `rg`. Review matches individually: historical/license/module-host strings and the fact that `hg diff --git` names a patch format are not Git executable support. A runtime smoke test uses a PATH without Git or SSH server utilities; startup, create, push, browse, and issues must work.
 - [ ] **5. Checkpoint:** `refactor: remove Git hosting and deferred repository features`.
 
 ### Task 14: Full application fault, permission, and database acceptance matrix
@@ -300,9 +300,9 @@ Dependency rule: `modules/hg` imports no models or web code. `modules/hgbridge` 
       t.Fatal("revocation, transaction rollback, or worker cleanup failed")
   }
   ```
-- [ ] **2. Red:** `go test -tags 'sqlite integration' ./tests/integration -run 'TestHostingAcceptance|TestLifecycleCrash|TestPermissionChanges|TestShutdown' -count=1`; isolate and record real failing cases.
+- [ ] **2. Red:** `go test -tags integration ./tests/integration -run 'TestHostingAcceptance|TestLifecycleCrash|TestPermissionChanges|TestShutdown' -count=1`; isolate and record real failing cases.
 - [ ] **3. Repair gaps and add database coverage.** Run schema/create/rename/transfer/issue/delete tests against temporary SQLite plus isolated MySQL and PostgreSQL databases in Linux CI. Avoid production connection strings. Hooks querying permissions must not deadlock on locks held by their parent transaction. Restore any retained account/login behavior exposed by these tests rather than narrowing requirements silently.
-- [ ] **4. Green acceptance:** `go test -tags 'sqlite integration' ./... -count=1`; `go test -race -tags sqlite ./modules/hg ./modules/hgbridge ./modules/ssh ./modules/hosting ./models`; `go vet -tags sqlite ./...`; `go build -tags sqlite ./...`. Run native integration jobs on all three OS families, with race tests on supported native toolchains. Inspect UI pages from Task 12 after integration fixes. No unexpected skips; report unavailable runners/databases explicitly. Record basic latency/process-count/representative clone and push measurements, plus repository page latency (home, large directory, history, diff), without claiming a scalability target.
+- [ ] **4. Green acceptance:** `go test -tags integration ./... -count=1`; `go test -race ./modules/hg ./modules/hgbridge ./modules/ssh ./modules/hosting ./models`; `go vet ./...`; `go build ./...`. Run native integration jobs on all three OS families, with race tests on supported native toolchains. Inspect UI pages from Task 12 after integration fixes. No unexpected skips; report unavailable runners/databases explicitly. Record basic latency/process-count/representative clone and push measurements, plus repository page latency (home, large directory, history, diff), without claiming a scalability target.
 - [ ] **5. Checkpoint:** `test: validate Mercurial hosting and preserved Gogs workflows`.
 
 ### Task 15: Portable packages, operator documentation, and release handoff

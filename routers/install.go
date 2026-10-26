@@ -69,9 +69,6 @@ func GlobalInit() {
 		cron.NewCronContext()
 		log.NewGitLogger(path.Join(setting.LogRootPath, "http.log"))
 	}
-	if models.EnableSQLite3 {
-		log.Info("SQLite3 Enabled")
-	}
 	checkRunMode()
 }
 
@@ -113,11 +110,7 @@ func Install(ctx *middleware.Context) {
 	form.HTTPPort = setting.HttpPort
 	form.AppUrl = setting.AppUrl
 
-	curDbOp := ""
-	if models.EnableSQLite3 {
-		curDbOp = "SQLite3" // Default when enabled.
-	}
-	ctx.Data["CurDbOption"] = curDbOp
+	ctx.Data["CurDbOption"] = "SQLite3"
 
 	auth.AssignForm(form, ctx.Data)
 	ctx.HTML(200, INSTALL)
@@ -150,11 +143,7 @@ func InstallPost(ctx *middleware.Context, form auth.InstallForm) {
 	// Set test engine.
 	var x *xorm.Engine
 	if err := models.NewTestEngine(x); err != nil {
-		if strings.Contains(err.Error(), `Unknown database type: sqlite3`) {
-			ctx.RenderWithErr(ctx.Tr("install.sqlite3_not_available", "http://gogs.io/docs/installation/install_from_binary.html"), INSTALL, &form)
-		} else {
-			ctx.RenderWithErr(ctx.Tr("install.invalid_db_setting", err), INSTALL, &form)
-		}
+		ctx.RenderWithErr(ctx.Tr("install.invalid_db_setting", err), INSTALL, &form)
 		return
 	}
 

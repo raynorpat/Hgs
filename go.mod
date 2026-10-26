@@ -24,7 +24,6 @@ require (
 	github.com/macaron-contrib/oauth2 v0.0.0-20141203000734-8f394c362967
 	github.com/macaron-contrib/session v0.0.0-20150115142139-8e8d938b278a
 	github.com/macaron-contrib/toolbox v0.0.0-20141222184530-acbfe36e16c1
-	github.com/mattn/go-sqlite3 v0.0.0-20150127001921-25d045f12a64
 	github.com/microcosm-cc/bluemonday v0.0.0-20141117124407-fcd0f5074e55
 	github.com/nfnt/resize v0.0.0-20141217102353-8f4493144849
 	github.com/russross/blackfriday v0.0.0-20150211082251-77efab57b2f7
@@ -32,10 +31,17 @@ require (
 	golang.org/x/net v0.61.0
 	golang.org/x/text v0.43.0
 	gopkg.in/ini.v1 v1.0.0-20150204104954-4febc4104c32
+	modernc.org/sqlite v1.60.1
 )
 
 require (
 	github.com/bradfitz/gomemcache v0.0.0-20141108204336-72a68649ba71 // indirect
+	github.com/dustin/go-humanize v1.1.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
+	github.com/mattn/go-isatty v0.0.24 // indirect
+	github.com/mattn/go-sqlite3 v0.0.0-20150127001921-25d045f12a64 // indirect
+	github.com/ncruces/go-strftime v1.1.0 // indirect
+	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect
 	github.com/shurcooL/sanitized_anchor_name v1.0.0 // indirect
 	github.com/smartystreets/goconvey v1.8.1 // indirect
@@ -43,4 +49,7 @@ require (
 	gopkg.in/bufio.v1 v1.0.0-20140618132640-567b2bfa514e // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/redis.v2 v2.3.2 // indirect
+	modernc.org/libc v1.79.0 // indirect
+	modernc.org/mathutil v1.7.1 // indirect
+	modernc.org/memory v1.12.1 // indirect
 )
