@@ -1,0 +1,20 @@
+[run]
+init_cmds = [
+	["grep", "-rn", "FIXME", "."],
+	["./gogs", "web"]
+]
+watch_all = true
+watch_dirs = [
+	"$WORKDIR/conf/locale",
+	"$WORKDIR/cmd",
+	"$WORKDIR/models",
+	"$WORKDIR/modules",
+	"$WORKDIR/routers"
+]
+watch_exts = [".go", ".ini"]
+build_delay = 1500
+cmds = [
+	["go", "install", "-tags", "sqlite cert"],# redis memcache
+	["go", "build", "-tags", "sqlite cert"],
+	["./gogs", "web"]
+]
