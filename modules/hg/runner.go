@@ -192,6 +192,12 @@ func parseVersion(v string) (tested bool, err error) {
 // MaxCommandOutput bytes of stdout to output. Stderr is drained and its head
 // is included in a failure.
 func (r *Runner) Run(ctx context.Context, repoPath string, args []string, input io.Reader, output io.Writer) error {
+	return r.run(ctx, repoPath, args, input, output, MaxCommandOutput)
+}
+
+// run is Run copying at most limit bytes of stdout; a negative limit streams
+// all of it, for raw file reads.
+func (r *Runner) run(ctx context.Context, repoPath string, args []string, input io.Reader, output io.Writer, limit int64) error {
 	c, err := r.Start(ctx, repoPath, args, nil)
 	if err != nil {
 		return err
@@ -215,7 +221,10 @@ func (r *Runner) Run(ctx context.Context, repoPath string, args []string, input 
 		stderr <- b
 	}()
 
-	_, copyErr := io.Copy(&limitedWriter{w: output, n: MaxCommandOutput}, c.Stdout)
+	if limit >= 0 {
+		output = &limitedWriter{w: output, n: limit}
+	}
+	_, copyErr := io.Copy(output, c.Stdout)
 	if copyErr != nil {
 		c.kill(copyErr)
 	}

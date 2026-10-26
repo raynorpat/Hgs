@@ -71,7 +71,35 @@ func fakeHg(args []string) int {
 		fmt.Fprint(os.Stderr, "abort: boom")
 		return 3
 	case "cat":
-		io.Copy(os.Stdout, os.Stdin)
+		if len(args) == 1 {
+			io.Copy(os.Stdout, os.Stdin)
+			break
+		}
+		// Browse reads: echo the pattern files, so tests see what was passed.
+		recordFakeCall()
+		var patterns []byte
+		for _, a := range args {
+			if f, ok := strings.CutPrefix(a, "listfile0:"); ok {
+				b, _ := os.ReadFile(f)
+				patterns = append(patterns, b...)
+			}
+		}
+		switch {
+		case bytes.HasSuffix(patterns, []byte("\x00path:missing\x00")):
+			return 1
+		case bytes.HasSuffix(patterns, []byte("\x00path:big\x00")):
+			os.Stdout.Write(bytes.Repeat([]byte("x"), MaxCommandOutput+1))
+		default:
+			os.Stdout.Write(patterns)
+		}
+	case "manifest":
+		recordFakeCall()
+		m := fixture("fake-manifest", "\x00")
+		if m == "\x00" {
+			fmt.Fprint(os.Stderr, "abort: empty revision set")
+			return 255
+		}
+		fmt.Print(m)
 	case "flood":
 		// The grandchild, sharing both pipes, starts flooding first; its marker
 		// file proves it ran before the child floods too.
@@ -118,12 +146,29 @@ func fakeHg(args []string) int {
 	case "init":
 		return exitCode(os.MkdirAll(filepath.Join(args[1], ".hg"), 0700))
 	case "log":
-		fmt.Print(`[{"node": "0000000000000000000000000000000000000000", "rev": -1}]`)
+		if len(args) == 5 && args[4] == "{node}" {
+			recordFakeCall()
+			fmt.Print(fixture("fake-visible", ""))
+			break
+		}
+		if fixture("fake-log", "\x00") != "\x00" {
+			recordFakeCall()
+		}
+		fmt.Print(fixture("fake-log", `[{"node": "0000000000000000000000000000000000000000", "rev": -1}]`))
 	default:
 		fmt.Fprintf(os.Stderr, "fake hg: unknown command %q\n", args[0])
 		return 255
 	}
 	return 0
+}
+
+// recordFakeCall appends the fake's arguments to fake-calls for fakeCalls.
+func recordFakeCall() {
+	f, err := os.OpenFile(filepath.Join(filepath.Dir(os.Getenv("HGRCPATH")), "fake-calls"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err == nil {
+		fmt.Fprintln(f, strings.Join(os.Args[1:], "\x00"))
+		f.Close()
+	}
 }
 
 // flood writes to stdout and/or stderr ("out", "err", "both") until killed.
