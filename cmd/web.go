@@ -31,8 +31,6 @@ import (
 	"github.com/macaron-contrib/toolbox"
 	"gopkg.in/ini.v1"
 
-	api "github.com/gogits/go-gogs-client"
-
 	"github.com/gogits/gogs/models"
 	"github.com/gogits/gogs/modules/auth"
 	"github.com/gogits/gogs/modules/auth/apiv1"
@@ -108,9 +106,7 @@ func newMacaron() *macaron.Macaron {
 	if setting.EnableGzip {
 		m.Use(macaron.Gziper())
 	}
-	if setting.Protocol == setting.FCGI {
-		m.SetURLPrefix(setting.AppSubUrl)
-	}
+	m.SetURLPrefix(setting.AppSubUrl)
 	m.Use(macaron.Static(
 		path.Join(setting.StaticRootPath, "public"),
 		macaron.StaticOptions{
@@ -311,18 +307,9 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 			})
 
 			// Repositories.
-			m.Combo("/user/repos", middleware.ApiReqToken()).Get(v1.ListMyRepos).Post(bind(api.CreateRepoOption{}), v1.CreateRepo)
-			m.Post("/org/:org/repos", middleware.ApiReqToken(), bind(api.CreateRepoOption{}), v1.CreateOrgRepo)
-			m.Group("/repos", func() {
-				m.Get("/search", v1.SearchRepos)
-				m.Post("/migrate", bindIgnErr(auth.MigrateRepoForm{}), v1.MigrateRepo)
 
-				m.Group("/:username/:reponame", func() {
-					m.Combo("/hooks").Get(v1.ListRepoHooks).Post(bind(api.CreateHookOption{}), v1.CreateRepoHook)
-					m.Patch("/hooks/:id:int", bind(api.EditHookOption{}), v1.EditRepoHook)
-					m.Get("/raw/*", middleware.RepoRef(), v1.GetRepoRawFile)
-				}, middleware.ApiRepoAssignment(), middleware.ApiReqToken())
-			})
+			m.Get("/user/repos", middleware.ApiReqToken(), v1.ListMyRepos)
+			m.Get("/repos/search", v1.SearchRepos)
 
 			m.Any("/*", func(ctx *middleware.Context) {
 				ctx.JSON(404, &base.ApiJsonErr{"Not Found", base.DOC_URL})
@@ -464,10 +451,7 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 	m.Group("/repo", func() {
 		m.Get("/create", repo.Create)
 		m.Post("/create", bindIgnErr(auth.CreateRepoForm{}), repo.CreatePost)
-		m.Get("/migrate", repo.Migrate)
-		m.Post("/migrate", bindIgnErr(auth.MigrateRepoForm{}), repo.MigratePost)
-		m.Get("/fork", repo.Fork)
-		m.Post("/fork", bindIgnErr(auth.CreateRepoForm{}), repo.ForkPost)
+
 	}, reqSignIn)
 
 	m.Group("/:username/:reponame", func() {
@@ -475,19 +459,6 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 		m.Post("/settings", bindIgnErr(auth.RepoSettingForm{}), repo.SettingsPost)
 		m.Group("/settings", func() {
 			m.Route("/collaboration", "GET,POST", repo.SettingsCollaboration)
-			m.Get("/hooks", repo.Webhooks)
-			m.Get("/hooks/new", repo.WebHooksNew)
-			m.Post("/hooks/gogs/new", bindIgnErr(auth.NewWebhookForm{}), repo.WebHooksNewPost)
-			m.Post("/hooks/slack/new", bindIgnErr(auth.NewSlackHookForm{}), repo.SlackHooksNewPost)
-			m.Get("/hooks/:id", repo.WebHooksEdit)
-			m.Post("/hooks/gogs/:id", bindIgnErr(auth.NewWebhookForm{}), repo.WebHooksEditPost)
-			m.Post("/hooks/slack/:id", bindIgnErr(auth.NewSlackHookForm{}), repo.SlackHooksEditPost)
-
-			m.Group("/hooks/git", func() {
-				m.Get("", repo.GitHooks)
-				m.Get("/:name", repo.GitHooksEdit)
-				m.Post("/:name", repo.GitHooksEditPost)
-			}, middleware.GitHookService())
 		})
 	}, reqSignIn, middleware.RepoAssignment(true), reqTrueOwner)
 
@@ -514,39 +485,29 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 
 		m.Post("/comment/:action", repo.Comment)
 
-		m.Group("/releases", func() {
-			m.Get("/new", repo.NewRelease)
-			m.Post("/new", bindIgnErr(auth.NewReleaseForm{}), repo.NewReleasePost)
-			m.Get("/edit/:tagname", repo.EditRelease)
-			m.Post("/edit/:tagname", bindIgnErr(auth.EditReleaseForm{}), repo.EditReleasePost)
-		}, middleware.RepoRef())
 	}, reqSignIn, middleware.RepoAssignment(true))
 
 	m.Group("/:username/:reponame", func() {
-		m.Get("/releases", middleware.RepoRef(), repo.Releases)
+
 		m.Get("/issues", repo.Issues)
 		m.Get("/issues/:index", repo.ViewIssue)
 		m.Get("/issues/milestones", repo.Milestones)
-		m.Get("/pulls", repo.Pulls)
-		m.Get("/branches", repo.Branches)
-		m.Get("/archive/*", repo.Download)
-		m.Get("/issues2/", repo.Issues2)
-		m.Get("/pulls2/", repo.PullRequest2)
-		m.Get("/labels2/", repo.Labels2)
-		m.Get("/milestone2/", repo.Milestones2)
 
 		m.Group("", func() {
-			m.Get("/src/*", repo.Home)
-			m.Get("/raw/*", repo.SingleDownload)
-			m.Get("/commits/*", repo.RefCommits)
-			m.Get("/commit/*", repo.Diff)
-		}, middleware.RepoRef())
+			m.Get("/branches", repo.Branches)
+			m.Get("/commits", repo.Commits)
+			m.Get("/commits/*", repo.Commits)
+			m.Get("/src/:node", middleware.RepoRef(), repo.Home)
+			m.Get("/src/:node/*", middleware.RepoRef(), repo.Home)
+			m.Get("/raw/:node/*", middleware.RepoRef(), repo.SingleDownload)
+			m.Get("/raw/:node", middleware.RepoRef(), repo.SingleDownload)
+			m.Get("/commit/:node", middleware.RepoRef(), repo.Diff)
+		}, middleware.RepoBrowse())
 
-		m.Get("/compare/:before([a-z0-9]+)...:after([a-z0-9]+)", repo.CompareDiff)
 	}, ignSignIn, middleware.RepoAssignment(true))
 
 	m.Group("/:username", func() {
-		m.Get("/:reponame", ignSignIn, middleware.RepoAssignment(true, true), middleware.RepoRef(), repo.Home)
+		m.Get("/:reponame", ignSignIn, middleware.RepoAssignment(true), middleware.RepoBrowse(), middleware.RepoRef(), repo.Home)
 	})
 
 	// robots.txt

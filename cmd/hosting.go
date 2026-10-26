@@ -11,6 +11,7 @@ import (
 
 	"github.com/gogits/gogs/modules/hg"
 	"github.com/gogits/gogs/modules/hosting"
+	"github.com/gogits/gogs/modules/middleware"
 	"github.com/gogits/gogs/modules/setting"
 	hgroutes "github.com/gogits/gogs/routers/hg"
 )
@@ -103,6 +104,6 @@ func (h *hostingHolder) Handler(browser http.Handler) http.Handler {
 			hgroutes.Handler(service).ServeHTTP(w, r)
 			return
 		}
-		browser.ServeHTTP(w, r)
+		browser.ServeHTTP(w, middleware.WithBrowserResponseController(r, w))
 	})
 }

@@ -260,7 +260,7 @@ func CreateIssuePost(ctx *middleware.Context, form auth.CreateIssueForm) {
 	ms := base.MentionPattern.FindAllString(issue.Content, -1)
 	if len(ms) > 0 {
 		for i := range ms {
-			ms[i] = ms[i][1:]
+			ms[i] = strings.TrimPrefix(strings.TrimSpace(ms[i]), "@")
 		}
 
 		if err := models.UpdateMentions(ms, issue.Id); err != nil {
@@ -793,7 +793,7 @@ func Comment(ctx *middleware.Context) {
 	var ms []string
 	content := ctx.Query("content")
 	// Fix #321. Allow empty comments, as long as we have attachments.
-	if len(content) > 0 || len(ctx.Req.MultipartForm.File["attachments"]) > 0 {
+	if len(content) > 0 || (ctx.Req.MultipartForm != nil && len(ctx.Req.MultipartForm.File["attachments"]) > 0) {
 		switch ctx.Params(":action") {
 		case "new":
 			if comment, err = models.CreateComment(ctx.User.Id, ctx.Repo.Repository.Id, issue.Id, 0, 0, models.COMMENT_TYPE_COMMENT, content, nil); err != nil {
@@ -802,10 +802,10 @@ func Comment(ctx *middleware.Context) {
 			}
 
 			// Update mentions.
-			ms = base.MentionPattern.FindAllString(issue.Content, -1)
+			ms = base.MentionPattern.FindAllString(content, -1)
 			if len(ms) > 0 {
 				for i := range ms {
-					ms[i] = ms[i][1:]
+					ms[i] = strings.TrimPrefix(strings.TrimSpace(ms[i]), "@")
 				}
 
 				if err := models.UpdateMentions(ms, issue.Id); err != nil {
@@ -1113,6 +1113,12 @@ func IssueGetAttachment(ctx *middleware.Context) {
 
 	if err != nil {
 		ctx.Handle(404, "issue.IssueGetAttachment(models.GetAttachmentById)", err)
+		return
+	}
+
+	issue, err := models.GetIssueByIndex(ctx.Repo.Repository.Id, com.StrTo(ctx.Params(":index")).MustInt64())
+	if err != nil || attachment.IssueId != issue.Id {
+		ctx.Error(404)
 		return
 	}
 

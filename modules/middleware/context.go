@@ -5,6 +5,7 @@
 package middleware
 
 import (
+	"context"
 	"fmt"
 	"html/template"
 	"io"
@@ -22,6 +23,7 @@ import (
 	"github.com/gogits/gogs/modules/auth"
 	"github.com/gogits/gogs/modules/base"
 	"github.com/gogits/gogs/modules/git"
+	"github.com/gogits/gogs/modules/hg"
 	"github.com/gogits/gogs/modules/log"
 	"github.com/gogits/gogs/modules/setting"
 )
@@ -39,6 +41,12 @@ type Context struct {
 	IsBasicAuth bool
 
 	Repo struct {
+		HgContext    context.Context
+		HgRunner     *hg.Runner
+		HgPath       string
+		Node         hg.NodeID
+		Changeset    hg.Changeset
+		FinishRead   func()
 		IsOwner      bool
 		IsTrueOwner  bool
 		IsWatching   bool
@@ -99,6 +107,10 @@ func (ctx *Context) HasError() bool {
 
 // HTML calls Context.HTML and converts template name to string.
 func (ctx *Context) HTML(status int, name base.TplName) {
+	// Native readers are reaped before transferring a buffered HTML response.
+	if ctx.Repo.FinishRead != nil {
+		ctx.Repo.FinishRead()
+	}
 	ctx.Context.HTML(status, string(name))
 }
 

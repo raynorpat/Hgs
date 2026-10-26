@@ -52,27 +52,6 @@
                 <textarea class="ipt ipt-large ipt-radius {{if .Err_Description}}ipt-error{{end}}" id="desc" name="desc">{{.desc}}</textarea>
             </div>
             <div class="field">
-                <label for="lang">{{.i18n.Tr "repo.repo_lang"}}</label>
-                <select id="lang" name="gitignore">
-                    <option>{{.i18n.Tr "repo.repo_lang_helper"}}</option>
-                    {{range .Gitignores}}
-                    <option value="{{.}}" {{if eq . $.gitignore}}selected{{end}}>{{.}}</option>
-                    {{end}}
-                </select>
-                <label for="license">{{.i18n.Tr "repo.license"}}</label>
-                <select id="license" name="license">
-                    <option>{{.i18n.Tr "repo.license_helper"}}</option>
-                    {{range .Licenses}}
-                    <option value="{{.}}" {{if eq . $.license}}selected{{end}}>{{.}}</option>
-                    {{end}}
-                </select>
-            </div>
-            <div class="field">
-                <label for="init-readme"></label>
-                <input class="ipt-chk" id="init-readme" name="auto_init" type="checkbox" {{if .auto_init}}checked{{end}} />
-                <strong>{{.i18n.Tr "repo.init_readme"}}</strong>
-            </div>
-            <div class="field">
                 <label></label>
                 <button class="btn btn-large btn-blue btn-radius">{{.i18n.Tr "repo.create_repo"}}</button>
                 <a class="btn btn-small btn-gray btn-radius" id="repo-create-cancel" href="{{AppSubUrl}}/"><strong>{{.i18n.Tr "cancel"}}</strong></a>

@@ -75,7 +75,7 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 	if len(os.Args) > 1 && !strings.HasPrefix(os.Args[1], "-test.") {
-		os.Exit(2)
+		os.Exit(fakeViewHg(os.Args[1:]))
 	}
 	os.Exit(m.Run())
 }

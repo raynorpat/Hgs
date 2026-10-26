@@ -17,6 +17,7 @@ import (
 	"github.com/gogits/gogs/modules/auth"
 	"github.com/gogits/gogs/modules/base"
 	"github.com/gogits/gogs/modules/git"
+	"github.com/gogits/gogs/modules/hosting"
 	"github.com/gogits/gogs/modules/log"
 	"github.com/gogits/gogs/modules/middleware"
 	"github.com/gogits/gogs/modules/setting"
@@ -45,12 +46,6 @@ func checkContextUser(ctx *middleware.Context, uid int64) (*models.User, error) 
 func Create(ctx *middleware.Context) {
 	ctx.Data["Title"] = ctx.Tr("new_repo")
 
-	// Give default value for template to render.
-	ctx.Data["gitignore"] = "0"
-	ctx.Data["license"] = "0"
-	ctx.Data["Gitignores"] = models.Gitignores
-	ctx.Data["Licenses"] = models.Licenses
-
 	ctxUser, err := checkContextUser(ctx, ctx.QueryInt64("org"))
 	if err != nil {
 		ctx.Handle(500, "checkContextUser", err)
@@ -67,11 +62,8 @@ func Create(ctx *middleware.Context) {
 	ctx.HTML(200, CREATE)
 }
 
-func CreatePost(ctx *middleware.Context, form auth.CreateRepoForm) {
+func CreatePost(ctx *middleware.Context, form auth.CreateRepoForm, provider hosting.Provider) {
 	ctx.Data["Title"] = ctx.Tr("new_repo")
-
-	ctx.Data["Gitignores"] = models.Gitignores
-	ctx.Data["Licenses"] = models.Licenses
 
 	ctxUser := ctx.User
 	// Not equal means current user is an organization.
@@ -96,6 +88,10 @@ func CreatePost(ctx *middleware.Context, form auth.CreateRepoForm) {
 		return
 	}
 
+	if ctxUser.Id != ctx.User.Id && !ctxUser.IsOrganization() {
+		ctx.Error(403)
+		return
+	}
 	if ctxUser.IsOrganization() {
 		// Check ownership of organization.
 		if !ctxUser.IsOwnedBy(ctx.User.Id) {
@@ -104,8 +100,13 @@ func CreatePost(ctx *middleware.Context, form auth.CreateRepoForm) {
 		}
 	}
 
-	repo, err := models.CreateRepository(ctxUser, form.RepoName, form.Description,
-		"", "", form.Private, false, false)
+	service := provider.Service()
+	if service == nil {
+		ctx.Error(503)
+		return
+	}
+	repo, err := models.CreateHgRepository(ctx.Req.Context(), service.Runner(), service.RepositoryRoot(), models.CreateHgRepositoryOptions{OwnerID: ctxUser.Id, Name: form.RepoName, Description: form.Description, Private: form.Private})
+
 	if err == nil {
 		log.Trace("Repository created: %s/%s", ctxUser.Name, repo.Name)
 		ctx.Redirect(setting.AppSubUrl + "/" + ctxUser.Name + "/" + repo.Name)
@@ -120,11 +121,6 @@ func CreatePost(ctx *middleware.Context, form auth.CreateRepoForm) {
 		return
 	}
 
-	if repo != nil {
-		if errDelete := models.DeleteRepository(ctxUser.Id, repo.Id, ctxUser.Name); errDelete != nil {
-			log.Error(4, "DeleteRepository: %v", errDelete)
-		}
-	}
 	ctx.Handle(500, "CreatePost", err)
 }
 

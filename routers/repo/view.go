@@ -1,236 +1,168 @@
-// Copyright 2014 The Gogs Authors. All rights reserved.
-// Use of this source code is governed by a MIT-style
-// license that can be found in the LICENSE file.
-
 package repo
 
 import (
 	"bytes"
-	"io/ioutil"
+	"errors"
+	"net/url"
 	"path"
-	"path/filepath"
+	"sort"
 	"strings"
 
-	"github.com/gogits/gogs/models"
 	"github.com/gogits/gogs/modules/base"
-	"github.com/gogits/gogs/modules/git"
-	"github.com/gogits/gogs/modules/log"
+	"github.com/gogits/gogs/modules/hg"
 	"github.com/gogits/gogs/modules/middleware"
 )
 
-const (
-	HOME base.TplName = "repo/home"
-)
+const HOME base.TplName = "repo/home"
 
+type hgTreeRow struct {
+	Name, URL                      string
+	Directory, Executable, Symlink bool
+}
+type hgLink struct{ Name, URL string }
+type hgRefRow struct {
+	Kind, Name, Node, URL, SelectionURL string
+	Closed                              bool
+}
+
+func urlValues(kind hg.RefKind, name string) string {
+	return url.Values{"ref_kind": {string(kind)}, "ref_name": {name}}.Encode()
+}
+func referenceRows(link string, refs []hg.Reference) []hgRefRow {
+	rows := make([]hgRefRow, 0, len(refs))
+	for _, r := range refs {
+		q := urlValues(r.Kind, r.Name)
+		rows = append(rows, hgRefRow{string(r.Kind), r.Name, string(r.Node), middleware.HgPathURL(link, "src", r.Node, ""), link + "?" + q, r.Closed})
+	}
+	return rows
+}
 func Home(ctx *middleware.Context) {
 	ctx.Data["Title"] = ctx.Repo.Repository.Name
-
-	branchName := ctx.Repo.BranchName
-	userName := ctx.Repo.Owner.Name
-	repoName := ctx.Repo.Repository.Name
-
-	repoLink := ctx.Repo.RepoLink
-	branchLink := ctx.Repo.RepoLink + "/src/" + branchName
-	rawLink := ctx.Repo.RepoLink + "/raw/" + branchName
-
-	// Get tree path
-	treename := ctx.Repo.TreeName
-
-	if len(treename) > 0 && treename[len(treename)-1] == '/' {
-		ctx.Redirect(repoLink + "/src/" + branchName + "/" + treename[:len(treename)-1])
-		return
-	}
-
 	ctx.Data["IsRepoToolbarSource"] = true
-
-	isViewBranch := ctx.Repo.IsBranch
-	ctx.Data["IsViewBranch"] = isViewBranch
-
-	treePath := treename
-	if len(treePath) != 0 {
-		treePath = treePath + "/"
-	}
-
-	entry, err := ctx.Repo.Commit.GetTreeEntryByPath(treename)
-	if err != nil && err != git.ErrNotExist {
-		ctx.Handle(404, "GetTreeEntryByPath", err)
+	p := ctx.Repo.TreeName
+	manifest, err := ctx.Repo.HgRunner.Manifest(ctx.Repo.HgContext, ctx.Repo.HgPath, ctx.Repo.Node)
+	if err != nil {
+		ctx.Handle(404, "Manifest", err)
 		return
 	}
-
-	if len(treename) != 0 && entry == nil {
-		ctx.Handle(404, "repo.Home", nil)
+	refs, err := ctx.Repo.HgRunner.References(ctx.Repo.HgContext, ctx.Repo.HgPath)
+	if err != nil {
+		ctx.Handle(500, "References", err)
 		return
 	}
-
-	if entry != nil && !entry.IsDir() {
-		blob := entry.Blob()
-
-		if dataRc, err := blob.Data(); err != nil {
-			ctx.Handle(404, "blob.Data", err)
-			return
-		} else {
-			ctx.Data["FileSize"] = blob.Size()
+	ctx.Data["References"] = referenceRows(ctx.Repo.RepoLink, refs)
+	ctx.Data["SourceURL"] = middleware.HgPathURL(ctx.Repo.RepoLink, "src", ctx.Repo.Node, "")
+	crumbs := []hgLink{}
+	parts := strings.Split(p, "/")
+	if p != "" {
+		for i, seg := range parts {
+			crumbs = append(crumbs, hgLink{displayPath(seg), middleware.HgPathURL(ctx.Repo.RepoLink, "src", ctx.Repo.Node, strings.Join(parts[:i+1], "/"))})
+		}
+	}
+	ctx.Data["Breadcrumbs"] = crumbs
+	for _, e := range manifest {
+		if e.Path == p {
 			ctx.Data["IsFile"] = true
-			ctx.Data["FileName"] = blob.Name()
-			ext := path.Ext(blob.Name())
-			if len(ext) > 0 {
-				ext = ext[1:]
-			}
-			ctx.Data["FileExt"] = ext
-			ctx.Data["FileLink"] = rawLink + "/" + treename
-
-			buf := make([]byte, 1024)
-			n, _ := dataRc.Read(buf)
-			if n > 0 {
-				buf = buf[:n]
-			}
-
-			_, isTextFile := base.IsTextFile(buf)
-			_, isImageFile := base.IsImageFile(buf)
-			ctx.Data["IsFileText"] = isTextFile
-
-			switch {
-			case isImageFile:
-				ctx.Data["IsImageFile"] = true
-			case isTextFile:
-				d, _ := ioutil.ReadAll(dataRc)
-				buf = append(buf, d...)
-				readmeExist := base.IsMarkdownFile(blob.Name()) || base.IsReadmeFile(blob.Name())
-				ctx.Data["ReadmeExist"] = readmeExist
-				if readmeExist {
-					ctx.Data["FileContent"] = string(base.RenderMarkdown(buf, branchLink))
-				} else {
-					if err, content := base.ToUtf8WithErr(buf); err != nil {
-						if err != nil {
-							log.Error(4, "Convert content encoding: %s", err)
-						}
-						ctx.Data["FileContent"] = string(buf)
-					} else {
-						ctx.Data["FileContent"] = content
-					}
-				}
-			}
-		}
-	} else {
-		// Directory and file list.
-		tree, err := ctx.Repo.Commit.SubTree(treename)
-		if err != nil {
-			ctx.Handle(404, "SubTree", err)
-			return
-		}
-
-		entries, err := tree.ListEntries(treename)
-		if err != nil {
-			ctx.Handle(500, "ListEntries", err)
-			return
-		}
-		entries.Sort()
-
-		files := make([][]interface{}, 0, len(entries))
-		for _, te := range entries {
-			if te.Type != git.COMMIT {
-				c, err := ctx.Repo.Commit.GetCommitOfRelPath(filepath.Join(treePath, te.Name()))
-				if err != nil {
-					ctx.Handle(500, "GetCommitOfRelPath", err)
-					return
-				}
-				files = append(files, []interface{}{te, c})
-			} else {
-				sm, err := ctx.Repo.Commit.GetSubModule(path.Join(treename, te.Name()))
-				if err != nil {
-					ctx.Handle(500, "GetSubModule", err)
-					return
-				}
-
-				c, err := ctx.Repo.Commit.GetCommitOfRelPath(filepath.Join(treePath, te.Name()))
-				if err != nil {
-					ctx.Handle(500, "GetCommitOfRelPath", err)
-					return
-				}
-				files = append(files, []interface{}{te, git.NewSubModuleFile(c, sm.Url, te.Id.String())})
-			}
-		}
-		ctx.Data["Files"] = files
-
-		var readmeFile *git.Blob
-
-		for _, f := range entries {
-			if f.IsDir() || !base.IsReadmeFile(f.Name()) {
-				continue
-			} else {
-				readmeFile = f.Blob()
-				break
-			}
-		}
-
-		if readmeFile != nil {
-			ctx.Data["ReadmeInList"] = true
-			ctx.Data["ReadmeExist"] = true
-			if dataRc, err := readmeFile.Data(); err != nil {
-				ctx.Handle(404, "repo.SinglereadmeFile.LookupBlob", err)
-				return
-			} else {
-
-				buf := make([]byte, 1024)
-				n, _ := dataRc.Read(buf)
-				if n > 0 {
-					buf = buf[:n]
-				}
-
-				ctx.Data["FileSize"] = readmeFile.Size()
-				ctx.Data["FileLink"] = rawLink + "/" + treename
-				_, isTextFile := base.IsTextFile(buf)
-				ctx.Data["FileIsText"] = isTextFile
-				ctx.Data["FileName"] = readmeFile.Name()
-				if isTextFile {
-					d, _ := ioutil.ReadAll(dataRc)
-					buf = append(buf, d...)
-					switch {
-					case base.IsMarkdownFile(readmeFile.Name()):
-						buf = base.RenderMarkdown(buf, branchLink)
-					default:
-						buf = bytes.Replace(buf, []byte("\n"), []byte(`<br>`), -1)
-					}
-					ctx.Data["FileContent"] = string(buf)
-				}
-			}
-		}
-
-		lastCommit := ctx.Repo.Commit
-		if len(treePath) > 0 {
-			c, err := ctx.Repo.Commit.GetCommitOfRelPath(treePath)
-			if err != nil {
-				ctx.Handle(500, "GetCommitOfRelPath", err)
+			if !renderHgFile(ctx, e, false) {
 				return
 			}
-			lastCommit = c
-		}
-		ctx.Data["LastCommit"] = lastCommit
-		ctx.Data["LastCommitUser"] = models.ValidateCommitWithEmail(lastCommit)
-	}
-
-	ctx.Data["Username"] = userName
-	ctx.Data["Reponame"] = repoName
-
-	var treenames []string
-	Paths := make([]string, 0)
-
-	if len(treename) > 0 {
-		treenames = strings.Split(treename, "/")
-		for i, _ := range treenames {
-			Paths = append(Paths, strings.Join(treenames[0:i+1], "/"))
-		}
-
-		ctx.Data["HasParentPath"] = true
-		if len(Paths)-2 >= 0 {
-			ctx.Data["ParentPath"] = "/" + Paths[len(Paths)-2]
+			ctx.Repo.FinishRead()
+			ctx.HTML(200, HOME)
+			return
 		}
 	}
-
-	ctx.Data["Paths"] = Paths
-	ctx.Data["TreeName"] = treename
-	ctx.Data["Treenames"] = treenames
-	ctx.Data["TreePath"] = treePath
-	ctx.Data["BranchLink"] = branchLink
+	prefix := p
+	if prefix != "" {
+		prefix += "/"
+	}
+	rows := []hgTreeRow{}
+	seen := map[string]bool{}
+	var readme *hg.ManifestEntry
+	for i, e := range manifest {
+		rel, ok := strings.CutPrefix(e.Path, prefix)
+		if !ok {
+			continue
+		}
+		name, _, dir := strings.Cut(rel, "/")
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		rows = append(rows, hgTreeRow{displayPath(name), middleware.HgPathURL(ctx.Repo.RepoLink, "src", ctx.Repo.Node, prefix+name), dir, e.Executable, e.Symlink})
+		if !dir && readme == nil && base.IsReadmeFile(name) {
+			readme = &manifest[i]
+		}
+	}
+	if p != "" && len(rows) == 0 {
+		ctx.Error(404)
+		return
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Directory != rows[j].Directory {
+			return rows[i].Directory
+		}
+		return rows[i].Name < rows[j].Name
+	})
+	ctx.Data["Files"] = rows
+	if p != "" {
+		parent := ""
+		if i := strings.LastIndex(p, "/"); i >= 0 {
+			parent = p[:i]
+		}
+		ctx.Data["ParentURL"] = middleware.HgPathURL(ctx.Repo.RepoLink, "src", ctx.Repo.Node, parent)
+	}
+	if readme != nil && !renderHgFile(ctx, *readme, true) {
+		return
+	}
+	ctx.Repo.FinishRead()
 	ctx.HTML(200, HOME)
+}
+
+var errRenderedLimit = errors.New("rendered file limit")
+
+type renderedWriter struct{ bytes.Buffer }
+
+func (w *renderedWriter) Write(p []byte) (int, error) {
+	n := len(p)
+	left := hg.MaxRenderedFileBytes + 1 - w.Len()
+	if len(p) > left {
+		p = p[:left]
+	}
+	w.Buffer.Write(p)
+	if len(p) != n {
+		return len(p), errRenderedLimit
+	}
+	return n, nil
+}
+func renderHgFile(ctx *middleware.Context, e hg.ManifestEntry, inList bool) bool {
+	w := new(renderedWriter)
+	err := ctx.Repo.HgRunner.ReadFile(ctx.Repo.HgContext, ctx.Repo.HgPath, ctx.Repo.Node, e.Path, w)
+	if err != nil && !errors.Is(err, errRenderedLimit) {
+		ctx.Error(400, err.Error())
+		return false
+	}
+	b := w.Bytes()
+	oversized := len(b) > hg.MaxRenderedFileBytes
+	ctx.Data["FileName"] = displayPath(path.Base(e.Path))
+	ctx.Data["FileSize"] = int64(len(b))
+	ctx.Data["FileExt"] = strings.TrimPrefix(path.Ext(e.Path), ".")
+	ctx.Data["FileLink"] = middleware.HgPathURL(ctx.Repo.RepoLink, "raw", ctx.Repo.Node, e.Path)
+	ctx.Data["FileHistoryURL"] = historyURL(ctx.Repo.RepoLink, hg.HistoryQuery{Snapshot: ctx.Repo.Node, SnapshotRevision: ctx.Repo.Changeset.Revision, BeforeRevision: -1, Path: e.Path})
+	ctx.Data["ReadmeInList"] = inList
+	ctx.Data["ReadmeExist"] = inList
+	ctx.Data["FileOversized"] = oversized
+	ctx.Data["FileSymlink"] = e.Symlink
+	_, text := base.IsTextFile(b)
+	text = text && !bytes.ContainsRune(b, 0)
+	ctx.Data["IsFileText"] = text
+	if text && !oversized {
+		markdown := base.IsMarkdownFile(e.Path) && !e.Symlink
+		ctx.Data["IsMarkdown"] = markdown
+		if markdown {
+			ctx.Data["FileContent"] = string(base.RenderMarkdown(b, middleware.HgPathURL(ctx.Repo.RepoLink, "src", ctx.Repo.Node, "")))
+		} else {
+			ctx.Data["FileContent"] = string(b)
+		}
+	}
+	return true
 }

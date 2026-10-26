@@ -70,6 +70,27 @@
         border-bottom-right-radius: .25em;
     }
 }
+/* Repository clone controls open with mouse, keyboard, or touch. */
+#repo-header-download[open] > .drop-down {
+  position: absolute;
+  display: block;
+}
+#repo-header-download > summary {
+  cursor: pointer;
+  list-style: none;
+  display: inline-block;
+  color: #fff;
+  line-height: 20px;
+  white-space: nowrap;
+}
+#repo-header-download > summary > .btn {
+  display: inline-block;
+  color: #fff;
+  background-color: #444;
+  font-size: 13px;
+  line-height: 20px;
+  padding: 6px 12px;
+}
 #repo-header-download-drop {
     line-height: 24px;
     width: 460px;
@@ -344,21 +365,9 @@
             margin-bottom: 24px;
         }
     }
-    #repo-header-meta {
-        display: none;
-    }
-    #repo-clone-ssh {
-        margin-left: 200px;
-    }
-    #repo-clone-copy {
-        margin-right: 200px;
-    }
     #repo-clone-help {
         clear: both;
         width: 100%;
-    }
-    #repo-clone-url {
-        width: 520px;
     }
 }
 

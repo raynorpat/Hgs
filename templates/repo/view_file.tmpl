@@ -1,45 +1,12 @@
 <div class="panel panel-radius" id="{{if .ReadmeExist}}repo-readme{{else}}repo-read-file{{end}}">
-    <p class="panel-header">
-        {{if .ReadmeExist}}
-            <i class="icon fa fa-book fa-lg"></i>
-	        {{if .ReadmeInList}}
-	        <strong class="file-name">{{.FileName}}</strong>
-	        {{else}}
-	        <strong>{{.FileName}}</strong><span class="file-size">{{FileSize .FileSize}}</span>
-	        {{end}}
-	    {{else}}
-            <i class="icon fa fa-file-text-o"></i>
-            <strong class="file-name">{{.FileName}}</strong><span class="file-size">{{FileSize .FileSize}}</span>
-	    {{end}}
-        {{if not .ReadmeInList}}
-            <a class="right" href="{{.RepoLink}}/commits/{{EscapePound .BranchName}}/{{.TreeName}}">
-                <button class="btn btn-medium btn-gray btn-right-radius btn-comb">{{.i18n.Tr "repo.file_history"}}</button>
-            </a>
-            <a class="right" href="{{EscapePound .FileLink}}">
-                <button class="btn btn-medium btn-gray btn-left-radius btn-comb">{{.i18n.Tr "repo.file_raw"}}</button>
-            </a>
-        {{end}}
-    </p>
-    <div class="{{if .ReadmeExist}}panel-content markdown{{end}} code-view" id="repo-code-view">
-    	{{if .ReadmeExist}}
-    	{{if .FileContent}}{{.FileContent | Str2html}}{{end}}
-        {{else if not .IsFileText}}
-        <div class="view-raw">
-            {{if .IsImageFile}}
-            <img src="{{EscapePound .FileLink}}">
-            {{else}}
-            <a href="{{EscapePound .FileLink}}" rel="nofollow" class="btn btn-gray btn-radius">{{.i18n.Tr "repo.file_view_raw"}}</a>
-            {{end}}
-        </div>
-    	{{else if .FileSize}}
-        <table>
-            <tbody>
-                <tr>
-                    <td class="lines-num"></td>
-                    <td class="lines-code"><pre class="prettyprint linenums {{if .FileExt}}lang-{{.FileExt}}{{end}}"><code>{{.FileContent}}</code></pre></td>
-                </tr>
-            </tbody>
-        </table>
-    	{{end}}
-    </div>
+ <p class="panel-header"><strong class="file-name">{{.FileName}}</strong><span class="file-size">{{FileSize .FileSize}}</span>
+ {{if .FileSymlink}} · {{.i18n.Tr "repo.hg_symlink"}}{{end}}
+ {{if not .ReadmeInList}}<a class="right btn btn-medium btn-gray" href="{{.FileHistoryURL}}">{{.i18n.Tr "repo.file_history"}}</a>{{end}}
+ <a class="right btn btn-medium btn-gray" href="{{.FileLink}}">{{.i18n.Tr "repo.file_raw"}}</a></p>
+ <div class="panel-content code-view" id="repo-code-view">
+ {{if .FileOversized}}<p>{{.i18n.Tr "repo.hg_oversized"}}</p>
+ {{else if not .IsFileText}}<p>{{.i18n.Tr "repo.hg_binary"}}</p>
+ {{else if .IsMarkdown}}<div class="markdown">{{.FileContent | Str2html}}</div>
+ {{else}}<pre class="prettyprint linenums"><code>{{.FileContent}}</code></pre>{{end}}
+ </div>
 </div>

@@ -77,30 +77,14 @@ func SettingsPost(ctx *middleware.Context, form auth.RepoSettingForm, provider h
 			ctx.Repo.Repository.LowerName = strings.ToLower(newRepoName)
 		}
 
-		br := form.Branch
-
-		if ctx.Repo.GitRepo.IsBranchExist(br) {
-			ctx.Repo.Repository.DefaultBranch = br
-		}
 		ctx.Repo.Repository.Description = form.Description
 		ctx.Repo.Repository.Website = form.Website
 		ctx.Repo.Repository.IsPrivate = form.Private
-		ctx.Repo.Repository.IsGoget = form.GoGet
 		if err := models.UpdateRepository(ctx.Repo.Repository); err != nil {
 			ctx.Handle(404, "UpdateRepository", err)
 			return
 		}
 		log.Trace("Repository updated: %s/%s", ctx.Repo.Owner.Name, ctx.Repo.Repository.Name)
-
-		if ctx.Repo.Repository.IsMirror {
-			if form.Interval > 0 {
-				ctx.Repo.Mirror.Interval = form.Interval
-				ctx.Repo.Mirror.NextUpdate = time.Now().Add(time.Duration(form.Interval) * time.Hour)
-				if err := models.UpdateMirror(ctx.Repo.Mirror); err != nil {
-					log.Error(4, "UpdateMirror: %v", err)
-				}
-			}
-		}
 
 		ctx.Flash.Success(ctx.Tr("repo.settings.update_settings_success"))
 		ctx.Redirect(fmt.Sprintf("%s/%s/%s/settings", setting.AppSubUrl, ctx.Repo.Owner.Name, ctx.Repo.Repository.Name))
