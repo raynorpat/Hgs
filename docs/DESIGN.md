@@ -224,6 +224,12 @@ Missing repository/file, empty content or an empty repository leaves the normal 
 
 Show a subtle source-repository/README link beneath rendered content. Management happens through the existing repository workflow; no separate web editor or automatic repository creation is introduced.
 
+Organization People entries link directly to the selected user profile. Make the avatar/name row a clear keyboard-accessible link; preserve normal navigation and permission rules for which memberships are visible.
+
+### Profile and activity prototype
+
+[Interactive profile study](prototypes/profiles/index.html) and [scope, proposed counting rules and preview checks](prototypes/profiles/README.md) illustrate user/organization READMEs, avatar states, contribution calendars and grouped activity. The prototype uses sample data. Contribution tracking is a proposal under review, not an approved production event model; resolve attribution, fork deduplication, visibility, timezone and indexing before adding its implementation tasks.
+
 ## User profile icons and Gravatar
 
 Carry existing Gravatar support into all shared user-avatar components, including profile pages, account rail, lists, comments and PR review. Preserve uploaded-avatar preference: selected custom upload first, otherwise Gravatar when enabled, otherwise the local fallback/initials. A missing/broken custom upload or failed Gravatar load falls back locally without collapsing layout. Only the profile owner sees avatar-edit controls.
