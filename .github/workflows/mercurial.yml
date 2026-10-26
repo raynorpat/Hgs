@@ -32,28 +32,9 @@ jobs:
         run: pip install mercurial==${{ env.HG_VERSION }}
       - run: hg --version
 
-  # Mercurial 5.0.2 (server) and 2.0.2 (client) need Python 2.7, which no
-  # current hosted runner provides; use a python:2.7 container. Windows and
-  # macOS arm64 cannot run these rows: record them as unavailable, not passed.
-  legacy-hg:
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    container: python:2.7
-    steps:
-      - uses: actions/checkout@v3
-      - run: |
-          pip install mercurial==5.0.2
-          hg --version | head -1
-      - run: |
-          # 2.0.2 is not on PyPI; fetch the release tarball and verify its checksum.
-          curl -fsSLO https://www.mercurial-scm.org/release/mercurial-2.0.2.tar.gz
-          echo "ca8b8fb93f2e3e8c3cdf2f81d87e92592f5f20c5bfcaaeb6a75550d4a69572c9  mercurial-2.0.2.tar.gz" | sha256sum -c -
-          tar xzf mercurial-2.0.2.tar.gz
-          (cd mercurial-2.0.2 && python setup.py install --home /opt/hg202)
-          PYTHONPATH=/opt/hg202/lib/python /opt/hg202/bin/hg --version | head -1
-
-  # Native transport feasibility suite (Task 6): real Mercurial over HTTPS and
-  # embedded SSH, current server and client.
+  # Module integration tests (runner, bridges, SSH) and the native transport
+  # feasibility suite (Task 6): real Mercurial over HTTPS and embedded SSH,
+  # current server and client.
   integration:
     needs: unit
     strategy:
@@ -74,7 +55,7 @@ jobs:
       - name: Locate Mercurial
         shell: bash
         run: echo "GOGS_TEST_HG=$(python -c 'import shutil; print(shutil.which("hg"))')" >> "$GITHUB_ENV"
-      - run: go test -tags integration ./tests/integration -count=1 -timeout 60m -v
+      - run: go test -tags integration ./modules/hg ./modules/hgbridge ./modules/ssh ./tests/integration -count=1 -timeout 60m -v
 
   # The same suite with the Mercurial 5.0.2 server and 2.0.2 client rows,
   # which need Python 2.7 (from the runner's preinstalled conda).
@@ -107,4 +88,4 @@ jobs:
           printf '#!/bin/sh\nPYTHONPATH=%s/lib/python exec %s/bin/python %s/bin/hg "$@"\n' "$hg202" "$py27" "$hg202" > "$hg202/hg"
           chmod +x "$hg202/hg"
           echo "GOGS_TEST_HG_OLD_CLIENT=$hg202/hg" >> "$GITHUB_ENV"
-      - run: go test -tags integration ./tests/integration -count=1 -timeout 60m -v
+      - run: go test -tags integration ./modules/hg ./modules/hgbridge ./modules/ssh ./tests/integration -count=1 -timeout 60m -v
