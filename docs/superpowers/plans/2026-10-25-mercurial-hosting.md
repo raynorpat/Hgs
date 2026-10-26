@@ -52,7 +52,7 @@ For each test cycle, observe the expected failure before implementing. Infrastru
 ## Execution status and environment (updated 2026-10-25)
 
 Done before plan execution began (commits `cb8e76e`..`a5bed02`):
-- `go.mod`/`go.sum` replace `.gopmfile`; all 27 dependencies pinned to their exact legacy commits (no substitutions were needed); `toolchain go1.27.3`. `go mod verify`, `go build ./...` and `go vet` on touched packages pass with `CGO_ENABLED=0`.
+- `go.mod`/`go.sum` replace `.gopmfile`; all 27 commit-pinned dependencies translated to their exact legacy commits; the one substitution is the SQLite driver (`mattn/go-sqlite3` → pure-Go `modernc.org/sqlite`, below; the old pin stays as an indirect requirement); `toolchain go1.27.3`. `go mod verify`, `go build ./...` and `go vet` on touched packages pass with `CGO_ENABLED=0`.
 - SQLite uses pure-Go `modernc.org/sqlite` v1.60.1, compiled in by default (no `sqlite` build tag, no C toolchain); `TestSQLiteEngineRoundTrip` covers it.
 - Modern-Go fixes: `ldap_test.go` printf vet errors; `templates/repo/issue/list.tmpl` `{{..` typo that panicked at startup; nil `MultipartForm` panic in `routers/repo/issue.go` `uploadFiles` (regression test added).
 - Smoke-tested `gogs web` on Windows: SQLite install, login, admin pages, repository creation, issue creation/view.
@@ -61,7 +61,17 @@ Task 1 remaining: `docs/mercurial/build-baseline.md`, `newTestDatabase` helper a
 
 Local environment: Windows 11 only. Go 1.27.3 at `C:\Program Files\Go`. Mercurial 7.0.3 via scoop, whose ambient configuration loads a missing `hggit` extension (useful evidence for the isolation tests). Python 3.13; no Python 2.7. The required tested versions (server 5.0.2 and 7.2.4, clients 2.0.2 and 7.2.4) are not installed, and there are no Linux or macOS runners and no CI remote. Consequences:
 - Integration steps against real Mercurial run locally only on Windows, and only with versions the user has approved installing; anything else is recorded as unavailable, never passed.
-- The Task 6 gate requires native Windows, Linux and macOS results. Without those runners it cannot pass, so execution stops after Task 6 and reports the gate as unverified rather than starting Task 7.
+- The Task 6 gate requires native Windows, Linux and macOS results. Without those runners it cannot pass, so execution stops after Task 6 and reports the gate result rather than starting Task 7.
+
+Task completion record (commit ranges are `start..end`, end inclusive):
+- Task 1 — complete 2026-10-25 (`2cb904d..b18dab5`).
+- Task 2 — complete 2026-10-25 (`b18dab5..9152f1a`).
+- Task 3 — complete 2026-10-25 (`9152f1a..5b9aabb`).
+- Task 4 — complete 2026-10-25 (`5b9aabb..765b3d5`).
+- Task 5 — complete 2026-10-26 (`765b3d5..4694a42`).
+- Task 6 — complete 2026-10-26 (`4694a42..1cb1c12`). Recorded result: **Gate: FAILED** — revocation at transaction close does not hold for stream-clone bundles unbundled into empty repositories (design decision required); every other row passed on Windows — and **unverified**: Linux/macOS and Mercurial 5.0.2/2.0.2 were unavailable. Evidence: `docs/mercurial/transport-evidence.md`.
+- Tasks 7–15 — not started.
+- Pending user decisions: the remedy for stream-bundle revocation, and whether writers keep the per-changeset close hooks (`pretxnclose-phase`, `pretxnclose-bookmark`).
 
 ## File and interface map
 

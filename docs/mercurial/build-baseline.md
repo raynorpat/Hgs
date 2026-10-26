@@ -31,14 +31,14 @@ D:\github\gogs\go.mod
 ## Dependency pins
 Timebox: the legacy-pin translation was budgeted at one working session and met. The 1:1 translation needed no substitutions; the one substitution made (SQLite driver) was a deliberate choice, not a failed translation.
 
-The `.gopmfile` entries with a commit were translated 1:1 to pseudo-versions of the same legacy commits (27 direct dependencies, all resolved). Module resolution is pinned by `go.sum`; CI runs `go mod verify`.
+The `.gopmfile` (removed in b50b362) listed 29 dependencies: 27 pinned to a commit and `golang.org/x/net` and `golang.org/x/text` unpinned. The 27 commit pins were translated 1:1 to pseudo-versions of the same legacy commits, all resolved; `github.com/mattn/go-sqlite3` is one of them and is now an indirect requirement (below). Module resolution is pinned by `go.sum`; CI runs `go mod verify`.
 
 Substitutions and additions, each with its reason:
 
 | Change | Version | Reason |
 |---|---|---|
 | `github.com/mattn/go-sqlite3` replaced by `modernc.org/sqlite` as the SQLite driver | v1.60.1 (published 2026-09-29; v1.61.0 skipped as under 14 days old) | The 2015 go-sqlite3 pin needs cgo and a C toolchain. The pure-Go driver builds identically on Windows, Linux and macOS. Registered as driver name `sqlite3` because xorm, `app.ini` and the installer use that name. |
-| New transitive modules from modernc.org/sqlite | `github.com/dustin/go-humanize` v1.1.0, `github.com/google/uuid` v1.6.0, `github.com/mattn/go-isatty` v0.0.24, `github.com/ncruces/go-strftime` v1.1.0, `github.com/remyoudompheng/bigfft` v0.0.0-20230129092748-24d4a6f8daec (plus the `modernc.org/*` runtime modules in `go.sum`) | Required by the driver. |
+| New transitive modules from modernc.org/sqlite | `github.com/dustin/go-humanize` v1.1.0, `github.com/google/uuid` v1.6.0, `github.com/mattn/go-isatty` v0.0.24, `github.com/ncruces/go-strftime` v1.1.0, `github.com/remyoudompheng/bigfft` v0.0.0-20230129092748-24d4a6f8daec (plus the `modernc.org/libc`, `modernc.org/mathutil` and `modernc.org/memory` runtime modules, all `// indirect` requirements in `go.mod`) | Required by the driver. |
 | `golang.org/x/net`, `golang.org/x/text` | v0.61.0, v0.43.0 | `.gopmfile` listed these without a commit (unpinned); pinned to maintained releases compatible with Go 1.27.3. |
 | `golang.org/x/crypto` | v0.58.0 | Imported by `modules/ssh` but not pinned in `.gopmfile`; pinned to a maintained release. |
 | `golang.org/x/sys` | v0.49.0 | Required by the above; used directly by `modules/hg` for Windows Job Objects and Unix process waits. Maintained version for Go 1.27.3. |
@@ -59,8 +59,6 @@ SQLite uses the pure-Go `modernc.org/sqlite` driver, registered as `sqlite3` in 
 
 Also: `models/update.go` used unkeyed struct literals that fail `go vet ./models`; they are now keyed. `modules/log` was excluded from git by the `log/` ignore pattern and is now tracked.
 
-A Go installation with zero-filled files was found on this machine while bringing up the toolchain; the working 1.27.3 install is the one on PATH.
-
 ## Tests
 - `models`: `newTestDatabase` (`models/testutil_test.go`) gives each test a temporary SQLite database and restores globals on cleanup; it panics if used from a parallel test. `TestFreshDatabasePreservesUsersAndIssues` and `TestPasswordVerification` (`models/baseline_test.go`) run against it.
 - Needing live network, now behind `-tags integration`:
@@ -71,4 +69,4 @@ A Go installation with zero-filled files was found on this machine while bringin
 - `.travis.yml` (Go 1.2-1.4) was deleted; CI is `.github/workflows/mercurial.yml`.
 
 ## CI status
-`.github/workflows/mercurial.yml` runs `go mod verify`, `go build ./...`, `go test ./...` on windows-latest, ubuntu-latest and macos-latest (arm64), and installs Mercurial 7.2.4 via pip. A `legacy-hg` job installs Mercurial 5.0.2 and a 2.0.2 client in a `python:2.7` container (Linux only). **The workflow has never been executed**: there are no runners here. Only the Windows amd64 build and tests were run locally. Linux and macOS jobs are unverified. Mercurial 5.0.2 and 2.0.2 rows on Windows and macOS arm64 are unavailable (no Python 2.7), not passed.
+`.github/workflows/mercurial.yml` runs `go mod verify`, `go build ./...`, `go test ./...` on windows-latest, ubuntu-latest and macos-latest (arm64), and installs Mercurial 7.2.4 via pip. The `integration` job runs `go test -tags integration ./modules/hg ./modules/hgbridge ./modules/ssh ./tests/integration` against Mercurial 7.2.4 on all three OSes; `integration-legacy` runs the same packages on ubuntu-latest with Mercurial 5.0.2 and a 2.0.2 client under the runner's conda Python 2.7. **The workflow has never been executed**: there are no runners here. Only the Windows amd64 build and tests were run locally. Linux and macOS jobs are unverified. Mercurial 5.0.2 and 2.0.2 rows on Windows and macOS arm64 are unavailable (no Python 2.7), not passed.
