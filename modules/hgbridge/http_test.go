@@ -473,6 +473,32 @@ func TestHTTPBridgeHoldsWorkerDuringTransaction(t *testing.T) {
 	}
 }
 
+// Hook callbacks alone keep a writer's worker alive, as they do over stdio.
+func TestHTTPBridgeHookCallbacksAreActivity(t *testing.T) {
+	var ctl *Controller
+	var f *fakeWorkers
+	b, ctl, f := newTestBridge(t, func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		f.mu.Lock()
+		capability := f.envs[len(f.envs)-1][EnvCapability]
+		f.mu.Unlock()
+		for i := 0; i < 10; i++ {
+			time.Sleep(100 * time.Millisecond)
+			if err := ctl.Check(r.Context(), capability, testWriter.RepoID, "pretxnclose-phase"); err != nil {
+				http.Error(w, err.Error(), http.StatusForbidden)
+				return
+			}
+		}
+		io.WriteString(w, "ok")
+	})
+	f.idle, b.holdInterval = 300*time.Millisecond, time.Hour
+
+	w, err := serve(t, b, wireRequest("POST", "?cmd=unbundle", "HG10UN changegroup"), testWriter)
+	if err != nil || w.Code != 200 || f.killed != 0 {
+		t.Fatalf("worker making callbacks: %d %q, %v, killed %d", w.Code, w.Body, err, f.killed)
+	}
+}
+
 func TestHTTPBridgeCloseEndsWorkers(t *testing.T) {
 	entered := make(chan struct{}, 1)
 	b, _, f := newTestBridge(t, func(w http.ResponseWriter, r *http.Request) {

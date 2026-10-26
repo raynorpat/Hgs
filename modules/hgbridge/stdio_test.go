@@ -8,10 +8,14 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -29,7 +33,10 @@ func TestMain(m *testing.M) {
 }
 
 // fakeStdioServe reports how it was configured on stderr, then obeys stdin
-// lines: "echo <text>", "exit <code>" or "block".
+// lines: "echo <text>", "exit <code>", "block", "silent <duration>" (no
+// output for that long) or "callbacks <n> <interval>" (n hook callbacks that
+// far apart, as a long transaction makes, with no output in between); the
+// last two then print "done" and exit.
 func fakeStdioServe(args []string) int {
 	// Mercurial serves stdio only for exactly this argument vector.
 	if len(args) != 4 || args[0] != "-R" || args[2] != "serve" || args[3] != "--stdio" {
@@ -52,16 +59,53 @@ func fakeStdioServe(args []string) int {
 		case "block":
 			fmt.Println("blocked")
 			time.Sleep(time.Hour)
+		case "silent":
+			d, _ := time.ParseDuration(arg)
+			time.Sleep(d)
+			fmt.Println("done")
+			return 0
+		case "callbacks":
+			count, every, _ := strings.Cut(arg, " ")
+			n, _ := strconv.Atoi(count)
+			interval, _ := time.ParseDuration(every)
+			for i := 0; i < n; i++ {
+				time.Sleep(interval)
+				if err := fakeHookCallback(); err != nil {
+					fmt.Println(err)
+					return 5
+				}
+			}
+			fmt.Println("done")
+			return 0
 		}
 	}
 	return 0
 }
 
-func newTestStdioBridge(t *testing.T) (*StdioBridge, *Controller, Target) {
+// fakeHookCallback makes the callback a check hook makes.
+func fakeHookCallback() error {
+	id, _ := strconv.ParseInt(os.Getenv(EnvRepoID), 10, 64)
+	body, _ := json.Marshal(HookRequest{Hook: "pretxnclose-phase", RepoID: id})
+	req, _ := http.NewRequest(http.MethodPost, "http://"+os.Getenv(EnvControl)+ControlPath, bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+os.Getenv(EnvCapability))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("callback denied: %s", resp.Status)
+	}
+	return nil
+}
+
+// newTestStdioBridge runs workers whose runner kills them after idle without
+// activity; zero means the production limit.
+func newTestStdioBridge(t *testing.T, idle time.Duration) (*StdioBridge, *Controller, Target) {
 	t.Helper()
 	exe, _ := os.Executable()
 	dir := t.TempDir()
-	runner, err := hg.NewRunner(hg.Config{Executable: exe, ConfigPath: filepath.Join(dir, "config", "hgrc")})
+	runner, err := hg.NewRunner(hg.Config{Executable: exe, ConfigPath: filepath.Join(dir, "config", "hgrc"), IdleTimeout: idle})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +127,7 @@ func newTestStdioBridge(t *testing.T) (*StdioBridge, *Controller, Target) {
 }
 
 func TestStdioBridgeAppliesGrant(t *testing.T) {
-	b, ctl, target := newTestStdioBridge(t)
+	b, ctl, target := newTestStdioBridge(t, 0)
 	for _, canWrite := range []bool{false, true} {
 		exe, _ := os.Executable()
 		want, _ := HookConfig(exe, canWrite)
@@ -125,7 +169,7 @@ func TestStdioBridgeAppliesGrant(t *testing.T) {
 }
 
 func TestStdioBridgeReturnsExitStatus(t *testing.T) {
-	b, _, target := newTestStdioBridge(t)
+	b, _, target := newTestStdioBridge(t, 0)
 	var out, stderr bytes.Buffer
 	code, err := b.ServeStdio(context.Background(), target, testReader, strings.NewReader("echo partial\nexit 3\n"), &out, &stderr)
 	if err != nil || code != 3 {
@@ -161,7 +205,7 @@ func blockedSession(t *testing.T, ctx context.Context, b *StdioBridge, target Ta
 }
 
 func TestStdioBridgeCancelKillsWorker(t *testing.T) {
-	b, _, target := newTestStdioBridge(t)
+	b, _, target := newTestStdioBridge(t, 0)
 	ctx, cancel := context.WithCancel(context.Background())
 	result, release := blockedSession(t, ctx, b, target)
 	defer release()
@@ -185,6 +229,30 @@ func TestStdioBridgeCancelKillsWorker(t *testing.T) {
 	}
 	if _, err := b.ServeStdio(context.Background(), target, testReader, strings.NewReader(""), io.Discard, io.Discard); err == nil {
 		t.Error("closed bridge started a worker")
+	}
+}
+
+// A writer's transaction can keep stdio silent for minutes while Mercurial
+// runs one hook per new changeset; its callbacks keep the worker alive, and
+// only real silence ends it.
+func TestStdioBridgeHookCallbacksAreActivity(t *testing.T) {
+	const idle = time.Second
+	b, _, target := newTestStdioBridge(t, idle)
+	session := func(command string) (string, int, error) {
+		in, feed := io.Pipe()
+		defer feed.Close()
+		go io.WriteString(feed, command+"\n")
+		var out bytes.Buffer
+		code, err := b.ServeStdio(context.Background(), target, testWriter, in, &out, io.Discard)
+		return out.String(), code, err
+	}
+
+	// 3 s of stdio silence, a callback every 250 ms.
+	if out, code, err := session("callbacks 12 250ms"); err != nil || code != 0 || out != "done\n" {
+		t.Fatalf("worker making callbacks: %q, exit %d, %v; want it to finish", out, code, err)
+	}
+	if out, _, err := session("silent 3s"); !errors.Is(err, hg.ErrIdleTimeout) {
+		t.Fatalf("silent worker: %q, %v; want ErrIdleTimeout", out, err)
 	}
 }
 

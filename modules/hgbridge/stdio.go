@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gogits/gogs/modules/hg"
@@ -87,7 +88,9 @@ func (b *StdioBridge) Close() {
 // exitCode is the worker's exit status. When the worker could not start or
 // was killed (by ctx, Close, a failed write to output or stderr, or the
 // runner's idle and session limits) err is set and exitCode is -1; a killed
-// transaction is left to Mercurial's recovery. ServeStdio returns once the
+// transaction is left to Mercurial's recovery. A writer's allowed hook
+// callbacks count as activity, so a transaction that is still running its
+// hooks after the upload is not idle. ServeStdio returns once the
 // worker has exited and its output is copied, waiting at most
 // hg.ShutdownTimeout for a stalled output; a read from input may still be
 // pending, so the caller must close input's source afterwards.
@@ -103,8 +106,14 @@ func (b *StdioBridge) ServeStdio(ctx context.Context, target Target, grant Grant
 	defer context.AfterFunc(b.base, cancel)()
 
 	rc, env := b.rc[false], map[string]string(nil)
+	// The capability must exist before the worker it is passed to.
+	var child atomic.Pointer[hg.Child]
 	if grant.CanWrite {
-		_, sessionEnv, revoke, err := b.controller.Issue(grant)
+		_, sessionEnv, revoke, err := b.controller.Issue(grant, func() {
+			if c := child.Load(); c != nil {
+				c.Touch()
+			}
+		})
 		if err != nil {
 			return -1, err
 		}
@@ -115,6 +124,7 @@ func (b *StdioBridge) ServeStdio(ctx context.Context, target Target, grant Grant
 	if err != nil {
 		return -1, err
 	}
+	child.Store(c)
 
 	go func() {
 		io.Copy(c.Stdin, input)

@@ -56,7 +56,7 @@ func TestCapabilityBoundToRepositoryAndActor(t *testing.T) {
 	auth := &fakeAuth{}
 	c, now := newTestController(t, auth)
 
-	capability, env, revoke, err := c.Issue(writer)
+	capability, env, revoke, err := c.Issue(writer, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestCapabilityBoundToRepositoryAndActor(t *testing.T) {
 		t.Fatalf("authorizer saw %+v, want the stored grant", auth.seen)
 	}
 
-	other, _, revokeOther, err := c.Issue(writer)
+	other, _, revokeOther, err := c.Issue(writer, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestCapabilityBoundToRepositoryAndActor(t *testing.T) {
 		"anonymous": {RepoID: 42, CanWrite: true},
 		"no repo":   {Principal: writer.Principal, CanWrite: true},
 	} {
-		if capability, env, _, err := c.Issue(g); err == nil || capability != "" || env != nil {
+		if capability, env, _, err := c.Issue(g, nil); err == nil || capability != "" || env != nil {
 			t.Errorf("%s grant was issued a capability", name)
 		}
 	}
@@ -121,7 +121,7 @@ func TestCapabilityBoundToRepositoryAndActor(t *testing.T) {
 
 func TestCapabilityControlEndpoint(t *testing.T) {
 	c, _ := newTestController(t, &fakeAuth{})
-	capability, env, revoke, err := c.Issue(writer)
+	capability, env, revoke, err := c.Issue(writer, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestCapabilityControlEndpoint(t *testing.T) {
 func TestRevocationBeforeTxnClose(t *testing.T) {
 	auth := &fakeAuth{}
 	c, _ := newTestController(t, auth)
-	capability, env, revoke, err := c.Issue(writer)
+	capability, env, revoke, err := c.Issue(writer, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,17 +191,38 @@ func TestRevocationBeforeTxnClose(t *testing.T) {
 		t.Fatalf("revoked session: got %v, want ErrDenied", err)
 	}
 
-	if _, _, _, err := c.Issue(writer); err != nil {
+	if _, _, _, err := c.Issue(writer, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := c.Issue(writer); err == nil {
+	if _, _, _, err := c.Issue(writer, nil); err == nil {
 		t.Fatal("closed controller issued a capability")
 	}
 	if conn, err := net.DialTimeout("tcp", env[EnvControl], time.Second); err == nil {
 		conn.Close()
 		t.Fatal("closed controller still listening")
+	}
+}
+
+func TestAllowedCheckTouchesSession(t *testing.T) {
+	auth := &fakeAuth{}
+	c, _ := newTestController(t, auth)
+	touches := 0
+	capability, _, revoke, err := c.Issue(writer, func() { touches++ })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer revoke()
+
+	if err := c.Check(context.Background(), capability, 42, "pretxnclose-phase"); err != nil || touches != 1 {
+		t.Fatalf("allowed check: %v, %d touches; want 1", err, touches)
+	}
+	c.Check(context.Background(), capability, 43, "pretxnclose-phase")
+	auth.set(errors.New("demoted to read access"))
+	c.Check(context.Background(), capability, 42, "pretxnclose-phase")
+	if touches != 1 {
+		t.Errorf("denied checks touched the session: %d touches", touches)
 	}
 }

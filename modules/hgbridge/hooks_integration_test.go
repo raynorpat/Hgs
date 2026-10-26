@@ -276,11 +276,11 @@ func checkRealHooks(t *testing.T, exe, gogs string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, env, revoke, err := ctl.Issue(Grant{Principal: Principal{UserID: 1, KeyID: 1}, RepoID: 9, CanWrite: true})
+	_, env, revoke, err := ctl.Issue(Grant{Principal: Principal{UserID: 1, KeyID: 1}, RepoID: 9, CanWrite: true}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, otherRepo, revokeOther, err := ctl.Issue(Grant{Principal: Principal{UserID: 1, KeyID: 1}, RepoID: 10, CanWrite: true})
+	_, otherRepo, revokeOther, err := ctl.Issue(Grant{Principal: Principal{UserID: 1, KeyID: 1}, RepoID: 10, CanWrite: true}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

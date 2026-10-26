@@ -60,6 +60,7 @@ type Controller struct {
 type session struct {
 	grant   Grant
 	expires time.Time
+	touch   func()
 }
 
 // NewController starts the loopback control endpoint. ttl bounds every
@@ -93,7 +94,11 @@ func NewController(authorize Authorize, ttl time.Duration) (*Controller, error) 
 // Issue creates the capability of one write-capable session and returns it
 // with the GOGS_HG_* environment the session's Mercurial process needs.
 // Read-only and anonymous grants get no capability. revoke is idempotent.
-func (c *Controller) Issue(g Grant) (capability string, env map[string]string, revoke func(), err error) {
+//
+// touch, if not nil, is called after every allowed check: while Mercurial
+// runs transaction hooks its stdio can stay silent for minutes, and the
+// callbacks are what show the worker is still making progress.
+func (c *Controller) Issue(g Grant, touch func()) (capability string, env map[string]string, revoke func(), err error) {
 	if !g.CanWrite || g.Principal.UserID <= 0 || g.RepoID <= 0 {
 		return "", nil, nil, errors.New("hgbridge: only an authenticated writer of a repository gets a capability")
 	}
@@ -115,7 +120,7 @@ func (c *Controller) Issue(g Grant) (capability string, env map[string]string, r
 			delete(c.grants, k)
 		}
 	}
-	c.grants[key] = session{grant: g, expires: now.Add(c.ttl)}
+	c.grants[key] = session{grant: g, expires: now.Add(c.ttl), touch: touch}
 
 	env = map[string]string{
 		EnvCapability: capability,
@@ -132,15 +137,15 @@ func (c *Controller) Issue(g Grant) (capability string, env map[string]string, r
 
 // lookup finds a live session. Sessions are keyed by the capability's
 // SHA-256, so map lookup timing reveals nothing usable about capabilities.
-func (c *Controller) lookup(key [sha256.Size]byte) (Grant, bool) {
+func (c *Controller) lookup(key [sha256.Size]byte) (session, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	s, ok := c.grants[key]
 	if ok && !c.now().Before(s.expires) {
 		delete(c.grants, key)
-		return Grant{}, false
+		return session{}, false
 	}
-	return s.grant, ok && !c.closed
+	return s, ok && !c.closed
 }
 
 // Check allows hook to continue a transaction in repository repoID only if
@@ -151,20 +156,23 @@ func (c *Controller) Check(ctx context.Context, capability string, repoID int64,
 		return fmt.Errorf("%w: unknown hook %q", ErrDenied, hook)
 	}
 	key := sha256.Sum256([]byte(capability))
-	g, ok := c.lookup(key)
+	s, ok := c.lookup(key)
 	if !ok {
 		return fmt.Errorf("%w: unknown or expired session", ErrDenied)
 	}
-	if g.RepoID != repoID {
+	if s.grant.RepoID != repoID {
 		return fmt.Errorf("%w: session is for another repository", ErrDenied)
 	}
-	if err := c.authorize(ctx, g); err != nil {
+	if err := c.authorize(ctx, s.grant); err != nil {
 		return fmt.Errorf("%w: %v", ErrDenied, err)
 	}
 	// The session may have been revoked, or the callback abandoned, while
 	// the authorizer ran.
 	if _, ok = c.lookup(key); !ok || ctx.Err() != nil {
 		return fmt.Errorf("%w: session ended during the check", ErrDenied)
+	}
+	if s.touch != nil {
+		s.touch()
 	}
 	return nil
 }

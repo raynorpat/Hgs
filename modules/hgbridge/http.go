@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gogits/gogs/modules/hg"
@@ -168,8 +169,14 @@ func (b *HTTPBridge) Serve(ctx context.Context, w http.ResponseWriter, r *http.R
 	}
 
 	args, env := b.readerConfig, map[string]string(nil)
+	// The capability must exist before the worker it is passed to.
+	var started atomic.Pointer[worker]
 	if grant.CanWrite {
-		_, sessionEnv, revoke, err := b.controller.Issue(grant)
+		_, sessionEnv, revoke, err := b.controller.Issue(grant, func() {
+			if wk := started.Load(); wk != nil {
+				wk.touch()
+			}
+		})
 		if err != nil {
 			return err
 		}
@@ -181,6 +188,7 @@ func (b *HTTPBridge) Serve(ctx context.Context, w http.ResponseWriter, r *http.R
 		return err
 	}
 	defer wk.reap()
+	started.Store(wk)
 
 	bodyDone := make(chan struct{})
 	var body io.Reader = http.NoBody

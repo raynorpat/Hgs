@@ -23,6 +23,9 @@ type Config struct {
 	// SessionTimeout is the ceiling for any process started with Start.
 	// Zero means DefaultSessionTimeout.
 	SessionTimeout time.Duration
+	// IdleTimeout ends a started process with no activity for that long.
+	// Zero means TransferIdleTimeout.
+	IdleTimeout time.Duration
 }
 
 const (

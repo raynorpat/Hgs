@@ -329,6 +329,7 @@ func TestNewRunnerValidates(t *testing.T) {
 		{Executable: exe, ConfigPath: "hgrc"},
 		{Executable: exe, ConfigPath: filepath.Join(dir, "a"+string(os.PathListSeparator)+"b")},
 		{Executable: exe, ConfigPath: filepath.Join(dir, "hgrc"), MaxProcesses: -1},
+		{Executable: exe, ConfigPath: filepath.Join(dir, "hgrc"), IdleTimeout: -1},
 	}
 	for _, cfg := range bad {
 		if _, err := NewRunner(cfg); err == nil {

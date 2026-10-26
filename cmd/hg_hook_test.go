@@ -83,7 +83,7 @@ func TestHookFailsClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer ctl.Close(context.Background())
-	capability, env, revoke, err := ctl.Issue(writeGrant)
+	capability, env, revoke, err := ctl.Issue(writeGrant, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

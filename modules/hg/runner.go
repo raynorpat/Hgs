@@ -77,7 +77,7 @@ func NewRunner(cfg Config) (*Runner, error) {
 			break
 		}
 	}
-	if cfg.MaxProcesses < 0 || cfg.SessionTimeout < 0 {
+	if cfg.MaxProcesses < 0 || cfg.SessionTimeout < 0 || cfg.IdleTimeout < 0 {
 		return nil, errors.New("hg: process limits must not be negative")
 	}
 	if cfg.MaxProcesses == 0 {
@@ -85,6 +85,9 @@ func NewRunner(cfg Config) (*Runner, error) {
 	}
 	if cfg.SessionTimeout == 0 {
 		cfg.SessionTimeout = DefaultSessionTimeout
+	}
+	if cfg.IdleTimeout == 0 {
+		cfg.IdleTimeout = TransferIdleTimeout
 	}
 	if err := os.MkdirAll(filepath.Dir(cfg.ConfigPath), 0700); err != nil {
 		return nil, fmt.Errorf("hg: create managed config directory: %v", err)
@@ -96,7 +99,7 @@ func NewRunner(cfg Config) (*Runner, error) {
 		cfg:          cfg,
 		slots:        make(chan struct{}, cfg.MaxProcesses),
 		queueTimeout: QueueTimeout,
-		idleTimeout:  TransferIdleTimeout,
+		idleTimeout:  cfg.IdleTimeout,
 	}, nil
 }
 
