@@ -1,9 +1,9 @@
 .DS_Store
 *.db
 *.log
-log/
-custom/
-data/
+/log/
+/custom/
+/data/
 .vendor/
 .idea/
 *.iml
@@ -36,3 +36,4 @@ docker/docker/Dockerfile
 docker/docker/init_gogs.sh
 gogs.sublime-project
 gogs.sublime-workspace
+/.venv-hg/
