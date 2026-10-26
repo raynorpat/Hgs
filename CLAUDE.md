@@ -87,18 +87,19 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ## Build and run
 
-There is **no `go.mod`** yet. Dependencies are pinned by commit in `.gopmfile` (gopm, GOPATH era), and `.travis.yml` targets Go 1.2–1.4. A modern Go toolchain (the machine has Go 1.27) will not build this tree as-is; establishing a module build is plan Task 1. Until then, the legacy commands are:
+Go modules build. `go.mod` pins every dependency to the exact commit from the removed legacy gopm `.gopmfile` and sets `toolchain go1.27.3`; with the default `GOTOOLCHAIN=auto`, Go downloads and uses that toolchain automatically. (The system install at `C:\Program Files\Go` is 1.27.0 with zero-filled source files, so it cannot build on its own.)
 
 ```sh
-go build -tags "sqlite cert"     # as used by .bra.toml (live-reload dev config)
-./gogs web                        # start the web server; -c/--config overrides custom/conf/app.ini
+go build ./...                   # whole tree
+go build -o gogs.exe .           # binary (gogs.exe is gitignored)
+./gogs.exe web                   # start the web server; -c/--config overrides custom/conf/app.ini
 ```
 
-Build tags (each gates one file): `sqlite` (`models/models_sqlite.go`, SQLite3 driver — needs CGO), `cert` / `!cert` (`cmd/cert.go` vs stub), `redis`, `memcache` (cache backends). MySQL and PostgreSQL drivers are always compiled in.
+Build tags (each gates one file): `sqlite` (`models/models_sqlite.go`, SQLite3 driver), `cert` / `!cert` (`cmd/cert.go` vs stub), `redis`, `memcache` (cache backends). MySQL and PostgreSQL drivers are always compiled in. `cert redis memcache` build as pure Go. `sqlite` needs CGO and a C compiler, and none is installed here: with CGO off, `-tags sqlite` still compiles, but go-sqlite3 reduces to `doc.go` and the driver never registers, so SQLite fails at runtime.
 
 ## Tests
 
-Very few tests exist, all in `modules/` (`cron`, `ldap`, `auth/ldap`, `avatar`, `httplib`, `uuid`); `models/`, `routers/`, and `cmd/` have none. Some (LDAP, httplib) hit live network services. Run one package or test with standard tooling once the build works:
+Very few tests exist, all in `modules/` (`cron`, `ldap`, `auth/ldap`, `avatar`, `httplib`, `uuid`); `models/`, `routers/`, and `cmd/` have none. `modules/ldap` tests dial a public LDAP server (`141.213.189.137:389`) that no longer responds, so they fail with connection timeouts (about 85s); everything else passes. Run one package or test with standard tooling:
 
 ```sh
 go test ./modules/cron
