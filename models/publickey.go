@@ -41,9 +41,23 @@ var (
 var sshOpLocker = sync.Mutex{}
 
 var (
-	SSHPath string // SSH directory.
-	appPath string // Execution(binary) path.
+	sshPathOnce sync.Once
+	sshPath     string // SSH directory.
+	appPath     string // Execution(binary) path.
 )
+
+// sshDir returns the SSH directory, creating it on first use. It is not
+// resolved at startup because the internal Mercurial hook runs in
+// Mercurial's environment, which has no home directory.
+func sshDir() string {
+	sshPathOnce.Do(func() {
+		sshPath = filepath.Join(homeDir(), ".ssh")
+		if err := os.MkdirAll(sshPath, 0700); err != nil {
+			log.Fatal(4, "fail to create '%s': %v", sshPath, err)
+		}
+	})
+	return sshPath
+}
 
 // exePath returns the executable path.
 func exePath() (string, error) {
@@ -70,12 +84,6 @@ func init() {
 		log.Fatal(4, "fail to get app path: %v\n", err)
 	}
 	appPath = strings.Replace(appPath, "\\", "/", -1)
-
-	// Determine and create .ssh path.
-	SSHPath = filepath.Join(homeDir(), ".ssh")
-	if err = os.MkdirAll(SSHPath, 0700); err != nil {
-		log.Fatal(4, "fail to create '%s': %v", SSHPath, err)
-	}
 }
 
 // PublicKey represents a SSH key.
@@ -248,7 +256,7 @@ func saveAuthorizedKeyFile(keys ...*PublicKey) error {
 	sshOpLocker.Lock()
 	defer sshOpLocker.Unlock()
 
-	fpath := filepath.Join(SSHPath, "authorized_keys")
+	fpath := filepath.Join(sshDir(), "authorized_keys")
 	f, err := os.OpenFile(fpath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return err
@@ -418,8 +426,8 @@ func DeletePublicKey(key *PublicKey) error {
 		return err
 	}
 
-	fpath := filepath.Join(SSHPath, "authorized_keys")
-	tmpPath := filepath.Join(SSHPath, "authorized_keys.tmp")
+	fpath := filepath.Join(sshDir(), "authorized_keys")
+	tmpPath := filepath.Join(sshDir(), "authorized_keys.tmp")
 	if err = rewriteAuthorizedKeys(key, fpath, tmpPath); err != nil {
 		return err
 	} else if err = os.Remove(fpath); err != nil {
@@ -433,7 +441,7 @@ func RewriteAllPublicKeys() error {
 	sshOpLocker.Lock()
 	defer sshOpLocker.Unlock()
 
-	tmpPath := filepath.Join(SSHPath, "authorized_keys.tmp")
+	tmpPath := filepath.Join(sshDir(), "authorized_keys.tmp")
 	f, err := os.Create(tmpPath)
 	if err != nil {
 		return err
@@ -449,7 +457,7 @@ func RewriteAllPublicKeys() error {
 		return err
 	}
 
-	fpath := filepath.Join(SSHPath, "authorized_keys")
+	fpath := filepath.Join(sshDir(), "authorized_keys")
 	if com.IsExist(fpath) {
 		if err = os.Remove(fpath); err != nil {
 			return err

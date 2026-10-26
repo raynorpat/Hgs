@@ -53,7 +53,7 @@ func (t *processTree) wait(cmd *exec.Cmd) error {
 	return err
 }
 
-// checkPath accepts every path: Mercurial uses byte paths on Unix.
-func checkPath(string) error { return nil }
+// CheckPath accepts every path: Mercurial uses byte paths on Unix.
+func CheckPath(string) error { return nil }
 
 func localEncoding() string { return "utf-8" }

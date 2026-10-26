@@ -64,7 +64,7 @@ func NewRunner(cfg Config) (*Runner, error) {
 	if !filepath.IsAbs(cfg.ConfigPath) || strings.ContainsRune(cfg.ConfigPath, os.PathListSeparator) {
 		return nil, fmt.Errorf("hg: managed config path %q must be absolute and contain no %q", cfg.ConfigPath, os.PathListSeparator)
 	}
-	if err := checkPath(cfg.ConfigPath); err != nil {
+	if err := CheckPath(cfg.ConfigPath); err != nil {
 		return nil, err
 	}
 	// Repository-less commands run in the config directory, and Mercurial
@@ -289,7 +289,7 @@ func (r *Runner) command(repoPath string, args []string, env map[string]string) 
 		if !filepath.IsAbs(repoPath) {
 			return nil, fmt.Errorf("hg: repository path %q is not absolute", repoPath)
 		}
-		if err := checkPath(repoPath); err != nil {
+		if err := CheckPath(repoPath); err != nil {
 			return nil, err
 		}
 		dir = repoPath

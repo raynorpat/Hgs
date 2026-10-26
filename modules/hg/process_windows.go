@@ -118,9 +118,9 @@ func (t *processTree) wait(cmd *exec.Cmd) error {
 
 var procWideCharToMultiByte = windows.NewLazySystemDLL("kernel32.dll").NewProc("WideCharToMultiByte")
 
-// checkPath rejects paths outside the ANSI code page: Mercurial on Windows
+// CheckPath rejects paths outside the ANSI code page: Mercurial on Windows
 // encodes file names with it, and would otherwise fail or mangle them.
-func checkPath(p string) error {
+func CheckPath(p string) error {
 	const cpUTF8, wcNoBestFitChars = 65001, 0x400
 	if windows.GetACP() == cpUTF8 {
 		return nil

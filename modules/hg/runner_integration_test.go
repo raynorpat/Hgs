@@ -39,7 +39,7 @@ func TestRunnerRealMercurial(t *testing.T) {
 
 func checkRealMercurial(t *testing.T, exe string) {
 	// Windows Mercurial uses the ANSI code page for file names, so non-Latin
-	// names are covered only off Windows; checkPath rejects them there.
+	// names are covered only off Windows; CheckPath rejects them there.
 	name := "hg runner é ü"
 	if runtime.GOOS != "windows" {
 		name += " 漢字"
