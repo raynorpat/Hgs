@@ -2,7 +2,7 @@
 
 Date: 2026-10-26
 
-Status: Draft for user approval. The user selected the shared UI refactor; this document and its proposed product defaults are not yet approved. No product implementation is authorized by this document alone.
+Status: Approved by the user on 2026-10-26, including the Issues coverage and shared design system. Implementation planning is authorized. The landing-page/logo work remains a follow-on phase whose composition needs a separate design review. Approval does not waive the transport or merge-feasibility prerequisites below.
 
 Builder check: A fresh reviewer identified two consequential ambiguities: cross-named-branch ancestor merges and authority to assign reviewers/block merging. Both are resolved below as explicit author-proposed defaults, and the reviewer confirmed both questions are answered. This review checks design completeness, not implementation correctness or transport feasibility.
 
@@ -258,4 +258,4 @@ The following are command-level evidence, not proof of our complete merge design
 
 ## Approval
 
-Approval of this document accepts the shared UI coverage, fork-based PR workflow, proposed defaults above, and dependency on the existing Mercurial gate. The next step is an implementation plan, not immediate product edits. The historical hosting design remains unchanged until the accepted scope delta is recorded during plan integration.
+The user approved the shared UI coverage, fork-based PR workflow, proposed defaults above, and dependency on the existing Mercurial gate on 2026-10-26. The next step is the [implementation plan](../plans/2026-10-26-shared-ui-and-pull-requests.md), not immediate product edits. The historical hosting design remains valid except for the explicit scope extensions recorded here; the plan defines their integration order.

@@ -1,6 +1,6 @@
 # Gogs design system
 
-Status: Proposed design system for the shared UI refactor. The user selected the visual direction and shared-component approach; the complete implementation design remains pending approval.
+Status: Approved with the shared UI design on 2026-10-26. The landing-page/logo follow-on remains to be designed separately; its tentative mascot composition is not approved artwork.
 
 Updated: 2026-10-26
 
@@ -13,7 +13,7 @@ The visual direction comes from the user's Bitbucket screenshots: blue navigatio
 - [Project design and behavior](superpowers/specs/2026-10-26-shared-ui-and-pull-requests-design.md)
 - [Saved interactive layout study](superpowers/specs/references/2026-10-26-bitbucket-layout-study.html)
 
-This document defines the shared design system. The project design defines scope, permissions, Mercurial behavior, and implementation prerequisites. The layout study illustrates appearance; its sample data and placeholder controls are not production requirements. Token names and values below are a proposed implementation contract, not a claim that the application already uses them.
+This document defines the shared design system. The project design defines scope, permissions, Mercurial behavior, and implementation prerequisites. The layout study illustrates appearance; its sample data and placeholder controls are not production requirements. Token names and values below are the implementation baseline, not a claim that the application already uses them.
 
 ## Principles
 
