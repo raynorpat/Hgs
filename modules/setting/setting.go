@@ -121,6 +121,14 @@ var (
 		} `ini:"git.fsck"`
 	}
 
+	// Mercurial settings.
+	Mercurial struct {
+		Executable     string
+		ConfigPath     string
+		MaxProcesses   int
+		SessionTimeout time.Duration
+	}
+
 	// I18n settings.
 	Langs, Names []string
 
@@ -310,6 +318,15 @@ func NewConfigContext() {
 	if err = Cfg.Section("git").MapTo(&Git); err != nil {
 		log.Fatal(4, "Fail to map Git settings: %v", err)
 	}
+
+	sec = Cfg.Section("mercurial")
+	Mercurial.Executable = sec.Key("EXECUTABLE").String()
+	Mercurial.ConfigPath = sec.Key("CONFIG_PATH").MustString(filepath.Join(workDir, "data", "hg", "hgrc"))
+	if !filepath.IsAbs(Mercurial.ConfigPath) {
+		Mercurial.ConfigPath = filepath.Join(workDir, Mercurial.ConfigPath)
+	}
+	Mercurial.MaxProcesses = sec.Key("MAX_PROCESSES").MustInt(8)
+	Mercurial.SessionTimeout = time.Duration(sec.Key("SESSION_TIMEOUT").MustInt(30)) * time.Minute
 
 	Langs = Cfg.Section("i18n").Key("LANGS").Strings(",")
 	Names = Cfg.Section("i18n").Key("NAMES").Strings(",")

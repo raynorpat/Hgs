@@ -29,6 +29,7 @@ require (
 	github.com/russross/blackfriday v0.0.0-20150211082251-77efab57b2f7
 	golang.org/x/crypto v0.58.0
 	golang.org/x/net v0.61.0
+	golang.org/x/sys v0.49.0
 	golang.org/x/text v0.43.0
 	gopkg.in/ini.v1 v1.0.0-20150204104954-4febc4104c32
 	modernc.org/sqlite v1.60.1
@@ -45,7 +46,6 @@ require (
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect
 	github.com/shurcooL/sanitized_anchor_name v1.0.0 // indirect
 	github.com/smartystreets/goconvey v1.8.1 // indirect
-	golang.org/x/sys v0.49.0 // indirect
 	gopkg.in/bufio.v1 v1.0.0-20140618132640-567b2bfa514e // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/redis.v2 v2.3.2 // indirect

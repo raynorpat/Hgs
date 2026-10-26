@@ -41,7 +41,7 @@ Substitutions and additions, each with its reason:
 | New transitive modules from modernc.org/sqlite | `github.com/dustin/go-humanize` v1.1.0, `github.com/google/uuid` v1.6.0, `github.com/mattn/go-isatty` v0.0.24, `github.com/ncruces/go-strftime` v1.1.0, `github.com/remyoudompheng/bigfft` v0.0.0-20230129092748-24d4a6f8daec (plus the `modernc.org/*` runtime modules in `go.sum`) | Required by the driver. |
 | `golang.org/x/net`, `golang.org/x/text` | v0.61.0, v0.43.0 | `.gopmfile` listed these without a commit (unpinned); pinned to maintained releases compatible with Go 1.27.3. |
 | `golang.org/x/crypto` | v0.58.0 | Imported by `modules/ssh` but not pinned in `.gopmfile`; pinned to a maintained release. |
-| `golang.org/x/sys` | v0.49.0 (indirect) | Required by the above; maintained version for Go 1.27.3. |
+| `golang.org/x/sys` | v0.49.0 | Required by the above; used directly by `modules/hg` for Windows Job Objects and Unix process waits. Maintained version for Go 1.27.3. |
 | `github.com/mattn/go-sqlite3` | legacy pin kept as `// indirect` | Kept as `// indirect` because `go mod why -m` shows only `go-xorm/core`'s test package imports it; the application does not (not compiled in). |
 
 No other dependency was replaced, upgraded or removed.
