@@ -22,6 +22,7 @@ The screenshots and iterated mockup are the visual reference, rather than an att
 - Put global Pull requests below Organizations. Put repository Pull requests above Issues.
 - Center the account avatar horizontally and vertically inside its hover/focus square.
 - Include the Admin panel in the shared design.
+- Include global and repository Issues pages, issue creation/detail/discussion, and label/milestone management in the shared UI refactor.
 - Deliver working pull request creation, review, and merging, including contributions from forks.
 
 Anything below described as a proposed default or implementation choice is the author's recommendation for approval, not an earlier user instruction.
@@ -78,7 +79,7 @@ The mockup contains sample data and placeholder controls. Those are design aids 
 
 ### Layout and navigation
 
-Use the [frozen layout study](references/2026-10-26-bitbucket-layout-study.html) for visual direction. It is an illustrative HTML artifact, not application source or a complete behavioral specification. This document wins where the prototype's sample behavior differs.
+Use the [frozen layout study](references/2026-10-26-bitbucket-layout-study.html) for visual direction and [the shared design system](../../DESIGN.md) for tokens, typography, spacing, components, and interaction rules. The HTML is an illustrative artifact, not application source or a complete behavioral specification. This document governs product behavior; `docs/DESIGN.md` specifies the shared visual system. Both take precedence over the prototype's sample behavior.
 
 At desktop widths, the left side contains a roughly 56px utility rail and a roughly 208px contextual menu. Use shared spacing/color/type tokens so these measurements can be tuned without editing every page. The main area expands with the viewport; dense tables can scroll within their content region.
 
@@ -107,6 +108,8 @@ Create opens a menu with Create repository, linking to the real shared form. Off
 ### Page coverage and components
 
 Migrate workspace dashboard/list views; repository source/file/history/diff/branches, issues/comments/labels/milestones, create/fork/settings/collaborators; organization/team/member/settings pages; account profile/settings/security; and all existing Admin pages. Authentication, installer, and error pages use the same tokens/forms/alerts with a reduced layout appropriate to anonymous access. Mail templates are not part of the visual refactor.
+
+Issues coverage explicitly includes the global cross-repository Issues list, repository issue lists and existing filters/pagination, creation forms, issue detail/discussion, attachments, label management, and milestone pages. Reuse the shared page header, list/table, badges, Markdown editor, metadata controls, alerts, and discussion components. Preserve existing assignment, labeling, milestone, edit/comment, close/reopen, attachment permissions, and notification behavior. Global rows identify their repository; counts and filters exclude inaccessible data. Repository Issues stays immediately below Pull requests. No legacy Bootstrap issue-page shell remains at completion. This is a presentation refactor of existing issue workflows, not a new issue state machine or Kanban board.
 
 Admin Overview presents actual service statistics and supported maintenance operations. User, organization, repository, and authentication-source management use shared tables/forms. Configuration stays read-only where it is read-only today. Notices/monitoring show supported data. Old Git-only maintenance must not be relabeled as Mercurial actions. Mutation controls use CSRF-protected POST requests and explicit confirmation for destructive operations, preserving their authorization and intended behavior.
 
@@ -216,7 +219,7 @@ This is one coordinated application project with ordered milestones, not two sep
 
 Meaningful acceptance cases include:
 
-- Side-by-side visual checks of dashboard, Explore, source, issue list/detail, PR list/detail, forms, and Admin overview/users/configuration at desktop and narrow widths. Avatar centers exactly in its hit target. No leftover old top navigation or Bootstrap-style page islands.
+- Side-by-side visual checks of dashboard, Explore, source, global/repository issue lists, issue creation/detail, label/milestone management, PR list/detail, forms, and Admin overview/users/configuration at desktop and narrow widths. Avatar centers exactly in its hit target. No leftover old top navigation or Bootstrap-style page islands. Check shared tokens/components against `docs/DESIGN.md`.
 - Keyboard opening/closing/focus restoration for every popout and drawer; error announcement, visible focus, contrast, long names, empty/error/loading states, and sub-URL links. Search cancellation must not display stale results for a newer query.
 - Explore/Search/Recents and all counts immediately omit deleted/revoked private repositories. Recents deduplicates, survives rename and a new browser session, and isolates accounts. Guest pages preserve sign-in policy.
 - Existing issue create/comment/label/assign/milestone/close/reopen, team permissions, account settings, and Admin mutations retain behavior and authorization. No real maintenance action runs in a visual test.
