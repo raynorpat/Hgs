@@ -352,8 +352,9 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 	})
 
 	// Gravatar service.
-	avt := avatar.CacheServer("public/img/avatar/", "public/img/avatar_default.jpg")
-	os.MkdirAll("public/img/avatar/", os.ModePerm)
+	avatarCache := path.Join(setting.StaticRootPath, "public/img/avatar")
+	avt := avatar.CacheServer(avatarCache, path.Join(setting.StaticRootPath, "public/img/avatar_default.jpg"))
+	os.MkdirAll(avatarCache, os.ModePerm)
 	m.Get("/avatar/:hash", avt.ServeHTTP)
 
 	adminReq := middleware.Toggle(&middleware.ToggleOptions{SignInRequire: true, AdminRequire: true})

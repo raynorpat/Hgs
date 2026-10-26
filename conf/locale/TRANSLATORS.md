@@ -1,5 +1,4 @@
 # This file lists all PUBLIC individuals having contributed content to the translation.
-# Order of name is meaningless.
 
 Akihiro YAGASAKI <yaggytter@momiage.com>
 Christoph Kisfeld <christoph.kisfeld@gmail.com>

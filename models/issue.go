@@ -292,6 +292,7 @@ func NewIssueUserPairs(rid, iid, oid, pid, aid int64) (err error) {
 
 	isNeedAddPoster := true
 	for _, u := range us {
+		iu.Id = 0
 		iu.Uid = u.Id
 		iu.IsPoster = iu.Uid == pid
 		if isNeedAddPoster && iu.IsPoster {
@@ -303,6 +304,7 @@ func NewIssueUserPairs(rid, iid, oid, pid, aid int64) (err error) {
 		}
 	}
 	if isNeedAddPoster {
+		iu.Id = 0
 		iu.Uid = pid
 		iu.IsPoster = true
 		iu.IsAssigned = iu.Uid == aid

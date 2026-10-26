@@ -38,6 +38,8 @@ type application struct {
 	client, inspect                                                     *hgCmd
 	server                                                              *hg.Runner
 	child                                                               *hg.Child
+	lastCleanStop                                                       bool
+	direct                                                              bool
 	output                                                              sync.WaitGroup
 	users                                                               map[string]*models.User
 	keys                                                                map[string]string
@@ -67,20 +69,36 @@ func newApplication(t *testing.T, v versions) *application {
 	if assets == "" {
 		assets, _ = filepath.Abs("../..")
 	}
+	a.direct = os.Getenv("GOGS_TEST_PACKAGE_DIRECT") == "1"
 	app := filepath.Join(a.root, "app")
 	if err := os.MkdirAll(app, 0700); err != nil {
 		t.Fatal(err)
 	}
-	a.binary = filepath.Join(app, filepath.Base(gogsExe))
-	b, err := os.ReadFile(gogsExe)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = os.WriteFile(a.binary, b, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err = os.CopyFS(filepath.Join(app, "conf"), os.DirFS(filepath.Join(assets, "conf"))); err != nil {
-		t.Fatal(err)
+	var err error
+	if a.direct {
+		a.binary, err = filepath.Abs(gogsExe)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assets, err = filepath.Abs(assets)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if os.Getenv("GOGS_TEST_BINARY") == "" || filepath.Dir(a.binary) != assets {
+			t.Fatal("direct package requires binary and assets in the same extracted directory")
+		}
+	} else {
+		a.binary = filepath.Join(app, filepath.Base(gogsExe))
+		b, err := os.ReadFile(gogsExe)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(a.binary, b, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err = os.CopyFS(filepath.Join(app, "conf"), os.DirFS(filepath.Join(assets, "conf"))); err != nil {
+			t.Fatal(err)
+		}
 	}
 	cert, certPath := localhostCert(t, a.root)
 	a.cacerts = certPath
@@ -178,6 +196,9 @@ PROVIDER = memory
 MODE = console
 ROOT_PATH = %s
 `, runUser, httpPort, httpPort, filepath.ToSlash(assets), filepath.ToSlash(certPath), filepath.ToSlash(keyPath), a.sshAddress, sshPort, filepath.ToSlash(filepath.Join(a.root, "hostkey")), models.DbCfg.Path, filepath.ToSlash(a.repoRoot), filepath.ToSlash(v.server), filepath.ToSlash(filepath.Join(a.root, "managed", "hgrc")), filepath.ToSlash(filepath.Join(a.root, "log")))
+	if a.direct {
+		config = strings.Replace(config, "PROVIDER = memory", "PROVIDER = file\nPROVIDER_CONFIG = "+filepath.ToSlash(filepath.Join(a.root, "sessions")), 1)
+	}
 	if err = os.WriteFile(a.config, []byte(config), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +209,7 @@ ROOT_PATH = %s
 	}
 	a.client = newHgCmd(t, v.client, filepath.Join(a.root, "client"), 4)
 	a.inspect = newHgCmd(t, hgPath(t), filepath.Join(a.root, "inspect"), 4)
-	a.start()
+	a.start(t)
 	hostKey, err := os.ReadFile(filepath.Join(a.root, "hostkey"))
 	if err != nil {
 		t.Fatal(err)
@@ -204,21 +225,35 @@ ROOT_PATH = %s
 	return a
 }
 
-func (a *application) start() {
-	a.t.Helper()
+func (a *application) start(t *testing.T) {
+	t.Helper()
 	if err := os.Remove(filepath.Join(a.root, "application.pid")); err != nil && !os.IsNotExist(err) {
-		a.t.Fatal(err)
+		t.Fatal(err)
 	}
 	_, port, _ := net.SplitHostPort(a.address)
-	env, _ := json.Marshal(os.Environ())
-	c, err := a.server.Start(context.Background(), "", []string{"-test.run=^TestApplicationProcessChild$"}, map[string]string{"GOGS_HG_APPLICATION_BINARY": a.binary, "GOGS_HG_APPLICATION_CONFIG": a.config, "GOGS_HG_APPLICATION_PORT": port, "GOGS_HG_APPLICATION_ENV": string(env)})
+	applicationEnv := os.Environ()
+	if a.direct {
+		// Server runtime has no Git or SSH utilities on PATH. Native test
+		// clients retain their separate environment and explicit SSH path.
+		for k, v := range map[string]string{"PATH": os.Getenv("GOGS_TEST_SERVER_PATH"), "HOME": filepath.Join(a.root, "operator-home"), "USERPROFILE": filepath.Join(a.root, "operator-home"), "GOGS_CUSTOM": filepath.Join(a.root, "custom")} {
+			applicationEnv = replaceEnv(applicationEnv, k, v)
+			if k == "PATH" {
+				continue
+			}
+			if err := os.MkdirAll(v, 0700); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	env, _ := json.Marshal(applicationEnv)
+	c, err := a.server.Start(context.Background(), "", []string{"-test.run=^TestApplicationProcessChild$"}, map[string]string{"GOGS_HG_APPLICATION_BINARY": a.binary, "GOGS_HG_APPLICATION_CWD": a.root, "GOGS_HG_APPLICATION_CONFIG": a.config, "GOGS_HG_APPLICATION_PORT": port, "GOGS_HG_APPLICATION_ENV": string(env)})
 	if err != nil {
-		a.t.Fatal(err)
+		t.Fatal(err)
 	}
 	a.child = c
 	f, err := os.OpenFile(filepath.Join(a.root, "server.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
-		a.t.Fatal(err)
+		t.Fatal(err)
 	}
 	a.output.Add(1)
 	go func() {
@@ -245,7 +280,7 @@ func (a *application) start() {
 	}
 	a.stop()
 	b, _ := os.ReadFile(filepath.Join(a.root, "server.log"))
-	a.t.Fatalf("configured web process did not become ready:\n%s", b)
+	t.Fatalf("configured web process did not become ready:\n%s", b)
 }
 
 // Keep the native runner's process-tree ownership while restoring the normal
@@ -260,6 +295,8 @@ func TestApplicationProcessChild(t *testing.T) {
 	if err := json.Unmarshal([]byte(os.Getenv("GOGS_HG_APPLICATION_ENV")), &c.Env); err != nil {
 		t.Fatal(err)
 	}
+	c.Dir = os.Getenv("GOGS_HG_APPLICATION_CWD")
+	configureApplicationProcess(c)
 	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := c.Start(); err != nil {
 		t.Fatal(err)
@@ -284,7 +321,9 @@ func (a *application) stop() {
 	if !graceful {
 		cancel()
 	}
-	a.child.Stop(ctx)
+	stopErr := a.child.Stop(ctx)
+	a.lastCleanStop = graceful && stopErr == nil
+	a.t.Logf("application stop: signal=%t clean-exit=%t (%v)", graceful, a.lastCleanStop, stopErr)
 	cancel()
 	a.output.Wait()
 	a.child = nil
@@ -356,10 +395,21 @@ func TestHostingAcceptance(t *testing.T) {
 			}
 			before := snapshotRepository(t, a.inspect, filepath.Join(a.repoRoot, fmt.Sprint(a.repos["public"].Id)))
 			a.stop()
-			a.start()
+			a.start(t)
 			if diff := before.diff(snapshotRepository(t, a.inspect, filepath.Join(a.repoRoot, fmt.Sprint(a.repos["public"].Id)))); diff != "" {
 				t.Fatalf("accepted changes lost on process restart: %s", diff)
 			}
 		})
 	}
+}
+
+func replaceEnv(env []string, key, value string) []string {
+	out := make([]string, 0, len(env)+1)
+	for _, entry := range env {
+		k, _, _ := strings.Cut(entry, "=")
+		if !strings.EqualFold(k, key) {
+			out = append(out, entry)
+		}
+	}
+	return append(out, key+"="+value)
 }

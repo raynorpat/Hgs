@@ -290,23 +290,26 @@ func TestHostingMonitorKeyTokenMetadataAndOriginalGrant(t *testing.T) {
 	if err := models.NewAccessToken(token); err != nil {
 		t.Fatal(err)
 	}
-	canceled := make(chan struct{}, 10)
-	add := func(g hgbridge.Grant) func() {
+	add := func(g hgbridge.Grant) (func(), <-chan struct{}) {
 		t.Helper()
-		release, err := s.Register(g, func() { canceled <- struct{}{} })
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+		release, err := s.Register(g, cancel)
 		if err != nil {
 			t.Fatal(err)
 		}
-		return release
+		return release, ctx.Done()
 	}
 	grant := hgbridge.Grant{Principal: hgbridge.Principal{UserID: alice.Id, TokenID: token.Id}, RepoID: repo.Id, CanWrite: true}
-	release := add(grant)
+	release, canceled := add(grant)
 	if err := models.DeleteAccessTokenById(token.Id); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.authorize(context.Background(), grant); err == nil {
 		t.Fatal("revoked token hook allowed")
 	}
+	s.sessions.check()
+	// CancelFunc may be called more than once for a tracked revoked entry.
 	s.sessions.check()
 	select {
 	case <-canceled:
@@ -316,7 +319,7 @@ func TestHostingMonitorKeyTokenMetadataAndOriginalGrant(t *testing.T) {
 	release()
 	// Metadata changes cancel even when the owner keeps effective access.
 	grant.Principal = passwordPrincipal(t, alice)
-	release = add(grant)
+	release, canceled = add(grant)
 	repo.IsPrivate = false
 	if err := models.UpdateRepository(repo); err != nil {
 		t.Fatal(err)
@@ -333,7 +336,7 @@ func TestHostingMonitorKeyTokenMetadataAndOriginalGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	reader := hgbridge.Grant{Principal: passwordPrincipal(t, bob), RepoID: repo.Id}
-	release = add(reader)
+	release, canceled = add(reader)
 	if err := models.AddAccess(&models.Access{UserId: bob.Id, RepoId: repo.Id, Mode: models.WRITABLE}); err != nil {
 		t.Fatal(err)
 	}
@@ -348,7 +351,7 @@ func TestHostingMonitorKeyTokenMetadataAndOriginalGrant(t *testing.T) {
 	}
 	release()
 	grant = hgbridge.Grant{Principal: passwordPrincipal(t, bob), RepoID: repo.Id, CanWrite: true}
-	release = add(grant)
+	release, canceled = add(grant)
 	if err := models.DeleteAccess(&models.Access{UserId: bob.Id, RepoId: repo.Id}); err != nil {
 		t.Fatal(err)
 	}

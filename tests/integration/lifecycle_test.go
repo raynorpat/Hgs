@@ -104,7 +104,7 @@ func TestHostingCommittedDisconnect(t *testing.T) {
 			}
 			disconnect()
 			a.stop()
-			a.start()
+			a.start(t)
 			if got := a.inspect.stdout(t, store, "log", "-r", tip, "-T", "{node}"); got != tip {
 				t.Fatal("committed push lost after disconnect/restart")
 			}
@@ -159,7 +159,7 @@ func TestHostingCredentialAndVisibilityChanges(t *testing.T) {
 		t.Fatal("visibility change admitted new anonymous session")
 	}
 	a.stop()
-	a.start()
+	a.start(t)
 	check(401)
 	// Persistent SSH host identity still permits an unchanged owner's key.
 	remote, opts = a.remote(t, transportSSH, "owner", "private")

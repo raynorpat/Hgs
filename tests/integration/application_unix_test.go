@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"testing"
 )
 
 func signalApplicationStop(pid int, binary, config string) bool {
@@ -59,4 +60,23 @@ func reapApplicationOrphans(markers ...string) ([]int, error) {
 		}
 	}
 	return killed, nil
+}
+
+func configureApplicationProcess(c *exec.Cmd) {}
+
+func protectPackageKey(t *testing.T, path string) {
+	t.Helper()
+	if err := os.Chmod(path, 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+func assertPackageKeyPrivate(t *testing.T, path string) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("host key permissions=%v", info.Mode())
+	}
 }
