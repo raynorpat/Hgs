@@ -99,7 +99,7 @@ Build tags (each gates one file): `cert` / `!cert` (`cmd/cert.go` vs stub), `red
 
 ## Tests
 
-Very few tests exist, all in `modules/` (`cron`, `ldap`, `auth/ldap`, `avatar`, `httplib`, `uuid`); `routers/` and `cmd/` have none; `models/` has only `TestSQLiteEngineRoundTrip` (`go test ./models`). `modules/ldap` tests dial a public LDAP server (`141.213.189.137:389`) that no longer responds, so they fail with connection timeouts (about 85s); everything else passes. Run one package or test with standard tooling:
+Very few tests exist, all in `modules/` (`cron`, `ldap`, `auth/ldap`, `avatar`, `httplib`, `uuid`); `cmd/` has none; `models/` has only `TestSQLiteEngineRoundTrip` and `routers/repo` only `TestUploadFilesIgnoresNonMultipartPost`. `modules/ldap` tests dial a public LDAP server (`141.213.189.137:389`) that no longer responds, so they fail with connection timeouts (about 85s); everything else passes. Run one package or test with standard tooling:
 
 ```sh
 go test ./modules/cron

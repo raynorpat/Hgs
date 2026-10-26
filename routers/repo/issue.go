@@ -644,7 +644,8 @@ func UpdateAssignee(ctx *middleware.Context) {
 }
 
 func uploadFiles(ctx *middleware.Context, issueId, commentId int64) {
-	if !setting.AttachmentEnabled {
+	// Non-multipart posts (e.g. URL-encoded) carry no attachments and leave MultipartForm nil.
+	if !setting.AttachmentEnabled || ctx.Req.MultipartForm == nil {
 		return
 	}
 
