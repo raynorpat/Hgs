@@ -58,16 +58,12 @@ func RepositoryAccessFor(userID, repoID int64) (RepositoryAccess, error) {
 	if has, err = x.Id(repo.OwnerId).Get(owner); err != nil {
 		return RepositoryAccess{}, err
 	} else if has && owner.IsOrganization() {
-		// Organization owners and admin-level teams administer the repository.
+		// Organization owners administer the repository; admin-level teams only
+		// get a WRITABLE row, as in RepoAssignment.
 		if access.Admin, err = x.Where("uid=?", u.Id).And("org_id=?", owner.Id).
 			And("is_owner=?", true).Get(new(OrgUser)); err != nil {
 			return RepositoryAccess{}, err
 		}
-		auth, err := getHighestAuthorize(x, owner.Id, u.Id, repo.Id, 0)
-		if err != nil {
-			return RepositoryAccess{}, err
-		}
-		access.Admin = access.Admin || auth == ORG_ADMIN
 	}
 
 	access.Write = access.Write || access.Admin

@@ -699,8 +699,8 @@ func getHighestAuthorize(e Engine, orgId, uid, repoId, teamId int64) (AuthorizeT
 		// Not current team and has given repository.
 		if t.Id != teamId && strings.Contains(t.RepoIds, "$"+com.ToStr(repoId)+"|") {
 			// Fast return.
-			if t.Authorize == ORG_ADMIN {
-				return ORG_ADMIN, nil
+			if t.Authorize == ORG_WRITABLE {
+				return ORG_WRITABLE, nil
 			}
 			if t.Authorize > auth {
 				auth = t.Authorize

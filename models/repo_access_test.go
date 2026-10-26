@@ -130,7 +130,7 @@ func TestRepositoryAccessMatrix(t *testing.T) {
 		{"disabled collaborator public", disabled.Id, public, none},
 		{"organization owner", orgOwner.Id, orgRepo, admin},
 		{"read team member", teamReader.Id, orgRepo, read},
-		{"admin team member", teamAdmin.Id, orgRepo, admin},
+		{"admin team member", teamAdmin.Id, orgRepo, write},
 		{"user outside organization", stranger.Id, orgRepo, none},
 		{"organization account itself", org.Id, orgRepo, none},
 	}
