@@ -714,7 +714,7 @@ func ChangeMilestoneStatus(m *Milestone, isClosed bool) (err error) {
 	} else {
 		repo.NumClosedMilestones--
 	}
-	if _, err = sess.Id(repo.Id).Update(repo); err != nil {
+	if _, err = sess.Id(repo.Id).Where("state = ?", RepositoryReady).Update(repo); err != nil {
 		sess.Rollback()
 		return err
 	}

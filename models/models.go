@@ -97,15 +97,6 @@ func getEngine() (*xorm.Engine, error) {
 	return xorm.NewEngine(DbCfg.Type, cnnstr)
 }
 
-func NewTestEngine(x *xorm.Engine) (err error) {
-	x, err = getEngine()
-	if err != nil {
-		return fmt.Errorf("connect to database: %v", err)
-	}
-
-	return x.Sync(tables...)
-}
-
 func SetEngine() (err error) {
 	x, err = getEngine()
 	if err != nil {

@@ -163,6 +163,11 @@ type Repository struct {
 	ForkId   int64
 	ForkRepo *Repository `xorm:"-"`
 
+	// State and StorageNonce belong to the storage lifecycle and change
+	// only through repo_lifecycle.go.
+	State        RepositoryState `xorm:"VARCHAR(16) INDEX NOT NULL"`
+	StorageNonce string          `xorm:"VARCHAR(32) NOT NULL"`
+
 	Created time.Time `xorm:"CREATED"`
 	Updated time.Time `xorm:"UPDATED"`
 }
@@ -223,17 +228,10 @@ func (repo *Repository) DescriptionHtml() template.HTML {
 	return template.HTML(DescPattern.ReplaceAllStringFunc(base.Sanitizer.Sanitize(repo.Description), sanitize))
 }
 
-// IsRepositoryExist returns true if the repository with given name under user has already existed.
+// IsRepositoryExist returns true if the name under user is taken by a
+// repository in any lifecycle state.
 func IsRepositoryExist(u *User, repoName string) (bool, error) {
-	repo := Repository{OwnerId: u.Id}
-	has, err := x.Where("lower_name = ?", strings.ToLower(repoName)).Get(&repo)
-	if err != nil {
-		return has, err
-	} else if !has {
-		return false, nil
-	}
-
-	return com.IsDir(RepoPath(u.Name, repoName)), nil
+	return x.Where("lower_name = ?", strings.ToLower(repoName)).Get(&Repository{OwnerId: u.Id})
 }
 
 // CloneLink represents different types of clone URLs of repository.
@@ -669,7 +667,7 @@ func CreateRepository(u *User, name, desc, lang, license string, private, mirror
 
 // CountRepositories returns number of repositories.
 func CountRepositories() int64 {
-	count, _ := x.Count(new(Repository))
+	count, _ := x.Where("state = ?", RepositoryReady).Count(new(Repository))
 	return count
 }
 
@@ -677,7 +675,7 @@ func CountRepositories() int64 {
 // It also auto-gets corresponding users.
 func GetRepositoriesWithUsers(num, offset int) ([]*Repository, error) {
 	repos := make([]*Repository, 0, num)
-	if err := x.Limit(num, offset).Asc("id").Find(&repos); err != nil {
+	if err := x.Where("state = ?", RepositoryReady).Limit(num, offset).Asc("id").Find(&repos); err != nil {
 		return nil, err
 	}
 
@@ -744,7 +742,7 @@ func TransferOwnership(u *User, newOwner string, repo *Repository) error {
 
 	// Update repository.
 	repo.OwnerId = newUser.Id
-	if _, err := sess.Id(repo.Id).Update(repo); err != nil {
+	if _, err := sess.Id(repo.Id).Where("state = ?", RepositoryReady).Update(repo); err != nil {
 		sess.Rollback()
 		return err
 	}
@@ -809,12 +807,6 @@ func TransferOwnership(u *User, newOwner string, repo *Repository) error {
 		}
 	}
 
-	// Change repository directory name.
-	if err = os.Rename(RepoPath(owner.Name, repo.Name), RepoPath(newUser.Name, repo.Name)); err != nil {
-		sess.Rollback()
-		return err
-	}
-
 	if err = sess.Commit(); err != nil {
 		return err
 	}
@@ -830,19 +822,29 @@ func TransferOwnership(u *User, newOwner string, repo *Repository) error {
 	return nil
 }
 
-// ChangeRepositoryName changes all corresponding setting from old repository name to new one.
-func ChangeRepositoryName(userName, oldRepoName, newRepoName string) (err error) {
-	userName = strings.ToLower(userName)
-	oldRepoName = strings.ToLower(oldRepoName)
-	newRepoName = strings.ToLower(newRepoName)
-	if !IsLegalName(newRepoName) {
+// ChangeRepositoryName renames a ready repository. Storage is keyed by ID,
+// so nothing on disk or in access rows changes.
+func ChangeRepositoryName(repoID int64, newRepoName string) error {
+	if !isValidRepoName(newRepoName) {
 		return ErrRepoNameIllegal
 	}
-
-	// Change repository directory name.
-	return os.Rename(RepoPath(userName, oldRepoName), RepoPath(userName, newRepoName))
+	repo, err := GetRepositoryById(repoID)
+	if err != nil {
+		return err
+	}
+	if has, err := x.Where("owner_id = ?", repo.OwnerId).And("lower_name = ?", strings.ToLower(newRepoName)).
+		And("id != ?", repoID).Get(new(Repository)); err != nil {
+		return err
+	} else if has {
+		return ErrRepoAlreadyExist
+	}
+	_, err = x.Exec("UPDATE `repository` SET name = ?, lower_name = ? WHERE id = ? AND state = ?",
+		newRepoName, strings.ToLower(newRepoName), repoID, RepositoryReady)
+	return err
 }
 
+// UpdateRepository saves a repository loaded from the database. Rows that
+// are no longer ready are left unchanged.
 func UpdateRepository(repo *Repository) error {
 	repo.LowerName = strings.ToLower(repo.Name)
 
@@ -852,11 +854,12 @@ func UpdateRepository(repo *Repository) error {
 	if len(repo.Website) > 255 {
 		repo.Website = repo.Website[:255]
 	}
-	_, err := x.Id(repo.Id).AllCols().Update(repo)
+	_, err := x.Id(repo.Id).Where("state = ?", RepositoryReady).AllCols().Update(repo)
 	return err
 }
 
-// DeleteRepository deletes a repository for a user or organization.
+// DeleteRepository deletes the database rows of a repository for a user or
+// organization. Only DeleteHgRepository removes repository storage.
 func DeleteRepository(uid, repoId int64, userName string) error {
 	repo := &Repository{Id: repoId, OwnerId: uid}
 	has, err := x.Get(repo)
@@ -865,6 +868,12 @@ func DeleteRepository(uid, repoId int64, userName string) error {
 	} else if !has {
 		return ErrRepoNotExist
 	}
+	return deleteRepositoryRows(repo)
+}
+
+// deleteRepositoryRows deletes a repository row and its related rows.
+func deleteRepositoryRows(repo *Repository) error {
+	uid, repoId := repo.OwnerId, repo.Id
 
 	// In case is a organization.
 	org, err := GetUserById(uid)
@@ -963,14 +972,6 @@ func DeleteRepository(uid, repoId int64, userName string) error {
 		return err
 	}
 
-	// Remove repository files.
-	if err = os.RemoveAll(RepoPath(userName, repo.Name)); err != nil {
-		desc := fmt.Sprintf("Fail to delete repository files(%s/%s): %v", userName, repo.Name, err)
-		log.Warn(desc)
-		if err = CreateRepositoryNotice(desc); err != nil {
-			log.Error(4, "Fail to add notice: %v", err)
-		}
-	}
 	return sess.Commit()
 }
 
@@ -1000,7 +1001,7 @@ func GetRepositoryByName(uid int64, repoName string) (*Repository, error) {
 		OwnerId:   uid,
 		LowerName: strings.ToLower(repoName),
 	}
-	has, err := x.Get(repo)
+	has, err := x.Where("state = ?", RepositoryReady).Get(repo)
 	if err != nil {
 		return nil, err
 	} else if !has {
@@ -1012,7 +1013,7 @@ func GetRepositoryByName(uid int64, repoName string) (*Repository, error) {
 // GetRepositoryById returns the repository by given id if exists.
 func GetRepositoryById(id int64) (*Repository, error) {
 	repo := &Repository{}
-	has, err := x.Id(id).Get(repo)
+	has, err := x.Id(id).Where("state = ?", RepositoryReady).Get(repo)
 	if err != nil {
 		return nil, err
 	} else if !has {
@@ -1024,9 +1025,9 @@ func GetRepositoryById(id int64) (*Repository, error) {
 // GetRepositories returns a list of repositories of given user.
 func GetRepositories(uid int64, private bool) ([]*Repository, error) {
 	repos := make([]*Repository, 0, 10)
-	sess := x.Desc("updated")
+	sess := x.Where("state = ?", RepositoryReady).Desc("updated")
 	if !private {
-		sess.Where("is_private=?", false)
+		sess.And("is_private=?", false)
 	}
 
 	err := sess.Find(&repos, &Repository{OwnerId: uid})
@@ -1035,7 +1036,7 @@ func GetRepositories(uid int64, private bool) ([]*Repository, error) {
 
 // GetRecentUpdatedRepositories returns the list of repositories that are recently updated.
 func GetRecentUpdatedRepositories(num int) (repos []*Repository, err error) {
-	err = x.Where("is_private=?", false).Limit(num).Desc("updated").Find(&repos)
+	err = x.Where("is_private=?", false).And("state = ?", RepositoryReady).Limit(num).Desc("updated").Find(&repos)
 	return repos, err
 }
 
@@ -1060,7 +1061,9 @@ func GetCollaborativeRepos(uid int64) ([]*CollaborativeRepository, error) {
 	repos := make([]*CollaborativeRepository, 0, 10)
 	for _, access := range accesses {
 		repo, err := GetRepositoryById(access.RepoId)
-		if err != nil {
+		if err == ErrRepoNotExist {
+			continue
+		} else if err != nil {
 			return nil, err
 		} else if repo.OwnerId == uid {
 			continue
@@ -1106,9 +1109,9 @@ func SearchRepositoryByName(opt SearchOption) (repos []*Repository, err error) {
 	repos = make([]*Repository, 0, opt.Limit)
 
 	// Append conditions.
-	sess := x.Limit(opt.Limit)
+	sess := x.Where("state = ?", RepositoryReady).Limit(opt.Limit)
 	if opt.Uid > 0 {
-		sess.Where("owner_id=?", opt.Uid)
+		sess.And("owner_id=?", opt.Uid)
 	}
 	if !opt.Private {
 		sess.And("is_private=false")

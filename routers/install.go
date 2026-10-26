@@ -14,7 +14,6 @@ import (
 
 	"github.com/Unknwon/com"
 	"github.com/Unknwon/macaron"
-	"github.com/go-xorm/xorm"
 	"gopkg.in/ini.v1"
 
 	"github.com/gogits/gogs/models"
@@ -140,15 +139,22 @@ func InstallPost(ctx *middleware.Context, form auth.InstallForm) {
 	models.DbCfg.SSLMode = form.SSLMode
 	models.DbCfg.Path = form.DbPath
 
-	// Set test engine.
-	var x *xorm.Engine
-	if err := models.NewTestEngine(x); err != nil {
+	// Test the database without changing it; there is no migration from an
+	// existing installation.
+	if err := models.CheckFreshInstall(form.RepoRootPath); errors.Is(err, models.ErrNotFreshInstall) {
+		ctx.RenderWithErr(err.Error(), INSTALL, &form)
+		return
+	} else if err != nil {
 		ctx.RenderWithErr(ctx.Tr("install.invalid_db_setting", err), INSTALL, &form)
 		return
 	}
 
 	// Test repository root path.
-	if err := os.MkdirAll(form.RepoRootPath, os.ModePerm); err != nil {
+	err := models.ValidateRepositoryRoot(form.RepoRootPath)
+	if err == nil {
+		err = os.MkdirAll(form.RepoRootPath, os.ModePerm)
+	}
+	if err != nil {
 		ctx.Data["Err_RepoRootPath"] = true
 		ctx.RenderWithErr(ctx.Tr("install.invalid_repo_path", err), INSTALL, &form)
 		return

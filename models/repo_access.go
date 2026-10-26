@@ -26,7 +26,7 @@ type RepositoryAccess struct {
 func RepositoryAccessFor(userID, repoID int64) (RepositoryAccess, error) {
 	var access RepositoryAccess
 	repo := new(Repository)
-	has, err := x.Id(repoID).Get(repo)
+	has, err := x.Id(repoID).Where("state = ?", RepositoryReady).Get(repo)
 	if err != nil {
 		return access, err
 	} else if !has {

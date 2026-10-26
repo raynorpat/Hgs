@@ -3,7 +3,6 @@ package models
 import (
 	"crypto/ed25519"
 	"crypto/rand"
-	"os"
 	"testing"
 
 	"golang.org/x/crypto/ssh"
@@ -22,7 +21,7 @@ func newAccessTestUser(t *testing.T, name string, active bool) *User {
 
 func newAccessTestRepo(t *testing.T, owner *User, name string, private bool) *Repository {
 	t.Helper()
-	repo := &Repository{OwnerId: owner.Id, Name: name, LowerName: name, IsPrivate: private}
+	repo := &Repository{OwnerId: owner.Id, Name: name, LowerName: name, IsPrivate: private, State: RepositoryReady}
 	if _, err := x.Insert(repo); err != nil {
 		t.Fatal(err)
 	}
@@ -181,9 +180,6 @@ func TestRepositoryAccessMatrix(t *testing.T) {
 	}
 	if got, err := RepositoryAccessFor(writer.Id, private.Id); err != nil || got != write {
 		t.Fatalf("writer after rename: %+v, %v", got, err)
-	}
-	if err = os.MkdirAll(RepoPath(owner.Name, private.Name), os.ModePerm); err != nil {
-		t.Fatal(err)
 	}
 	private.Owner = owner
 	if err = TransferOwnership(owner, stranger.Name, private); err != nil {

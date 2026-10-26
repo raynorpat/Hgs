@@ -7,7 +7,6 @@ package models
 import (
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/Unknwon/com"
@@ -121,11 +120,6 @@ func CreateOrganization(org, owner *User) (*User, error) {
 	}
 
 	if _, err = sess.Insert(org); err != nil {
-		sess.Rollback()
-		return nil, err
-	}
-
-	if err = os.MkdirAll(UserPath(org.Name), os.ModePerm); err != nil {
 		sess.Rollback()
 		return nil, err
 	}
@@ -459,7 +453,9 @@ func (t *Team) GetRepositories() error {
 			continue
 		}
 		repo, err := GetRepositoryById(id)
-		if err != nil {
+		if err == ErrRepoNotExist {
+			continue
+		} else if err != nil {
 			return err
 		}
 		t.Repos = append(t.Repos, repo)

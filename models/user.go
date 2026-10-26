@@ -308,9 +308,6 @@ func CreateUser(u *User) error {
 	if _, err = sess.Insert(u); err != nil {
 		sess.Rollback()
 		return err
-	} else if err = os.MkdirAll(UserPath(u.Name), os.ModePerm); err != nil {
-		sess.Rollback()
-		return err
 	} else if err = sess.Commit(); err != nil {
 		return err
 	}
@@ -390,16 +387,13 @@ func VerifyActiveEmailCode(code, email string) *EmailAddress {
 	return nil
 }
 
-// ChangeUserName changes all corresponding setting from old user name to new one.
+// ChangeUserName checks a new user name. Repository storage is keyed by
+// ID, so a rename changes nothing on disk.
 func ChangeUserName(u *User, newUserName string) (err error) {
 	if !IsLegalName(newUserName) {
 		return ErrUserNameIllegal
 	}
-
-	newUserName = strings.ToLower(newUserName)
-
-	// Change user directory name.
-	return os.Rename(UserPath(u.LowerName), UserPath(newUserName))
+	return nil
 }
 
 // UpdateUser updates user's information.
@@ -488,11 +482,6 @@ func DeleteUser(u *User) error {
 		if err = DeletePublicKey(key); err != nil {
 			return err
 		}
-	}
-
-	// Delete user directory.
-	if err = os.RemoveAll(UserPath(u.Name)); err != nil {
-		return err
 	}
 
 	_, err = x.Delete(u)

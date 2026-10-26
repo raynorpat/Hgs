@@ -21,9 +21,6 @@ type CreateRepoForm struct {
 	RepoName    string `form:"repo_name" binding:"Required;AlphaDashDot;MaxSize(100)"`
 	Private     bool   `form:"private"`
 	Description string `form:"desc" binding:"MaxSize(255)"`
-	AutoInit    bool   `form:"auto_init"`
-	Gitignore   string `form:"gitignore"`
-	License     string `form:"license"`
 }
 
 func (f *CreateRepoForm) Validate(ctx *macaron.Context, errs binding.Errors) binding.Errors {

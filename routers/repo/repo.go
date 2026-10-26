@@ -105,7 +105,7 @@ func CreatePost(ctx *middleware.Context, form auth.CreateRepoForm) {
 	}
 
 	repo, err := models.CreateRepository(ctxUser, form.RepoName, form.Description,
-		form.Gitignore, form.License, form.Private, false, form.AutoInit)
+		"", "", form.Private, false, false)
 	if err == nil {
 		log.Trace("Repository created: %s/%s", ctxUser.Name, repo.Name)
 		ctx.Redirect(setting.AppSubUrl + "/" + ctxUser.Name + "/" + repo.Name)
