@@ -11,11 +11,11 @@ Open index.html in a browser. profiles.js is local and requires no build, depend
 - Public versus authorized-member preview, repository filtering, independent Watch and Star controls, organization member list and responsive navigation.
 - Every organization People entry and sidebar member row opens that person's individual profile directly. The four sample profiles have separate names, handles, avatars and special README paths; URL fragments support direct links. Names and descriptions are illustrative.
 
-## Proposed activity semantics — awaiting design review
+## Approved activity direction
 
 Count changesets, opened issues, opened pull requests and submitted reviews. Repository creation may appear in the timeline without adding a calendar contribution. Attribute changesets through verified author-email associations, not the identity of the person who pushed. Deduplicate the same changeset across forks. Organization totals cover contributions to its repositories, not all work by its members elsewhere.
 
-Filter rows, repository names, daily counts and totals by the current viewer's repository access. Public views do not disclose private contribution counts. Use a documented timezone (UTC in this study); current-year data ends on October 26, 2026, and previous years are complete. Production design still needs precise attribution/history rules, indexing and rebuilding, permission revocation, edits/deletion and bounded pagination before implementation.
+Filter rows, repository names, daily counts and totals by the current viewer's repository access. Public views do not disclose private contribution counts. Use a documented timezone (UTC in this study); current-year data ends on October 26, 2026, and previous years are complete. The approved design system now defines production attribution/history rules, indexing and rebuilding, permission revocation, edits/deletion and bounded pagination; implementation Tasks 21–23 own them.
 
 The deterministic calendar is generated sample data. Summary categories add up to its displayed total. Monthly cards illustrate presentation and do not reconcile to that calendar; they are not a production event ledger. Member profile activity uses shared fixtures, not those people's actual history. Private-view controls simulate presentation only and are not an authorization implementation.
 
@@ -30,4 +30,4 @@ The deterministic calendar is generated sample data. Summary categories add up t
 - People tab navigation to Morgan Chen displays Morgan's name, avatar and morgan-chen/morgan-chen/README.md; updates the URL fragment and moves focus to the heading.
 - Mobile menu opens and closes, returning focus to its trigger. No browser console errors observed in these checks.
 
-Production code remains unchanged and the hosting prerequisite gate remains in force. This prototype is available for review; the new activity rules are not recorded as approved production scope.
+Production code remains unchanged and the hosting prerequisite gate remains in force. The user approved the profile pages and contribution tracking on 2026-10-26. This prototype is the visual reference; [DESIGN.md](../../DESIGN.md#approved-profiles-and-contribution-tracking) and implementation Tasks 21–23 define production behavior. Approval does not make the fixtures or prototype code production-ready.

@@ -1,6 +1,6 @@
 # Hgs design system
 
-Status: Shared UI, Hgs landing-page composition, and lab-coat/beaker Go Gopher artwork approved on 2026-10-26. The public-only, configuration-controlled landing Explore rule below is part of that approval. Production implementation remains subject to the existing prerequisite gate.
+Status: Shared UI, Hgs landing-page composition, lab-coat/beaker Go Gopher artwork, profile pages and contribution tracking approved on 2026-10-26. The public-only, configuration-controlled landing Explore rule below is part of that approval. Production implementation remains subject to the existing prerequisite gate.
 
 Updated: 2026-10-26
 
@@ -226,9 +226,39 @@ Show a subtle source-repository/README link beneath rendered content. Management
 
 Organization People entries link directly to the selected user profile. Make the avatar/name row a clear keyboard-accessible link; preserve normal navigation and permission rules for which memberships are visible.
 
-### Profile and activity prototype
+### Approved profiles and contribution tracking
 
-[Interactive profile study](prototypes/profiles/index.html) and [scope, proposed counting rules and preview checks](prototypes/profiles/README.md) illustrate user/organization READMEs, avatar states, contribution calendars and grouped activity. The prototype uses sample data. Contribution tracking is a proposal under review, not an approved production event model; resolve attribution, fork deduplication, visibility, timezone and indexing before adding its implementation tasks.
+Approved on 2026-10-26: the [interactive profile study](prototypes/profiles/index.html), user and organization profile layouts, README placement, avatar presentation, clickable People entries, contribution calendars, category summaries and grouped activity. [Prototype notes](prototypes/profiles/README.md) record the sample-data limitations. Rebuild the approved presentation with shared production components and real authorized data; omit prototype switches, fictional members, generated counts and placeholder destination dialogs.
+
+User profiles have Overview, Repositories and Activity tabs. Organization profiles additionally have People. People rows and sidebar member avatars/names are real links to the selected person's canonical profile, supporting keyboard use, opening in another tab and browser Back. Show only memberships visible under existing organization policy. Preserve existing organization management routes and owner-only controls. README content remains prominent below identity and above the tabs; Gravatar/upload/fallback rules below apply throughout.
+
+Overview combines repository summaries, the contribution calendar, activity breakdown and monthly timeline. Activity provides a focused calendar/timeline view. Keep independent Watch and Star controls. Organization calendars aggregate contributions to repositories currently owned by that organization, not members' unrelated work elsewhere; contributors need not currently be members. Issues belong to their containing repository; PR and review contributions belong to the destination repository, with source read access still required for visibility. Public People listings and repository contributor identity are distinct concepts.
+
+#### Counting and attribution
+
+The approved categories are changesets, opened issues, opened pull requests and submitted formal reviews. Repository creation appears in the timeline but adds no calendar count. Comments, stars, watches, pushes, reopening, merging and repeated review edits do not create extra contributions. A PR has one opening contribution; a reviewer has at most one review contribution per PR, dated at the first formal approval/request-changes submission. Current status can be shown separately from the historical contribution event.
+
+Implementation defaults: count every visible non-secret changeset in a ready repository, including non-default named branches and merge changesets. Attribute only by a uniquely matched, verified author-email association; do not credit the pusher, display-name match, avatar email or co-author text. Normalize email with trimming and case folding; do not strip plus tags or provider-specific dots. Preserve the full Mercurial node as the changeset identity. Within a user or organization scope, count the same node once even if several accessible repositories/forks contain it. Choose a stable accessible repository link for display; do not let an inaccessible copy suppress an accessible copy.
+
+Verification means completed email-ownership confirmation, not account activation alone. Existing code may automatically activate primary/additional email addresses when registration confirmation is disabled; those flags alone are insufficient. Record explicit verification evidence on successful confirmation, reuse existing account-email confirmation templates and token protections, and offer an owner-initiated Verify action with the existing 180-second resend limit when mail is configured. This does not change sign-in/registration eligibility or send unsolicited mail. Without verification, changesets remain unattributed to a user; organization repository totals can still include them. Never publish author-email lookup material. Email addition, removal or verification recomputes historical attribution; disputed/nonunique matches stay unattributed. These are authorship associations, not cryptographic proof that a commit author was truthful.
+
+Use original changeset author timestamps and canonical application creation/submission times, grouped into UTC dates with an explicit UTC label/help text. Do not use push/import time as authorship time. Exclude invalid/future timestamps until eligible. The current year ends at the current UTC date; earlier years include every date, including leap day. Year choices run from the first visible contribution year to the current year; show the current year with zeros for an empty profile. Ignore client-supplied sample years and totals.
+
+#### Visibility, correctness and lifecycle
+
+Apply current repository readiness, read permissions, private-fork ancestry and source-object visibility before counting, deduplication, grouping, pagination, year lists and links. PR/review events require read access to both endpoints. Public visitors see only public activity; do not expose anonymous private counts, empty private-year hints, repository names or identifiers. Authenticated visitors see only the subset they can currently read. Instance sign-in policy still applies.
+
+Repository transfer changes current organization scope; rename updates links without duplicating events. Deletion and visibility/access changes remove inaccessible contributions from the next response. Account deletion removes user attribution while retaining only source events allowed by the underlying deletion policy. Email reassignment requires renewed verification and no simultaneous ambiguous owner. Editing/reopening issues or PRs, retrying jobs and pushing identical nodes cannot inflate totals. Show current accessible titles/status from their canonical source, with escaped text; do not trust historical privacy flags or legacy recipient-fanned activity rows.
+
+Store a rebuildable event index using immutable IDs and per-repository node membership. Index committed changes asynchronously in bounded batches and reconcile on startup/periodically; no profile request scans full repository history. Do not modify the transport authorization/transaction gate to emit activity. Jobs use internal read-only maintenance authority with current repository lifecycle checks, never a saved user's grant. Rebuilding catches missed enqueue signals and excludes aborted pushes and unpublished PR comparison/merge artifacts. Query-time authorization remains authoritative during index lag. Expose an honest updating/unavailable state and last successful index time; never claim partial data is complete. Canonical-object deletion/permission checks take effect even before stale index entries are purged. Do not cache rendered profiles or totals across viewers.
+
+#### Interaction and acceptance
+
+Year selection updates the calendar, summary and timeline together. Day selection and category filters narrow the same underlying event set; Clear restores the yearly view. Summary totals reconcile with calendar totals and fully paginated activity; repository creation is separately identified as timeline-only. Group rows by UTC month, category and repository, with issue/PR/review status cards and accessible links to the actual event. Use deterministic newest-first cursor pagination, 25 groups by default and 50 maximum; Show more does not repeat/skip entries in a stable index snapshot. Revalidate visibility on every page and linked destination.
+
+Use shared light-theme tokens, five green intensity levels and a Less/More legend. Provide dates/counts through text and focus/hover details, keyboard day selection or an equivalent labeled date field, visible focus and an accessible list alternative. Do not rely on color alone or introduce hundreds of mandatory tab stops. On mobile the calendar scrolls within its own region; the document stays within the viewport. Keep calendar controls, clickable People rows and empty/loading/error states usable with keyboard, touch and text zoom.
+
+Tasks 19–20 supply READMEs/avatars; Tasks 21–23 supply verified attribution, event indexing, authorized aggregates and production profile presentation. Existing prerequisite gates and execution ownership remain unchanged.
 
 ## User profile icons and Gravatar
 
@@ -241,6 +271,26 @@ For the official Gravatar source, normalize the avatar email by trimming and low
 Keep dimensions stable, meaningful alt text and image-error fallbacks. The account rail remains a centered 28px circle inside its 40px control; profile images can be larger using the same source. With local caching enabled, use bounded HTTPS fetches/timeouts, validated image data, and a local fallback on remote failure. Test using a fake remote image service, never real user emails.
 
 References: [Gravatar identifier normalization](https://docs.gravatar.com/rest/hash/) and [avatar image requests](https://docs.gravatar.com/sdk/images/).
+
+## Final phase: maintenance and error pages
+
+The user requested these as the final parts of the implementation plan on 2026-10-26. Use a reduced Hgs layout with the beaker mark, shared typography, a single local illustration, a short heading/message and useful recovery links. Keep page text separate from the artwork. These pages must remain usable without a session, database, remote image server or full application navigation.
+
+| State | Illustration | Heading and actions |
+| --- | --- | --- |
+| Maintenance, HTTP 503 | The same Go Gopher wearing a hardhat, ready to work | "We'll be back soon." Explain that Hgs is undergoing maintenance; offer manual Check again and a minimal local Help view. |
+| Internal error, HTTP 500 | The Go Gopher in a lab coat, with soot/ruffled appearance as though a beaker experiment just exploded in front of him | "Something went wrong." Say the request could not be completed; offer Home and Help, and an opaque request ID when available. |
+| Not found, HTTP 404 | The Go Gopher in a lab coat, using a magnifying glass to search for something | "We couldn't find that page." Offer Home and Help without implying whether a private resource exists. |
+
+Match the approved landing Gopher's character, palette and illustration style. The 500 scene is a lighthearted, non-graphic lab mishap; no injury is needed. Keep a transparent background, retain Renee French/Go Gopher CC BY 4.0 attribution and adaptation credits, and package all images locally. At implementation time generate and inspect the new artwork against the existing mascot; these exact three assets have not been generated or individually approved yet. Use alt="" for decorative illustrations when adjacent text already communicates the status; image failure must not remove the explanation or actions.
+
+Implementation default: add startup configuration [server] MAINTENANCE_MODE=false, MAINTENANCE_MESSAGE="" and MAINTENANCE_RETRY_AFTER=300. The operator changes mode with a normal process restart; do not add a live Admin toggle, countdown, automatic restart, or promise that a page toggle drains writes. Retry-After accepts 60–86400 seconds and is a suggested retry interval, not a completion estimate. Escape the optional plain-text message and limit it to 300 characters.
+
+Configured maintenance-only startup runs before database/session/hosting initialization. Serve only the minimal status/help view and allowlisted local status assets, with all other web requests returning 503 and Retry-After. No login, installer, Admin, API mutation or repository transport bypass. API/native Mercurial clients receive a suitable non-HTML error; do not start the embedded SSH service in maintenance-only mode, and reject direct command transport entry points before opening storage. Outside maintenance mode preserve all normal authorization and transport guarantees. Existing operator graceful-stop procedures remain necessary before a restart.
+
+Return real 404, 500 and 503 status codes, Cache-Control: no-store, correct HEAD behavior, sub-URL-safe links and escaped localized text. Do not automatically refresh or replay a failed POST. Check again is a manual GET to the configured application root. Do not link to unavailable search or include GitHub bug-report marketing. Keep private-denial 404s indistinguishable from missing pages. Never expose raw ErrorMsg, traces, SQL, filesystem paths, credentials or request query strings; log diagnostics server-side, correlated by an opaque request ID.
+
+Render from preloaded standalone templates with a minimal plain-text fallback if rendering fails before headers are committed. A late streaming failure is logged and terminated; it cannot be converted into a clean new HTTP status after the response has begun. Verify all pages on desktop/mobile, keyboard/text zoom, two locales, missing images, unavailable dependencies, malformed URLs and simulated internal errors. Tasks 24–25 cover artwork, real routes/recovery, maintenance admission, packaging and final whole-branch acceptance.
 
 ## Account creation and first-run installation
 

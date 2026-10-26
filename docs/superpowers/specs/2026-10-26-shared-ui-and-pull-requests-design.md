@@ -271,6 +271,20 @@ Support the requested special repository conventions: a user's same-name reposit
 
 Preserve and modernize the existing Gravatar path in shared user-avatar components. Uploaded avatars take precedence, then configured Gravatar, then local fallback; honor disabled/cached/source settings and avatar email selection. Use official-source HTTPS and normalized SHA-256 identifiers consistently, local failure fallbacks and centered stable geometry. No third-party profile import is added. [The design system](../../DESIGN.md#user-and-organization-profile-readmes) provides exact layout, file-path, size, permission and avatar rules; implementation Tasks 19–20 cover these additions.
 
+## Approved profiles and contribution activity
+
+On 2026-10-26 the user approved the [profile prototype](../../prototypes/profiles/index.html), including user/organization README sections, Gravatar presentation, contribution calendars, grouped activity, and organization People entries that navigate directly to individual profiles. Use real canonical profile URLs, shared templates and permission-filtered membership lists; keep the prototype's sample data and controls out of production.
+
+Count changesets, opened issues, opened PRs and first formal reviews per reviewer/PR. Deduplicate changeset nodes across readable forks and attribute changesets by explicitly verified author-email ownership, never by pusher or automatically activated email flags. Repository creation is timeline-only. Organization activity covers its current repositories rather than all activity by its members. Dates use UTC; year/day/category controls, summaries and paginated groups derive from the same authorized data set.
+
+The [approved design system](../../DESIGN.md#approved-profiles-and-contribution-tracking) defines attribution, confirmation, deduplication, visibility, rebuilding, lifecycle, pagination and accessible UI defaults. User-scope changesets require a unique verified email; organization totals may include unattributed authors without exposing their email. Public counts exclude private activity entirely. PR/review visibility requires both endpoints. Rebuildable indexing must not bypass the hosting gate or index unpublished comparison artifacts. Implementation Tasks 21–23 deliver this scope after README/Gravatar Tasks 19–20.
+
+## Final maintenance and error-page phase
+
+After the approved profiles/contribution work, deliver maintenance (HTTP 503), internal-error (HTTP 500) and not-found (HTTP 404) pages in the shared reduced Hgs style. The user requested a hardhat Gopher for maintenance, a lab-coat Gopher reacting to an exploded experiment for 500, and a lab-coat Gopher searching with a magnifying glass for 404. Preserve mascot continuity, local assets and attribution; exact new artwork will be generated and inspected during implementation.
+
+The [design system](../../DESIGN.md#final-phase-maintenance-and-error-pages) defines copy, actions, startup-only configuration, protocol-aware maintenance admission, true status codes, no-store responses, sensitive-detail suppression and dependency-free rendering/fallbacks. Maintenance blocks web/API/transport work rather than simply changing the landing page; it does not introduce live toggles or replace safe operator shutdown procedures. Tasks 24–25 are the final implementation phase and include final validation of all earlier changes.
+
 ## Technical references
 
 The following are command-level evidence, not proof of our complete merge design:
