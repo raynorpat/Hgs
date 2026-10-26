@@ -109,12 +109,34 @@ remain installed behind both.
 
 ### TDD evidence
 
-All coverage existed before the suite, so RED was shown by mutation: with the
-deny hook changed to allow (`cmd/hg_hook.go`) and HTTPS reader workers given
-`web.allow-push=*`, all 36 reader cases failed on the assertion
-`operationSucceeded || !reflect.DeepEqual(before, after)` (33 with the
-operation reported as succeeded, 3 caught only by the state comparison). The
-mutation was reverted; the same cases pass.
+All coverage existed before the suite, so RED was shown by mutation. The
+mutation was never committed. It had two parts:
+
+- `cmd/hg_hook.go`: the `deny` mode returns nil instead of `errReadOnly`, so
+  the deny hooks allow everything.
+- `modules/hgbridge/http.go`: the HTTPS reader workers get exactly the writer
+  workers' push settings. `workerArgs(reader, "web.deny_push=*",
+  "web.allow-push=")` became `workerArgs(reader, "web.allow-push=*",
+  "web.push_ssl=false")`. This drops `deny_push` and disables `push_ssl`,
+  because hgweb's `checkauthz` checks `push_ssl` and then `deny_push` before
+  `allow-push`.
+
+Command, run with the mutation applied and then again after reverting it:
+
+```sh
+GOGS_TEST_HG=D:/github/gogs/.venv-hg/Scripts/hg.exe go test -tags integration \
+  ./tests/integration -run 'TestTransportMutationMatrix/.*/.*/reader' -count=1 -v -timeout 60m
+```
+
+| Run | HTTPS reader cases | SSH reader cases |
+| --- | --- | --- |
+| RED (mutated) | 18 of 18 failed on the reader assertion: 16 reported success, 2 caught only by the state comparison (obsolete-marker pushkey, stream bundle) | 18 of 18 failed: 17 reported success, 1 caught only by state (obsolete-marker pushkey) |
+| GREEN (reverted) | 18 of 18 passed | 18 of 18 passed |
+
+The RED run failed (304 s) and the GREEN run passed (`ok`, 278 s). Every RED
+failure came from the assertion
+`operationSucceeded || !reflect.DeepEqual(before, after)`; none came from a
+fixture error.
 
 The SSH hook-encoding bug (see "Other observations") was found by the first
 matrix run: every SSH writer case failed with "The system cannot find the path
