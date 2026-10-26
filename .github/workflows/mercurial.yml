@@ -24,6 +24,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
       - run: go mod verify
       - run: go build ./...
+      - run: go vet ./...
       - run: go test ./...
       - uses: actions/setup-python@v5
         with:
@@ -55,13 +56,21 @@ jobs:
       - name: Locate Mercurial
         shell: bash
         run: echo "GOGS_TEST_HG=$(python -c 'import shutil; print(shutil.which("hg"))')" >> "$GITHUB_ENV"
-      - run: go test -tags integration ./modules/hg ./modules/hgbridge ./modules/ssh ./tests/integration -count=1 -timeout 60m -v
+      - name: Require native prerequisites
+        shell: bash
+        run: |
+          test -f "$GOGS_TEST_HG"
+          "$GOGS_TEST_HG" --config extensions.hggit=! version --quiet
+          ssh -V
+      - run: go test -tags integration ./cmd ./models ./modules/hg ./modules/hgbridge ./modules/ssh ./modules/hosting ./routers/hg ./routers/repo ./tests/integration -count=1 -timeout 60m -v
 
   # The same suite with the Mercurial 5.0.2 server and 2.0.2 client rows,
   # which need Python 2.7 (from the runner's preinstalled conda).
   integration-legacy:
     needs: unit
     runs-on: ubuntu-latest
+    env:
+      GOGS_TEST_REQUIRE_LEGACY: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -88,4 +97,82 @@ jobs:
           printf '#!/bin/sh\nPYTHONPATH=%s/lib/python exec %s/bin/python %s/bin/hg "$@"\n' "$hg202" "$py27" "$hg202" > "$hg202/hg"
           chmod +x "$hg202/hg"
           echo "GOGS_TEST_HG_OLD_CLIENT=$hg202/hg" >> "$GITHUB_ENV"
-      - run: go test -tags integration ./modules/hg ./modules/hgbridge ./modules/ssh ./tests/integration -count=1 -timeout 60m -v
+      - name: Require all configured matrix runtimes
+        run: |
+          test -x "$GOGS_TEST_HG"
+          test -x "$GOGS_TEST_HG_OLD_SERVER"
+          test -x "$GOGS_TEST_HG_OLD_CLIENT"
+          ssh -V
+      - run: go test -tags integration ./cmd ./models ./modules/hg ./modules/hgbridge ./modules/ssh ./modules/hosting ./routers/hg ./routers/repo ./tests/integration -count=1 -timeout 60m -v
+
+  race:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      CGO_ENABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - uses: msys2/setup-msys2@v2
+        if: runner.os == 'Windows'
+        with:
+          install: mingw-w64-x86_64-gcc
+      - name: Configure native Windows compiler
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo 'C:/msys64/mingw64/bin' >> "$GITHUB_PATH"
+      - run: gcc --version
+      - run: go test -race ./modules/hg ./modules/hgbridge ./modules/ssh ./modules/hosting ./models -count=1 -timeout 15m
+
+  database:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - backend: mysql
+            port: 3306
+          - backend: postgres
+            port: 5432
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: gogs_test_acceptance
+          MYSQL_USER: gogs_test
+          MYSQL_PASSWORD: acceptance_test_password
+          MYSQL_ROOT_PASSWORD: isolated_service_root
+        ports: [3306:3306]
+        options: --health-cmd="mysqladmin ping -h localhost -pisolated_service_root" --health-interval=10s --health-timeout=5s --health-retries=12
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: gogs_test_acceptance
+          POSTGRES_USER: gogs_test
+          POSTGRES_PASSWORD: acceptance_test_password
+        ports: [5432:5432]
+        options: --health-cmd="pg_isready -U gogs_test -d gogs_test_acceptance" --health-interval=10s --health-timeout=5s --health-retries=12
+    env:
+      GOGS_TEST_DB_BACKEND: ${{ matrix.backend }}
+      GOGS_TEST_DB_HOST: 127.0.0.1:${{ matrix.port }}
+      GOGS_TEST_DB_NAME: gogs_test_acceptance
+      GOGS_TEST_DB_USER: gogs_test
+      GOGS_TEST_DB_PASSWORD: acceptance_test_password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned Mercurial
+        run: |
+          pip install mercurial==${{ env.HG_VERSION }}
+          echo "GOGS_TEST_HG=$(python -c 'import shutil; print(shutil.which("hg"))')" >> "$GITHUB_ENV"
+      - run: go test -tags integration ./models -run '^TestDatabaseAcceptance$' -count=1 -timeout 5m -v

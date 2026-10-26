@@ -1,0 +1,2 @@
+# Raw Mercurial protocol fixtures must not acquire CR path bytes on checkout.
+/modules/hg/testdata/** text eol=lf

@@ -64,9 +64,9 @@ func GetUserInfo(ctx *middleware.Context) {
 		if err == models.ErrUserNotExist {
 			ctx.Error(404)
 		} else {
-			ctx.JSON(500, &base.ApiJsonErr{"GetUserByName: " + err.Error(), base.DOC_URL})
+			ctx.JSON(500, &base.ApiJsonErr{Message: "GetUserByName: " + err.Error(), DocUrl: base.DOC_URL})
 		}
 		return
 	}
-	ctx.JSON(200, &api.User{u.Id, u.Name, u.FullName, u.Email, u.AvatarLink()})
+	ctx.JSON(200, &api.User{Id: u.Id, UserName: u.Name, FullName: u.FullName, Email: u.Email, AvatarUrl: u.AvatarLink()})
 }

@@ -110,28 +110,28 @@ func ListMyRepos(ctx *middleware.Context, provider hosting.Provider) {
 	}
 	ownRepos, err := models.GetRepositories(ctx.User.Id, true)
 	if err != nil {
-		ctx.JSON(500, &base.ApiJsonErr{"GetRepositories: " + err.Error(), base.DOC_URL})
+		ctx.JSON(500, &base.ApiJsonErr{Message: "GetRepositories: " + err.Error(), DocUrl: base.DOC_URL})
 		return
 	}
 	numOwnRepos := len(ownRepos)
 
 	collaRepos, err := models.GetCollaborativeRepos(ctx.User.Id)
 	if err != nil {
-		ctx.JSON(500, &base.ApiJsonErr{"GetCollaborativeRepos: " + err.Error(), base.DOC_URL})
+		ctx.JSON(500, &base.ApiJsonErr{Message: "GetCollaborativeRepos: " + err.Error(), DocUrl: base.DOC_URL})
 		return
 	}
 
 	repos := make([]*Repository, numOwnRepos+len(collaRepos))
 	for i := range ownRepos {
-		repos[i] = ToApiRepository(ctx.User, ownRepos[i], api.Permission{true, true, true}, service)
+		repos[i] = ToApiRepository(ctx.User, ownRepos[i], api.Permission{Admin: true, Push: true, Pull: true}, service)
 	}
 	for i := range collaRepos {
 		if err = collaRepos[i].GetOwner(); err != nil {
-			ctx.JSON(500, &base.ApiJsonErr{"GetOwner: " + err.Error(), base.DOC_URL})
+			ctx.JSON(500, &base.ApiJsonErr{Message: "GetOwner: " + err.Error(), DocUrl: base.DOC_URL})
 			return
 		}
 		j := i + numOwnRepos
-		repos[j] = ToApiRepository(collaRepos[i].Owner, collaRepos[i].Repository, api.Permission{false, collaRepos[i].CanPush, true}, service)
+		repos[j] = ToApiRepository(collaRepos[i].Owner, collaRepos[i].Repository, api.Permission{Admin: false, Push: collaRepos[i].CanPush, Pull: true}, service)
 
 		// FIXME: cache result to reduce DB query?
 		if collaRepos[i].Owner.IsOrganization() && collaRepos[i].Owner.IsOwnedBy(ctx.User.Id) {

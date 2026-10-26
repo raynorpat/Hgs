@@ -146,8 +146,4 @@ func Action(ctx *middleware.Context) {
 		return
 	}
 	ctx.Redirect(ctx.Repo.RepoLink)
-	return
-	ctx.JSON(200, map[string]interface{}{
-		"ok": true,
-	})
 }

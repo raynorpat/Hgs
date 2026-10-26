@@ -47,6 +47,10 @@ func fakeHostingHg(args []string) int {
 	case "log":
 		fmt.Printf(`[{"node":"%s"}]`, strings.Repeat("0", 40))
 	case "init":
+		if trace := os.Getenv("GOGS_HG_TEST_TRACE"); trace != "" {
+			cwd, _ := os.Getwd()
+			os.WriteFile(trace, []byte(fmt.Sprintf("%d\n%s", os.Getpid(), cwd)), 0600)
+		}
 		if err := os.MkdirAll(filepath.Join(args[1], ".hg", "store"), 0700); err != nil {
 			return 1
 		}
@@ -86,6 +90,9 @@ func fakeHostingHg(args []string) int {
 	return 0
 }
 func fixture(t *testing.T) (*Service, *models.User, *models.Repository) {
+	return fixtureConfig(t, nil)
+}
+func fixtureConfig(t *testing.T, configure func(*Config)) (*Service, *models.User, *models.Repository) {
 	t.Helper()
 	root := t.TempDir()
 	oldDb, oldLog, oldRequire := models.DbCfg, setting.LogRootPath, setting.Service.RequireSignInView
@@ -108,6 +115,9 @@ func fixture(t *testing.T) (*Service, *models.User, *models.Repository) {
 	}
 	exe, _ := os.Executable()
 	cfg := Config{Mercurial: hg.Config{Executable: exe, ConfigPath: filepath.Join(root, "config", "hgrc")}, RepositoryRoot: filepath.Join(root, "repos"), HostKeyPath: filepath.Join(root, "keys", "host"), PublicURL: "https://example.test"}
+	if configure != nil {
+		configure(&cfg)
+	}
 	s, err := New(context.Background(), cfg)
 	if err != nil {
 		t.Fatal(err)

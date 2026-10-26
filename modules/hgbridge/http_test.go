@@ -142,6 +142,31 @@ func wireRequest(method, target, body string) *http.Request {
 	return httptest.NewRequest(method, "https://gogs.example"+target, rd)
 }
 
+func TestHTTPBridgeChallengesAnonymousBackendDenial(t *testing.T) {
+	for _, grant := range []Grant{{RepoID: 9}, testReader, testWriter} {
+		b, _, workers := newTestBridge(t, func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "denied by Mercurial", http.StatusForbidden)
+		})
+		w, err := serve(t, b, wireRequest("POST", "?cmd=unbundle", "bundle"), grant)
+		want := http.StatusForbidden
+		if grant.Principal.UserID == 0 {
+			want = http.StatusUnauthorized
+		}
+		if err != nil || w.Code != want {
+			t.Fatalf("grant %+v: status=%d err=%v", grant, w.Code, err)
+		}
+		if (w.Header().Get("WWW-Authenticate") != "") != (want == http.StatusUnauthorized) {
+			t.Fatal("incorrect authentication challenge")
+		}
+		if started, reaped := workers.count(); started != 1 || reaped != 1 {
+			t.Fatalf("backend request replayed or leaked: %d/%d", started, reaped)
+		}
+		if grant.Principal.UserID == 0 && (len(workers.envs[0]) != 0 || !hasArg(workers.args[0], "web.deny_push=*")) {
+			t.Fatal("anonymous worker gained mutation authority")
+		}
+	}
+}
+
 func hasArg(args []string, want string) bool {
 	for i := 0; i+1 < len(args); i++ {
 		if args[i] == "--config" && args[i+1] == want {

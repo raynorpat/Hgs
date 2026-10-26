@@ -58,8 +58,8 @@ var CmdWeb = cli.Command{
 and it takes care of all the other things for you`,
 	Action: runWeb,
 	Flags: []cli.Flag{
-		cli.StringFlag{"port, p", "3000", "Temporary port number to prevent conflict", ""},
-		cli.StringFlag{"config, c", "custom/conf/app.ini", "Custom configuration file path", ""},
+		cli.StringFlag{Name: "port, p", Value: "3000", Usage: "Temporary port number to prevent conflict"},
+		cli.StringFlag{Name: "config, c", Value: "custom/conf/app.ini", Usage: "Custom configuration file path"},
 	},
 }
 
@@ -175,14 +175,15 @@ func runWeb(ctx *cli.Context) {
 
 // All resources are released before the CLI reports a fatal startup error.
 func runWebServer(ctx *cli.Context) error {
-	checkVersion()
-
 	if ctx.IsSet("config") {
 		setting.CustomConf = ctx.String("config")
 	}
 	if err := routers.GlobalInit(); err != nil {
 		return err
 	}
+	// Template paths come from the selected configuration, not the caller's
+	// working directory. Validate them only after that configuration is loaded.
+	checkVersion()
 	holder := &hostingHolder{errors: make(chan error, 1)}
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), hg.ShutdownTimeout)
@@ -311,7 +312,7 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 			m.Get("/repos/search", v1.SearchRepos)
 
 			m.Any("/*", func(ctx *middleware.Context) {
-				ctx.JSON(404, &base.ApiJsonErr{"Not Found", base.DOC_URL})
+				ctx.JSON(404, &base.ApiJsonErr{Message: "Not Found", DocUrl: base.DOC_URL})
 			})
 		})
 	})

@@ -4,9 +4,9 @@
 
 //go:build integration
 
-// Package integration runs native Mercurial clients against the HTTPS and
-// SSH transports assembled from the real runner, controller, bridges and SSH
-// server, with an in-memory authorizer standing in for the database.
+// Package integration contains native transport feasibility tests using an
+// in-memory authorizer and configured-application acceptance tests using real
+// database authorization. The stack helpers below serve only the former.
 package integration
 
 import (
@@ -56,6 +56,9 @@ import (
 var gogsExe string
 
 func TestMain(m *testing.M) {
+	if os.Getenv("GOGS_HG_APPLICATION_BINARY") != "" {
+		os.Exit(m.Run())
+	}
 	dir, err := os.MkdirTemp("", "gogs-integration-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -63,6 +66,18 @@ func TestMain(m *testing.M) {
 	}
 	code := func() int {
 		defer os.RemoveAll(dir)
+		if supplied := os.Getenv("GOGS_TEST_BINARY"); supplied != "" {
+			gogsExe, err = filepath.Abs(supplied)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				return 1
+			}
+			if _, err = os.Stat(gogsExe); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				return 1
+			}
+			return m.Run()
+		}
 		// Hook commands are quoted for the platform shell; the path has a
 		// space and a non-ASCII (ANSI-representable) letter.
 		name := "gogs"
@@ -103,6 +118,9 @@ func matrix(t *testing.T) []versions {
 	cur := hgPath(t)
 	rows := []versions{{name: "server 7.2.4, client 7.2.4", server: cur, client: cur}}
 	oldServer, oldClient := os.Getenv("GOGS_TEST_HG_OLD_SERVER"), os.Getenv("GOGS_TEST_HG_OLD_CLIENT")
+	if os.Getenv("GOGS_TEST_REQUIRE_LEGACY") == "1" && (oldServer == "" || oldClient == "") {
+		t.Fatal("legacy CI requires both GOGS_TEST_HG_OLD_SERVER and GOGS_TEST_HG_OLD_CLIENT")
+	}
 	if oldServer == "" {
 		t.Log("unavailable: GOGS_TEST_HG_OLD_SERVER (Mercurial 5.0.x) not set; server 5.0.2 rows not run")
 	} else {

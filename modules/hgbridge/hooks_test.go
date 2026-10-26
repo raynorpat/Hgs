@@ -52,9 +52,17 @@ func TestReaderHooksDenyWithoutController(t *testing.T) {
 		}
 	}
 
-	exe = filepath.Join(t.TempDir(), "bin", "gogs.exe")
-	if cfg, _ := HookConfig(exe, false); strings.Contains(strings.Join(values(cfg), " "), "check") {
-		t.Fatal("read-only hook configuration can reach the capability callback")
+	// A directory containing "check" is part of the quoted executable, not the
+	// capability callback mode. Inspect the fixed arguments after that path.
+	exe = filepath.Join(t.TempDir(), "check containing bin", "gogs.exe")
+	cfg, err := HookConfig(exe, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, command := range cfg {
+		if !strings.HasSuffix(command, " internal-hg-hook deny "+strings.TrimPrefix(name, "hooks.")) {
+			t.Errorf("read-only hook %s has unexpected arguments: %q", name, command)
+		}
 	}
 }
 

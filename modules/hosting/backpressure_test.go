@@ -111,6 +111,35 @@ func TestHostingDrainInterruptsBlockedHTTPResponse(t *testing.T) {
 		t.Fatal("HTTP handler retained stalled response")
 	}
 }
+
+func TestHostingTimeoutInterruptsBlockedHTTPResponse(t *testing.T) {
+	for _, limit := range []string{"idle", "session"} {
+		t.Run(limit, func(t *testing.T) {
+			s, _, _ := fixtureConfig(t, func(c *Config) {
+				c.Mercurial.MaxProcesses = 1
+				c.Mercurial.IdleTimeout = time.Minute
+				c.Mercurial.SessionTimeout = time.Minute
+				if limit == "idle" {
+					c.Mercurial.IdleTimeout = 2 * time.Second
+				} else {
+					c.Mercurial.SessionTimeout = 2 * time.Second
+				}
+			})
+			_, released := blockedHTTPResponse(t, s)
+			select {
+			case <-released:
+			case <-time.After(5 * time.Second):
+				t.Fatal("worker timeout did not release stalled downstream response")
+			}
+			// This must obtain the only process slot without drain or shutdown.
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			if err := s.Runner().Run(ctx, "", []string{"version"}, nil, nil); err != nil {
+				t.Fatalf("timeout retained worker capacity: %v", err)
+			}
+		})
+	}
+}
 func TestHostingShutdownInterruptsBlockedHTTPResponse(t *testing.T) {
 	s, _, _ := fixture(t)
 	_, released := blockedHTTPResponse(t, s)

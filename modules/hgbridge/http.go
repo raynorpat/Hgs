@@ -234,13 +234,18 @@ func (b *HTTPBridge) Serve(ctx context.Context, w http.ResponseWriter, r *http.R
 	}
 	waiting := make(chan struct{})
 	go b.hold(wk, bodyDone, waiting)
+	exchangeDone, exitWatcherDone := make(chan struct{}), make(chan struct{})
+	defer func() { close(exchangeDone); <-exitWatcherDone }()
 	go func() {
+		defer close(exitWatcherDone)
 		select {
 		case <-wk.done:
 			// The transport waits for its body writer, which may be blocked
-			// on a stalled client; a dead worker needs no more of the body.
+			// on a stalled client. Exit also cancels a downstream response
+			// blocked in Write/Flush after the runner's idle/session timeout.
+			cancelWorker()
 			http.NewResponseController(w).SetReadDeadline(time.Now())
-		case <-waiting:
+		case <-exchangeDone:
 		}
 	}()
 	resp, err := transport.RoundTrip(out)
@@ -249,6 +254,17 @@ func (b *HTTPBridge) Serve(ctx context.Context, w http.ResponseWriter, r *http.R
 		return fmt.Errorf("hgbridge: %s for repository %d: %v", cmd, target.RepoID, err)
 	}
 	defer resp.Body.Close()
+
+	// Public clients may withhold credentials until the server challenges.
+	// Let Mercurial's static read-only worker decide what it forbids; translate
+	// its denial into ordinary HTTP negotiation without replaying any request
+	// or giving this anonymous worker a capability. Authenticated denials stay
+	// forbidden. Anonymous clone/pull and read-only batches remain unchanged.
+	if resp.StatusCode == http.StatusForbidden && grant.Principal.UserID == 0 && !grant.CanWrite {
+		w.Header().Set("WWW-Authenticate", `Basic realm="Mercurial"`)
+		http.Error(w, "authentication required", http.StatusUnauthorized)
+		return nil
+	}
 
 	for _, k := range []string{"Content-Type", "Content-Length"} {
 		if v := resp.Header.Get(k); v != "" {

@@ -16,13 +16,13 @@ import (
 func ListAccessTokens(ctx *middleware.Context) {
 	tokens, err := models.ListAccessTokens(ctx.User.Id)
 	if err != nil {
-		ctx.JSON(500, &base.ApiJsonErr{"ListAccessTokens: " + err.Error(), base.DOC_URL})
+		ctx.JSON(500, &base.ApiJsonErr{Message: "ListAccessTokens: " + err.Error(), DocUrl: base.DOC_URL})
 		return
 	}
 
 	apiTokens := make([]*api.AccessToken, len(tokens))
 	for i := range tokens {
-		apiTokens[i] = &api.AccessToken{tokens[i].Name, tokens[i].Sha1}
+		apiTokens[i] = &api.AccessToken{Name: tokens[i].Name, Sha1: tokens[i].Sha1}
 	}
 	ctx.JSON(200, &apiTokens)
 }
@@ -38,8 +38,8 @@ func CreateAccessToken(ctx *middleware.Context, form CreateAccessTokenForm) {
 		Name: form.Name,
 	}
 	if err := models.NewAccessToken(t); err != nil {
-		ctx.JSON(500, &base.ApiJsonErr{"NewAccessToken: " + err.Error(), base.DOC_URL})
+		ctx.JSON(500, &base.ApiJsonErr{Message: "NewAccessToken: " + err.Error(), DocUrl: base.DOC_URL})
 		return
 	}
-	ctx.JSON(201, &api.AccessToken{t.Name, t.Sha1})
+	ctx.JSON(201, &api.AccessToken{Name: t.Name, Sha1: t.Sha1})
 }
