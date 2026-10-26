@@ -111,8 +111,9 @@ func newSigner(t *testing.T) ssh.Signer {
 }
 
 // newTestServer serves owner/repo (ID 9) to three keys: user 1 and user 3
-// may write, user 2 may only read.
-func newTestServer(t *testing.T) *testServer {
+// may write, user 2 may only read. A nonzero execTimeout replaces the
+// server's before it starts serving.
+func newTestServer(t *testing.T, execTimeout time.Duration) *testServer {
 	t.Helper()
 	ts := &testServer{t: t, dir: t.TempDir(), writer: newSigner(t), reader: newSigner(t), other: newSigner(t)}
 	exe, _ := os.Executable()
@@ -164,6 +165,9 @@ func newTestServer(t *testing.T) *testServer {
 			hgbridge.Grant{Principal: p, RepoID: 9, CanWrite: p.UserID != 2}, nil
 	}
 	ts.s = NewServer(newSigner(t), resolveKey, resolveTarget, bridge)
+	if execTimeout > 0 {
+		ts.s.execTimeout = execTimeout
+	}
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -228,7 +232,7 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 const serveCommand = "hg -R owner/repo serve --stdio"
 
 func TestSSHRejectsArbitraryExecution(t *testing.T) {
-	ts := newTestServer(t)
+	ts := newTestServer(t, 0)
 	for _, cmd := range append(rejectedCommands, "hg -R owner/missing serve --stdio") {
 		c, s := ts.session(ts.writer)
 		var stdout, stderr bytes.Buffer
@@ -254,7 +258,7 @@ func TestSSHRejectsArbitraryExecution(t *testing.T) {
 }
 
 func TestSSHRejectsShellPTYForwardingEnv(t *testing.T) {
-	ts := newTestServer(t)
+	ts := newTestServer(t, 0)
 	if _, err := ts.dial("git", ts.writer); err == nil {
 		t.Error("username other than hg accepted")
 	}
@@ -310,7 +314,7 @@ func TestSSHRejectsShellPTYForwardingEnv(t *testing.T) {
 	}
 
 	// A connection that never asks for a command is closed.
-	ts.s.execTimeout = 100 * time.Millisecond
+	ts = newTestServer(t, 100*time.Millisecond)
 	c, err := ts.dial("hg", ts.writer)
 	if err != nil {
 		t.Fatal(err)
@@ -325,7 +329,7 @@ func TestSSHRejectsShellPTYForwardingEnv(t *testing.T) {
 }
 
 func TestSSHReturnsChildStatus(t *testing.T) {
-	ts := newTestServer(t)
+	ts := newTestServer(t, 0)
 	for _, tc := range []struct {
 		input  string
 		status int
@@ -350,7 +354,7 @@ func TestSSHReturnsChildStatus(t *testing.T) {
 }
 
 func TestSSHSeparatesConcurrentUsers(t *testing.T) {
-	ts := newTestServer(t)
+	ts := newTestServer(t, 0)
 	type user struct {
 		key   ssh.Signer
 		id    int64
@@ -438,7 +442,7 @@ func (ts *testServer) blocked() *ssh.Client {
 }
 
 func TestSSHCancelBlockedChannel(t *testing.T) {
-	ts := newTestServer(t)
+	ts := newTestServer(t, 0)
 	ts.blocked().Close()
 	waitFor(t, "the cancelled session's worker to be reaped", func() bool { return ts.liveConns() == 0 })
 
@@ -457,7 +461,7 @@ func TestSSHCancelBlockedChannel(t *testing.T) {
 }
 
 func TestSSHShutdown(t *testing.T) {
-	ts := newTestServer(t)
+	ts := newTestServer(t, 0)
 	defer ts.blocked().Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()

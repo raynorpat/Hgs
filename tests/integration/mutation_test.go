@@ -116,12 +116,8 @@ var failureText = regexp.MustCompile(`(?i)abort|failed|rejected|not authorized|d
 func pushSucceeded(err error, out string) bool {
 	var exit *exec.ExitError
 	noChanges := errors.As(err, &exit) && exit.ExitCode() == 1 && strings.Contains(out, "no changes found")
-	return (err == nil || noChanges) && !failureText.MatchString(sshNoise.ReplaceAllString(out, ""))
+	return (err == nil || noChanges) && !failureText.MatchString(out)
 }
-
-// sshNoise is what Windows OpenSSH prints when the server closes the
-// connection after the session's exit status, whatever the push did.
-var sshNoise = regexp.MustCompile(`(?m)^remote: (client_loop: send disconnect: Connection aborted|Connection to \S+ closed by remote host\.)\r?$`)
 
 // wirePushkey sends a raw pushkey command over the case's transport.
 func (c *caseEnv) wirePushkey(namespace, key, old, new string) (bool, string) {

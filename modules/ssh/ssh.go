@@ -30,6 +30,10 @@ const ServiceUser = "hg"
 // ErrServerClosed is returned by Serve after Shutdown.
 var ErrServerClosed = errors.New("ssh: server closed")
 
+// hangupWait bounds how long a finished session waits for the client to
+// close the connection before the server does.
+const hangupWait = 2 * time.Second
+
 // ResolveKey maps an offered public key to its account. Any error, and any
 // principal without a user, refuses the key.
 type ResolveKey func(context.Context, ssh.PublicKey) (hgbridge.Principal, error)
@@ -214,6 +218,15 @@ func (s *Server) serveConn(conn net.Conn) {
 			defer close(sessionDone)
 			defer sc.Close()
 			s.serveSession(ctx, p, ch, chReqs, execTimer)
+			// Closing the connection while the client may still be sending
+			// can reset it before the client reads the exit status, so the
+			// client hangs up first when it does so in time.
+			hangup := time.NewTimer(hangupWait)
+			defer hangup.Stop()
+			select {
+			case <-ctx.Done():
+			case <-hangup.C:
+			}
 		}()
 	}
 	if session {
@@ -242,6 +255,7 @@ func (s *Server) serveSession(ctx context.Context, p hgbridge.Principal, ch ssh.
 			cancel()
 		}()
 		status := s.exec(ctx, p, ch, exec.Command)
+		ch.CloseWrite()
 		ch.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{status}))
 		return
 	}
