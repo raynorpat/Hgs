@@ -62,6 +62,7 @@ Task 1 remaining: `docs/mercurial/build-baseline.md`, `newTestDatabase` helper a
 Local environment: Windows 11 only. Go 1.27.3 at `C:\Program Files\Go`. Mercurial 7.0.3 via scoop, whose ambient configuration loads a missing `hggit` extension (useful evidence for the isolation tests). Python 3.13; no Python 2.7. The required tested versions (server 5.0.2 and 7.2.4, clients 2.0.2 and 7.2.4) are not installed, and there are no Linux or macOS runners and no CI remote. Consequences:
 - Integration steps against real Mercurial run locally only on Windows, and only with versions the user has approved installing; anything else is recorded as unavailable, never passed.
 - The Task 6 gate requires native Windows, Linux and macOS results. Without those runners it cannot pass, so execution stops after Task 6 and reports the gate result rather than starting Task 7.
+- Override (user, 2026-10-26): execution continues to Task 7 and later tasks while the Task 6 gate remains unverified on Linux/macOS and 5.0.2/2.0.2 (stream-bundle gap accepted as a documented limitation). Native Linux and macOS gate evidence is still required before any release.
 
 Task completion record (commit ranges are `start..end`, end inclusive):
 - Task 1 — complete 2026-10-25 (`2cb904d..b18dab5`).
