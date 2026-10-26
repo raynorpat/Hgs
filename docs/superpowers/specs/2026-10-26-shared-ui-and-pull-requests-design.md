@@ -251,6 +251,10 @@ Landing-page Explore links and any repository preview show public repositories o
 
 Replace the main landing logo reference with a local Hgs asset based on the approved PNG, retaining the Go Gopher credit to Renee French and CC BY 4.0 attribution. Use the same beaker held by the approved Gopher as the favicon and navigation identity mark, with only small-size simplification and inverse contrast variants. [The design system](../../DESIGN.md#follow-on-landing-page-and-mercurial-identity) defines the composition, assets and public discovery rule; implementation plan Task 16 delivers this phase. Approval does not waive transport or backend acceptance gates.
 
+## Explicit account-creation and installer coverage
+
+Restyle the actual /user/sign_up and /install pages with the shared public layout, Hgs/beaker identity, labeled forms, validation/error feedback and responsive behavior. Registration includes disabled-registration, CAPTCHA, provider and activation states. Installation includes applicable database-specific fields, storage/service settings, supported mail/registration settings and first administrator, with real failure/success feedback and the installed/locked guard preserved. Passwords, database credentials and CAPTCHA answers are never echoed into returned HTML or captured by editor draft recovery. The [design system](../../DESIGN.md#account-creation-and-first-run-installation) defines the layout; Task 7 migrates the real forms and Task 16 verifies their final identity assets. Test installer submissions only against disposable configuration/databases.
+
 ## Approved completion details
 
 Retain both Watch and Star in repository headers, preserving their distinct subscription/preference behavior and authorized counts. Convert their mutations to CSRF-protected POSTs and retain existing email behavior. Help opens a local shared-layout /help page with supported Mercurial workflows. Keep language selection in the shared footer, preserve operator-selected identity/links and legal notices, and replace obsolete Gogs/Git marketing/help destinations.

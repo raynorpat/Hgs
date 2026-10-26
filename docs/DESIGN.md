@@ -205,6 +205,26 @@ PR controls must reflect actual permission and comparison state. “Open,” “
 - Use short, subtle transitions only where they help track a state change; honor reduced-motion preferences. No essential meaning depends on animation.
 - Ensure disabled controls have an understandable reason nearby. Unauthorized data/actions may be omitted; do not expose private details in tooltips or hidden markup.
 
+## Account creation and first-run installation
+
+Both are explicit redesign deliverables, including the real /user/sign_up and /install routes. They must not retain legacy form styling after the shared UI refactor.
+
+### Create an account
+
+Use the reduced public layout with the Hgs/beaker identity, shared footer, and a focused single-column form approximately 440px wide on desktop. Use the heading Create an account, visible labels above fields, consistent input/button sizing, field-level errors and an accessible error summary. Preserve username, email, password/confirmation, configured CAPTCHA and supported social-registration behavior. Provide a clear Sign in link for existing users.
+
+Cover registration enabled and disabled states, invalid/duplicate details, CAPTCHA errors, submission in progress, success and email-activation guidance. Respect existing registration and provider policy. Preserve non-secret submitted values after validation failure; never echo passwords or CAPTCHA answers back into HTML or save them in draft recovery. Support password managers and appropriate autocomplete semantics. Admin-created users keep the shared Admin layout and the same form components.
+
+### Install Hgs
+
+Style the actual first-run installer as a public setup page, not an Admin mockup. Use the Hgs/beaker identity, a clear Install Hgs heading, a readable form approximately 800px wide, and labeled sections for database, repository/storage and service settings, mail/registration options where currently supported, and the initial administrator. Use one coherent form; a new multi-step wizard is not required.
+
+Retain the prerequisite hosting plan's actual supported settings and Mercurial terminology. Database selection shows only applicable inputs: SQLite path, server database connection fields, and PostgreSQL SSL options as appropriate. Preserve configuration defaults, validation, and installation semantics. Inline help explains fields without leaking internal errors or credentials.
+
+Show field errors and an error summary for invalid paths, database connection/permission failures, and invalid administrator details. Preserve safe non-secret values, never echo submitted secrets, and keep entered credentials out of draft recovery. Disable repeat submission while installation is in progress, show honest failure/success state and the existing next-step destination, and preserve the installed/locked guard so a styled page cannot rerun setup.
+
+Verify both real forms at 390px and 1440px, with keyboard navigation, long translated labels, visible focus, and no page-level horizontal overflow. Installer submission tests must use disposable configuration and databases; visual inspection must never reconfigure a live instance.
+
 ## Remaining shared UI coverage
 
 ### Repository Watch and Star
