@@ -402,3 +402,22 @@ func TestLocalBytes(t *testing.T) {
 		t.Logf("encoding %s: only checked for errors", enc)
 	}
 }
+
+// TestManagedConfigBlocksOutboundFetches: every HTTP(S) request Mercurial
+// makes as a server, as for a pushed remote-changegroup part, must go to an
+// unconnectable proxy, loopback included.
+func TestManagedConfigBlocksOutboundFetches(t *testing.T) {
+	section := ""
+	got := map[string]string{}
+	for _, line := range strings.Split(managedConfig, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "[") {
+			section = strings.Trim(line, "[]")
+		} else if k, v, ok := strings.Cut(line, "="); ok && section == "http_proxy" {
+			got[strings.TrimSpace(k)] = strings.TrimSpace(v)
+		}
+	}
+	if got["host"] != "127.0.0.1:0" || got["always"] != "true" {
+		t.Errorf("managed [http_proxy] = %v, want host 127.0.0.1:0 and always true", got)
+	}
+}

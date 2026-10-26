@@ -118,7 +118,9 @@ func checkHTTPBridge(t *testing.T, serverExe, clientExe, gogs string) {
 	frontend.TLS = &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}}
 	frontend.StartTLS()
 	defer frontend.Close()
-	tlsCfg := map[string]string{"web.cacerts": cacerts}
+	// The managed config sends every HTTP request to a dead proxy; the test
+	// clients must reach the frontend directly.
+	tlsCfg := map[string]string{"web.cacerts": cacerts, "http_proxy.host": ""}
 	url := func(user string) string {
 		return "https://" + user + "@localhost:" + port(frontend) + prefix
 	}

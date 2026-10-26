@@ -13,10 +13,13 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"golang.org/x/crypto/ssh"
@@ -244,5 +247,50 @@ func TestKnownGapStreamBundleRevocation(t *testing.T) {
 			}
 			t.Logf("known gap reproduced: history present after the close-time refusal\n%s", out)
 		})
+	}
+}
+
+// TestTransportRemoteChangegroup sends a bundle2 remote-changegroup part,
+// which makes Mercurial fetch a bundle from a URL the client names. Nobody
+// may make the server fetch anything: readers are refused before the part is
+// read, and the managed configuration routes writers' fetches to a proxy
+// address that cannot be connected to.
+func TestTransportRemoteChangegroup(t *testing.T) {
+	v := matrix(t)[0]
+	s := newStack(t, v, stackOptions{})
+	tp := newTemplate(s)
+	var fetches atomic.Int64
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fetches.Add(1)
+		http.Error(w, "not a bundle", http.StatusNotFound)
+	}))
+	defer target.Close()
+	bundle := remoteChangegroupBundle(target.URL + "/bundle.hg")
+
+	for _, transport := range []string{transportHTTP, transportSSH} {
+		for _, user := range []string{"reader", "writer"} {
+			t.Run(transport+" "+user, func(t *testing.T) {
+				name := "remote-cg-" + transport + "-" + user
+				c := &caseEnv{t: t, s: s, tp: tp, transport: transport, user: user, name: name}
+				c.server = filepath.Join(s.root, "repos", name)
+				copyDir(t, tp.path, c.server)
+				s.addRepo(name, c.server)
+
+				before := snapshotRepository(t, s.server, c.server)
+				fetches.Store(0)
+				ok, out := c.wireUnbundle(bundle)
+				after := snapshotRepository(t, s.server, c.server)
+				t.Logf("succeeded=%v\n%s", ok, out)
+				if n := fetches.Load(); n != 0 {
+					t.Fatalf("the server fetched the client-named URL %d times:\n%s", n, out)
+				}
+				if user == "writer" {
+					before, after = before.withoutJournal(), after.withoutJournal()
+				}
+				if ok || !reflect.DeepEqual(before, after) {
+					t.Fatalf("remote-changegroup changed repository state (succeeded=%v):\n%s\n%s", ok, before.diff(after), out)
+				}
+			})
+		}
 	}
 }

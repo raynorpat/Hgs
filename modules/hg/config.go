@@ -64,4 +64,11 @@ evolution.exchange = false
 # Mercurial 2.0-era clients only speak bundle1.
 [server]
 bundle1 = true
+
+# A pushed bundle2 remote-changegroup part makes Mercurial fetch a URL the
+# client chose, and no setting disables that part. Send every outbound HTTP(S)
+# request, loopback included, to a proxy address that cannot be connected to.
+[http_proxy]
+host = 127.0.0.1:0
+always = true
 `

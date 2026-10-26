@@ -19,6 +19,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
@@ -35,6 +36,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -149,7 +151,7 @@ func (h *hgCmd) must(t *testing.T, repo string, args ...string) string {
 	t.Helper()
 	out, err := h.run(context.Background(), repo, args...)
 	if err != nil {
-		t.Fatalf("hg %v: %v\n%s", args, err, out)
+		t.Fatalf("hg %v: %v\n%s", redact(args), err, out)
 	}
 	return out
 }
@@ -158,7 +160,7 @@ func (h *hgCmd) stdout(t *testing.T, repo string, args ...string) string {
 	t.Helper()
 	var out bytes.Buffer
 	if err := h.r.Run(context.Background(), repo, args, nil, &out); err != nil {
-		t.Fatalf("hg %v: %v", args, err)
+		t.Fatalf("hg %v: %v", redact(args), err)
 	}
 	return out.String()
 }
@@ -508,7 +510,8 @@ func (s *stack) remote(t *testing.T, transport, user, name string) (string, []st
 	if transport == transportHTTP {
 		port := s.frontend.Listener.Addr().(*net.TCPAddr).Port
 		return fmt.Sprintf("https://%s:%s@localhost:%d/hg/owner/%s", user, httpUsers[user], port, name),
-			[]string{"--config", "web.cacerts=" + s.cacerts}
+			// The managed config sends every HTTP request to a dead proxy.
+			[]string{"--config", "web.cacerts=" + s.cacerts, "--config", "http_proxy.host="}
 	}
 	return "ssh://hg@" + s.sshAddr + "/owner/" + name, sshCommand(t, s.keys[user], s.knownHosts)
 }
@@ -747,4 +750,32 @@ func (s repoState) withoutJournal() repoState {
 	s.Files = maps.Clone(s.Files)
 	delete(s.Files, "journal.desc")
 	return s
+}
+
+// remoteChangegroupBundle is a bundle2 with one mandatory remote-changegroup
+// part asking the server to fetch a bundle from url.
+func remoteChangegroupBundle(url string) []byte {
+	params := [][2]string{{"url", url}, {"size", "100"}}
+	header := []byte{byte(len("REMOTE-CHANGEGROUP"))}
+	header = append(header, "REMOTE-CHANGEGROUP"...)
+	header = binary.BigEndian.AppendUint32(header, 0)
+	header = append(header, byte(len(params)), 0)
+	for _, p := range params {
+		header = append(header, byte(len(p[0])), byte(len(p[1])))
+	}
+	for _, p := range params {
+		header = append(header, p[0]+p[1]...)
+	}
+	b := append([]byte("HG20"), 0, 0, 0, 0)
+	b = binary.BigEndian.AppendUint32(b, uint32(len(header)))
+	b = append(b, header...)
+	b = append(b, 0, 0, 0, 0)    // empty payload
+	return append(b, 0, 0, 0, 0) // end of bundle
+}
+
+var urlPassword = regexp.MustCompile(`(://[^:/@\s]+:)[^@\s]+@`)
+
+// redact hides URL passwords in a command line before it is logged.
+func redact(args []string) string {
+	return urlPassword.ReplaceAllString(strings.Join(args, " "), "${1}***@")
 }

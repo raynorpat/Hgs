@@ -25,10 +25,12 @@ GOGS_TEST_HG=D:/github/gogs/.venv-hg/Scripts/hg.exe \
   go test -tags integration ./tests/integration -run 'TestTransport|TestSupervision|TestKnownGap' -count=1 -v -timeout 60m
 ```
 
-Wall time of the full run: 15m29s, result `ok` (TestTransportMutationMatrix
-678 s, TestTransportRevocation 109 s, TestSupervisionHookCallbackUnderSaturation
-69 s, TestTransportAmbiguousCompletion 45 s, TestKnownGapStreamBundleRevocation
-16 s, plus building the binary). Most of it is
+Wall time of the full run: 15m37s, result `ok` (TestTransportMutationMatrix
+671 s, TestTransportRevocation 108 s, TestSupervisionHookCallbackUnderSaturation
+59 s, TestTransportAmbiguousCompletion 47 s, TestTransportRemoteChangegroup 24 s,
+TestKnownGapStreamBundleRevocation 17 s, plus building the binary). The
+`modules/hg`, `modules/hgbridge` and `modules/ssh` integration tests also pass
+with the new managed configuration. Most of it is
 Python start-up of the per-request `hg serve` workers and snapshot commands.
 
 The suite (`tests/integration`) assembles the real `hg.Runner`,
@@ -72,6 +74,7 @@ readers never pass `pretxnopen`, so their comparison keeps it.
 | `TestTransportRevocation` bundle1 push | passed | passed |
 | `TestKnownGapStreamBundleRevocation` (asserts the gap still exists) | passed: **gap reproduced** | passed: **gap reproduced** |
 | `TestTransportAmbiguousCompletion` | passed | passed |
+| `TestTransportRemoteChangegroup` (reader and writer: no fetch, state unchanged) | passed | passed |
 | `TestSupervisionHookCallbackUnderSaturation` | passed | passed |
 
 ### Matrix cases
@@ -260,14 +263,60 @@ rewritten from the bundle's requirements.
   hook failed to start: writers could not push and readers were refused only
   because `cmd.exe` failed. `hgbridge.NewStdioBridge` now writes those files
   in that encoding (`hg.LocalBytes`).
-- `remote-changegroup` bundle2 parts make the server fetch an `http`/`https`
-  URL chosen by a writer (`bundle2_part_handlers.py:153-200`). The fetched data
-  is applied inside the guarded transaction, so authorization holds, but it is
-  an outbound request from the server. Not tested.
+- Fixed during this task: server-side fetches through `remote-changegroup`.
+  See the next section.
 - Windows OpenSSH prints `client_loop: send disconnect: Connection aborted`
   or `Connection to … closed by remote host` when the embedded server closes
   the connection after the exit status. Pushes are unaffected; the tests ignore
   exactly those lines.
+
+## Server-side fetches through remote-changegroup (fixed)
+
+A bundle2 `remote-changegroup` part tells the server to download a bundle
+from an `http` or `https` URL that the client names, and to apply it.
+
+- In 7.2.4, `bundle_caps.capabilities` advertises the part by default
+  (`exchanges/bundle_caps.py:32`). `get_repo_caps` never removes it
+  (`:40-90`).
+- `handleremotechangegroup` (`bundle2_part_handlers.py:153-235`) accepts it
+  whenever the scheme is `http` or `https`, and opens the URL with
+  `url.open(op.ui, …)`. That call happens inside the push transaction, but
+  before any changeset is applied.
+- 5.0.2 behaves the same (`bundle2.py:1507`, `:1851-1873`).
+- No setting disables the part or its handler.
+
+Without a fix, any writer could make the server send a GET request to an
+address of the writer's choosing, including loopback services and other
+users' `hg serve` workers. That is a server-side request forgery. It is
+mostly blind, but the error the writer sees reveals the target's HTTP status
+(observed: "abort: HTTP Error 404: Not Found"). For responses that start with
+`HG`, it also reveals the next two bytes (`exchange.readbundle`).
+
+`TestTransportRemoteChangegroup` sends this part with the test wire driver,
+pointed at a local `httptest` server, as a reader and as a writer over both
+transports. It requires that no request reaches the target and that the state
+is unchanged.
+
+- RED, before the fix: both readers passed. They were refused at hgweb's
+  push gate (HTTPS) or at `pretxnopen` (SSH), before the part was read. Both
+  writers failed with "the server fetched the client-named URL 1 times".
+- Fix, within the architecture: the managed configuration (`modules/hg`)
+  now sets `[http_proxy] host = 127.0.0.1:0` and `always = true`.
+  - `url.opener` then sends every HTTP and HTTPS request Mercurial makes
+    through that proxy, loopback included, because `always` empties the
+    no-proxy list (`url.py:131-178`; the same code in 5.0.2 `url.py:122-137`).
+  - Nothing can listen on port 0, so the connection fails. On Windows the
+    error is "The requested address is not valid in its context"; on Unix,
+    `connect` to port 0 is refused (source-derived, not run).
+  - The runner passes no `http_proxy` or `no_proxy` variables to Mercurial.
+  - A Gogs server never needs Mercurial to make outbound requests: mirrors
+    and remote imports are out of scope.
+- GREEN: no request reaches the target on either transport, for readers or
+  writers. The writer's transaction aborts and only `journal.desc` remains.
+- Unit test: `modules/hg` `TestManagedConfigBlocksOutboundFetches`.
+- Test clients that do need HTTP (this suite and the `modules/hgbridge`
+  integration tests) override the setting with `--config http_proxy.host=`
+  on their own command lines.
 
 ## Process cleanup
 

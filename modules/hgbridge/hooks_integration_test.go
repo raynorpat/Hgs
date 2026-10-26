@@ -331,7 +331,9 @@ func checkRealHooks(t *testing.T, exe, gogs string) {
 	h.must(src, nil, nil, "commit", "-A", "-m", "pushed", "-u", "tester")
 	h.must(src, nil, nil, "bookmark", "-r", ".", "feature")
 	push := func(url string, extra ...string) []string {
-		return append([]string{"push", "-B", "feature", url}, extra...)
+		// The managed config sends every HTTP request to a dead proxy; clients
+		// in these tests must reach the local server directly.
+		return append([]string{"push", "--config", "http_proxy.host=", "-B", "feature", url}, extra...)
 	}
 	bundle1 := []string{"--config", "devel.legacy.exchange=bundle1"}
 
