@@ -74,8 +74,17 @@ Task completion record (commit ranges are `start..end`, end inclusive):
 - Task 7 — complete 2026-10-26 (`609b70e..d8a398c`), reviewed; shared authorization and portable SSH key storage.
 - Task 8 — complete 2026-10-26 (`d8a398c..5a9bd8a`), reviewed; ID-based repository lifecycle and transfer/deletion fixes.
 - Task 9 — complete 2026-10-26 (`5a9bd8a..4fae7f4`), reviewed; inherited implementation adopted with encoding/branch-ancestry fixes. Windows/Mercurial 7.2.4 checks pass; native Linux/macOS and Mercurial 5.0.2 remain unverified.
-- Tasks 10–15 — not started. User authorized continuation with subagents on 2026-10-26; execution ledger: `.superpowers/sdd/2026-10-25-mercurial-hosting/progress.md`.
+- Task 10 — implementation and Windows/Mercurial 7.2.4 verification finished; independent review pending.
+- Tasks 11–15 — not started. User authorized continuation with subagents on 2026-10-26; execution ledger: `.superpowers/sdd/2026-10-25-mercurial-hosting/progress.md`.
 - User decisions (resolved 2026-10-26): the stream-bundle revocation gap is accepted as a documented limitation (spec, Task 15 docs, local upstream proposal draft `docs/mercurial/upstream-stream-push-proposal.md`); writers drop the per-changeset close hooks (`pretxnclose-phase`, `pretxnclose-bookmark`), readers keep all deny hooks.
+
+## Continuation implementation clarifications (2026-10-26)
+
+- Task 10 cursors carry the immutable node, original local revision (`SnapshotRevision`), and exclusive before-revision bound. `BeforeRevision=-1` starts a first page at either the current visible tip or an explicit validated snapshot. HTTP encoding belongs to Task 12. Repository history includes all visible branches through the snapshot; file history follows only the snapshot's recorded file ancestry. A file absent at that snapshot returns `ErrNotFound`.
+- Task 11 must inspect database format before schema synchronization. Existing HTTP workers intentionally detach from request cancellation, so transports need explicitly injected worker session registration for revocation/drain, including readers without capabilities. A service-owned current-authority monitor (default one second) supplies bounded-delay cleanup; write hooks remain synchronous authorization with the previously accepted stream-bundle exception. Repository deletion still blocks new admissions and waits for worker release.
+- Task 11 preserves live installation through a cmd-owned service holder and injected initialization callback. It must not add model-to-hosting imports, cross-package global observers, or an installer-only restart requirement. Necessary bridge/SSH/schema/deletion integration files are included even where the earlier task file list omitted them.
+- Task 12 drops the per-entry last-commit column (approved option c) to keep directory browsing to a small constant command count. File-history links preserve the viewed node/revision; the global history timeline starts at the latest visible snapshot across all heads.
+- Task 14 must pin raw Mercurial testdata to LF and verify a Windows checkout with automatic CRLF conversion; production raw-path parsing must preserve bytes.
 
 ## File and interface map
 
@@ -252,7 +261,7 @@ Dependency rule: `modules/hg` imports no models or web code. `modules/hgbridge` 
 
 **Files:** Create `modules/hg/{history.go,diff.go,history_test.go,diff_test.go}`.
 
-**Interfaces:** `type Changeset struct { Node NodeID; Parents []NodeID; User,Message,Branch string; Date time.Time; Revision int64 }`; `type HistoryQuery struct { Snapshot NodeID; BeforeRevision int64; Path string; Limit int }` (`BeforeRevision=-1` starts; empty Snapshot pins visible tip); `type HistoryPage struct { Snapshot NodeID; Entries []Changeset; NextBefore int64; HasMore bool }`; `type DiffResult struct { Text []byte; Truncated,Binary bool }`; `(*Runner).History(ctx context.Context,path string,q HistoryQuery) (HistoryPage,error)`, `Changeset(ctx context.Context,path string,node NodeID) (Changeset,error)`, `Diff(ctx context.Context,path string,node NodeID,parentIndex int) (DiffResult,error)`.
+**Interfaces:** `type Changeset struct { Node NodeID; Parents []NodeID; User,Message,Branch string; Date time.Time; Revision int64 }`; `type HistoryQuery struct { Snapshot NodeID; SnapshotRevision, BeforeRevision int64; Path string; Limit int }` (`BeforeRevision=-1` starts; empty Snapshot pins visible tip); `type HistoryPage struct { Snapshot NodeID; SnapshotRevision int64; Entries []Changeset; NextBefore int64; HasMore bool }`; `type DiffResult struct { Text []byte; Truncated,Binary bool }`; `(*Runner).History(ctx context.Context,path string,q HistoryQuery) (HistoryPage,error)`, `Changeset(ctx context.Context,path string,node NodeID) (Changeset,error)`, `Diff(ctx context.Context,path string,node NodeID,parentIndex int) (DiffResult,error)`.
 
 - [ ] **1. Add `TestHistoryDoesNotShiftOnPush`, `TestFileHistoryFollowsRename`, `TestDiffSelectsMergeParent`, `TestDiffBoundsBinaryAndLongLines`.** Fetch page one, push another changeset, fetch page two with cursor; assert same snapshot, no duplicates/skips and no new revision leakage. Cover named heads not ancestral to the default head. Second-parent diff differs appropriately; root uses null parent, nonmerge parent index 1 fails. Assert a single huge line cannot evade byte bounds.
   ```go
@@ -370,3 +379,4 @@ Recommended execution: **subagent-driven, one task at a time**, with independent
 - [Mercurial 7.2 release notes](https://mercurial-scm.org/relnotes/7.2) and [7.2.4 distribution files](https://pypi.org/project/mercurial/7.2.4/) for the newest tested Mercurial target and available platform distributions.
 - [Mercurial 5.0 distribution files](https://pypi.org/project/mercurial/5.0.2/) and [2.0.2 distribution files](https://pypi.org/project/mercurial/2.0.2/) for the oldest supported server and client; hook and template availability in 5.0 must be confirmed from its sources in Task 3/6.
 - Mercurial protocol/hook references in the approved design; implementation must verify them against the pinned version, not assume the installed 7.0.3 proves them.
+
