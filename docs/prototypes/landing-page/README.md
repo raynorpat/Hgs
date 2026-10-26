@@ -13,3 +13,7 @@ Product: Hgs. Tagline: **A painless, self-hosted Mercurial service.**
 Visually inspected at 390px and 1440px viewport widths, plus the default desktop viewport. No page-level horizontal overflow was observed, and the local mascot loaded. Sign-in and repository preview dialogs opened; Escape dismissed the sign-in dialog and restored focus. Copy displayed its success status. These checks do not establish backend readiness.
 
 Production home templates, routes and public logo assets are unchanged. The design direction and later integration requirements are in `../../DESIGN.md`.
+
+## Approval
+
+Landing composition and Gopher artwork approved on 2026-10-26, with this required production correction: landing Explore shows public repositories only and is omitted, along with any repository preview, when [service] REQUIRE_SIGNIN_VIEW is true. The static preview represents public browsing enabled; its sample rows are public. Task 16 in the implementation plan covers server-side enforcement and both configuration states. The prototype remains non-production.

@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Deliver one Bitbucket-inspired interface across the application, including Issues and Admin, with accessible repository discovery and a working Mercurial fork/review/merge workflow.
+**Goal:** Deliver one Bitbucket-inspired interface across the application, including Issues and Admin, with accessible repository discovery, a working Mercurial fork/review/merge workflow, and the approved Hgs landing page and mascot.
 
 **Architecture:** Keep Go/Macaron, server-rendered templates, xorm, and the managed Mercurial runner. Replace duplicated presentation with shared partials, semantic CSS tokens, and scoped JavaScript. Add ID-based fork/PR services and guarded, recoverable local Mercurial operations; do not implement a second transport or permission system.
 
 **Tech Stack:** Existing Go module/toolchain (currently Go 1.27.3), Macaron, xorm and existing database drivers; checked-in CSS and local SVG icons; small JavaScript modules with no deployment build service; managed Mercurial server >=5.0, tested versions 5.0.2 and 7.2.4, native clients >=2.0 under the hosting plan's matrix.
 
-**Spec:** [Approved shared UI/PR design](../specs/2026-10-26-shared-ui-and-pull-requests-design.md), [design system](../../DESIGN.md), and [hosting prerequisite plan](2026-10-25-mercurial-hosting.md). Read all three. This plan was prepared on 2026-10-26; no implementation tasks below have been run.
+**Spec:** [Approved shared UI/PR design](../specs/2026-10-26-shared-ui-and-pull-requests-design.md), [design system](../../DESIGN.md), and [hosting prerequisite plan](2026-10-25-mercurial-hosting.md). Read all three. Updated 2026-10-26 with approved landing-page Task 16. Task 0 was audited and remains blocked; no production tasks have run. Execution is approved with subagents in the existing worktree. Prerequisite work remains with the existing hosting chat.
 
 ## Global Constraints
 
@@ -25,12 +25,15 @@
 - Keep product text localized, assets local, `AppSubUrl` respected, and all mutations CSRF/permission protected. Preserve existing account/issue notifications.
 - No broad cleanup of unrelated code. Never stage another task's changes. No remote or push is authorized by this plan.
 
+- Product identity: Hgs or Mercurial service; exact landing tagline: **A painless, self-hosted Mercurial service.** Preserve copyright/license notices and internal identifiers.
+- Public landing Explore shows public repositories only and is omitted when [service] REQUIRE_SIGNIN_VIEW = true. Enforce the same policy at query and route boundaries. Signed-in workspace Explore retains authorized private results.
+
 ## Review Focus
 
-1. A permission change between discovery, page render, and an action must not reveal a private name/count or permit a stale operation: Tasks 4, 8, 10, 12, 14.
+1. A permission change between discovery, page render, and an action must not reveal a private name/count or permit a stale operation: Tasks 4, 8, 10, 12, 14, 16.
 2. A bookmarked source/destination moves while a reviewer reads the page: comparisons become stale and a merge cannot silently use new nodes: Tasks 10–12.
 3. Native SSH/HTTPS pushes race with a web merge, or the process dies after publishing but before DB commit: no lost bookmark update, duplicate merge, or false success: Tasks 2, 12, 14.
-4. Real narrow screens, long localized names, failed avatar images, and keyboard popouts expose layout regressions: Tasks 3, 5–7, 13, 15.
+4. Real narrow screens, long localized names, failed avatar images, and keyboard popouts expose layout regressions: Tasks 3, 5–7, 13, 15–16.
 5. Fork history contains unsafe paths, symlinks, `.hgsub`, binary/huge diffs, or private ancestors: browsing/review must stay safe and unsupported merge checkouts must fail without touching live storage: Tasks 1, 8, 10, 14.
 
 ## Baseline and ordering
@@ -39,7 +42,7 @@ The earlier hosting plan remains the prerequisite owner for its transport gate, 
 
 Complete and validate the earlier plan's Tasks 6–15 before this plan's production tasks. The original Task 13 removes the broken Git fork/PR stubs first; this plan then installs new Mercurial implementations. Its absence test must continue to reject Git/mirror/import/release/archive/hook endpoints, but stop asserting that the newly implemented Mercurial fork/PR endpoints are absent at this plan's cutover. Do not reintroduce Git handlers to satisfy route tests. Coordinate any overlapping original-plan work before editing the same files.
 
-One coordinated plan is appropriate: discovery, fork access, PR visibility, Issues, and Admin all consume the same authorization/layout. Implementation sequence: **0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14 → 15**. Tasks 1–2 are feasibility gates; failure returns to design rather than continuing with attractive but nonfunctional PR pages.
+One coordinated plan is appropriate: discovery, fork access, PR visibility, Issues, and Admin all consume the same authorization/layout. Implementation sequence: **0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14 → 15 → 16**. Tasks 1–2 are feasibility gates; failure returns to design rather than continuing with attractive but nonfunctional PR pages.
 
 At execution start, use an isolated worktree if needed, reconcile the baseline, and record its commit. Do not copy the current unrelated uncommitted transport files into a feature commit. Plans can be read now; passing a dependency is an evidence-backed checkpoint, not an unchecked assumption.
 
@@ -49,6 +52,7 @@ At execution start, use an isolated worktree if needed, reconcile the baseline, 
 | --- | --- |
 | Mercurial review operations | New `modules/hg/review_types.go`, `review_snapshot.go`, `review_compare.go`, `review_merge.go`, `review_publish.go` and corresponding `_test.go` / `_integration_test.go` files: bounded immutable snapshots, comparisons, merge preparation/publication |
 | Write coordination | New `modules/hosting/repository_operations.go`; extend prerequisite `modules/hosting/service.go`, `modules/hgbridge/capability.go`, `control.go`, `hooks.go`: reuse authorization and serialize against all transport writers |
+| Landing and identity | Task 16: templates/home.tmpl, routers/home.go, public/img/hgs-mascot.png, shared presentation and locale/default branding; approved reference docs/prototypes/landing-page/ |
 | Shared presentation | New `modules/ui/{model.go,render.go}`, `templates/shared/*`, `public/css/app.css`, `public/js/app/{shell.js,forms.js,markdown.js}`, `public/img/ui-icons.svg` |
 | Discovery/recents | New `models/{repo_catalog.go,repo_recent.go}`, `routers/user/recent.go`; existing `routers/home.go`, `templates/explore/repos.tmpl`, `templates/user/dashboard/*` |
 | Forks | New `models/repo_fork.go`, `modules/collaboration/{service.go,fork.go}`, `routers/repo/fork.go`; rewrite `templates/repo/fork.tmpl` |
@@ -105,7 +109,7 @@ New catalog and PR pages use page size 30, maximum 100, a deterministic tie-brea
 - [ ] **1. Record the baseline.** Run `git status --short`, `git log -1 --oneline`, and inspect the transport evidence plus the original task completion records. Identify concurrent edits. Record missing prerequisites honestly.
 - [ ] **2. Check the transport gate.** Require native Windows/Linux/macOS current-version passes and Linux legacy-version coverage as specified by the hosting plan. A reproduced known gap, skipped suite, or unavailable required runner is not a pass. If unresolved, stop production work; request resolution through its owning task/design.
 - [ ] **3. Check the application baseline.** Run `go test ./models ./modules/hg ./modules/hgbridge ./modules/hosting ./routers/repo -count=1` and `go build ./...`; inspect the original end-to-end acceptance evidence. Require ID-based authorization/storage and Mercurial browsing to be present, not just runner tests.
-- [ ] **4. Reconcile scope.** Record that this project supersedes the earlier fork/PR/UI exclusions only. The landing-page/logo phase remains deferred. Update old-plan handoff notes so executors do not remove the newly implemented routes later.
+- [ ] **4. Reconcile scope.** Record that this project supersedes the earlier fork/PR/UI exclusions only. The approved landing-page/logo phase follows the core UI in Task 16. Update old-plan handoff notes so executors do not remove the newly implemented routes later.
 - [ ] **5. Commit the evidence note** as `docs: establish shared UI integration baseline`. Do not mark this task complete until Steps 2–3 pass.
 
 ### Task 1: Prove safe local snapshots, comparisons, and merge preparation
@@ -150,7 +154,7 @@ New catalog and PR pages use page size 30, maximum 100, a deterministic tie-brea
 
 **Interfaces:** `models.CatalogQuery { Text,Visibility,Scope string; OwnerID int64; Page,PageSize int }` (`Visibility=all/public/private`, `Scope=accessible/mine`); `CatalogPage { Repositories []*Repository; Total,Page,PageSize int }`; `ListAccessibleRepositories(ctx context.Context, actorID int64,q CatalogQuery) (CatalogPage,error)`; `RecordRepositoryVisit(ctx context.Context,actorID,repoID int64,at time.Time) error`; `RecentRepositories(ctx context.Context,actorID int64) ([]*Repository,error)`; `ClearRepositoryVisits(ctx context.Context,actorID int64) error`. New `GET /user/recent`, `POST /user/recent/clear`, `GET /explore/search?q=...` return only authorized partials/data; `/explore` remains the full page.
 
-- [ ] **1. Add `TestCatalogFiltersBeforeCountAndPage`, `TestRecentsLimitsAndRenames`, `TestRecentsRevocationAndAccountIsolation`.** Fixtures with 25 visits assert 20 retained/10 displayed, no duplicate IDs, current names after rename, and revoked/deleted entries absent from both rows/counts. Assert guests follow existing sign-in policy. Simulate responses arriving out of order and verify the UI only displays the newest query. Private-fork ancestry fixtures belong to Task 8, when fork relations exist.
+- [ ] **1. Add `TestCatalogFiltersBeforeCountAndPage`, `TestRecentsLimitsAndRenames`, `TestRecentsRevocationAndAccountIsolation`.** Fixtures with 25 visits assert 20 retained/10 displayed, no duplicate IDs, current names after rename, and revoked/deleted entries absent from both rows/counts. Assert anonymous catalog/search queries return only public rows/counts regardless of visibility filters and return no repository data when RequireSignInView is enabled; signed-in discovery keeps its authorized scope. Simulate responses arriving out of order and verify the UI only displays the newest query. Private-fork ancestry fixtures belong to Task 8, when fork relations exist.
 - [ ] **2. Run RED:** `go test ./models ./routers/user -run 'TestCatalog|TestRecents' -count=1`.
 - [ ] **3. Implement catalog filtering with the shared authorization policy** (Task 8 extends it for actual private forks), pagination and input limits (query max 200 Unicode characters). Record visits only after successful foreground repository-page authorization/render, not assets/background polling. Search uses 200ms debounce and cancels/ignores stale requests. Create popout links to the authorized existing form. Add clear-Recents CSRF check and 303 redirect/updated partial.
 - [ ] **4. Verify GREEN** plus browser Search/Explore/Recents/Create with multiple accounts and sub-URL deployment. Refresh the authorization on every read; do not store repository names in a client-wide persistent cache.
@@ -164,7 +168,7 @@ New catalog and PR pages use page size 30, maximum 100, a deterministic tie-brea
 
 - [ ] **1. Add `TestSharedUIRepositoryRoutes` and `TestSharedUIWorkspace`.** Request real empty/populated/private/merge/file pages; assert selected sidebar item, escaped source/README, valid app-sub-URL links, no Git wording, working typed reference selection and unavailable action omission. Assert no fabricated activity entry when no supported event exists.
 - [ ] **2. Run RED:** `go test -tags integration ./tests/integration -run 'TestSharedUIRepository|TestSharedUIWorkspace' -count=1`.
-- [ ] **3. Migrate markup to shared components** and adapt page-specific scripts without duplicate legacy initialization. Preserve source highlighting, copy clone command, diff navigation and form validation. Keep public landing markup and `gogs-lg.png` for the separate follow-on. Fork/PR navigation becomes active only with Tasks 8/13, with no dead route exposed at a production checkpoint.
+- [ ] **3. Migrate markup to shared components** and adapt page-specific scripts without duplicate legacy initialization. Preserve source highlighting, copy clone command, diff navigation and form validation. Keep public landing markup and its current logo until Task 16. Fork/PR navigation becomes active only with Tasks 8/13, with no dead route exposed at a production checkpoint.
 - [ ] **4. Verify GREEN** and browser-inspect long repository names, multiple heads, binary/large files, empty README, readers versus owners, and narrow tables. Check bounded command counts from the hosting baseline remain intact.
 - [ ] **5. Commit** as `ui: migrate workspace and repository pages`.
 
@@ -286,16 +290,24 @@ New catalog and PR pages use page size 30, maximum 100, a deterministic tie-brea
 - [ ] **2. Run the focused tests**, then fix only failures in their owning components. Search obsolete template references and global JS selectors before removal; an unused filename alone is not proof an asset is safe to delete.
 - [ ] **3. Run final validation:** `go test ./... -count=1`, `go test -tags integration ./... -count=1`, `go test -race ./models ./modules/hg ./modules/hgbridge ./modules/hosting ./modules/collaboration`, `go vet ./...`, `go build ./...`. Record pre-existing external LDAP/network failures separately; do not suppress them and call the suite green. Use native platform jobs and the retained version matrix. Actual successful results are required; a written CI file is not evidence it ran.
 - [ ] **4. Finish browser QA** at the listed widths, keyboard-only, text zoom, two locales, and reader/writer/admin/guest roles. Record screenshots plus commands/results/version matrix in UI evidence. Verify the 28px avatar's centers coincide with its 40px control, no desktop top-nav duplication, and mobile drawers/popouts remain reachable.
-- [ ] **5. Commit** as `test: validate shared UI and Mercurial collaboration`. Review the complete branch, then present integration choices; do not merge/push implicitly.
+- [ ] **5. Commit** as `test: validate shared UI and Mercurial collaboration`. Continue to Task 16 before final whole-branch review or integration handoff.
 
-## Follow-on handoff: landing page and logo
+### Task 16: Approved Hgs landing page, mascot, and public discovery policy
 
-After the core project completes, begin a separate design pass for `templates/home.tmpl` and `public/img/gogs-lg.png`. Keep current authentication/registration policy and supported social sign-in. Refresh public copy for Mercurial and use the shared system. The user suggested a beaver and a beaker, but has not selected whether the beaver holds the beaker or sits inside it. Generate reviewable concepts then; do not replace artwork or rename the product as part of this implementation. Any favicon/navigation-logo variants require an explicit scope decision in that follow-on design.
+**Files:** Modify templates/home.tmpl, routers/home.go, templates/explore/repos.tmpl, shared identity/footer partials from Task 3, public/css/app.css, conf/app.ini default display branding, modules/setting/setting.go display-name fallback if present, and conf/locale/locale_*.ini product labels. Add public/img/hgs-mascot.png from docs/prototypes/landing-page/gopher-lab.png and public/img/hgs-mascot.LICENSE.md with source, license and adaptation credit. Extend routers/home_test.go and tests/integration/ui_test.go. Retire public/img/gogs-lg.png only after all supported references are replaced. Use the approved prototype as a visual reference, not runtime code.
+
+**Interfaces:** Reuse setting.Service.RequireSignInView and Task 4's ListAccessibleRepositories(ctx context.Context, actorID int64, q models.CatalogQuery) (models.CatalogPage,error). Produce Home view-data boolean ShowPublicExplore = !setting.Service.RequireSignInView. Landing catalog links use AppSubUrl + "/explore?visibility=public"; any landing repository data uses actorID 0 and Visibility "public". Task 4's anonymous catalog/search policy remains authoritative even if query parameters are changed. Preserve signed-in Home dashboard routing, existing registration/provider view data, and configured instance names; change default product identity, not operator-selected names.
+
+- [ ] **1. Add focused failing tests.** TestLandingPublicExplorePolicy uses public and private repository fixtures: with REQUIRE_SIGNIN_VIEW false, landing links target the public filter and no private names/counts appear; with true, no landing Explore links/previews/counts are rendered and direct anonymous Explore/search requests use the existing sign-in response with no repository payload. Include attempts to request visibility=all/private and page through results. TestLandingIdentityAndAuth asserts the exact tagline, Hgs default identity, retained custom instance name, local mascot/attribution, AppSubUrl links, conditional registration, configured social providers, and signed-in dashboard routing. TestLandingAssetPackaging checks the PNG and attribution are included in packaged assets. Keep signed-in authorized-private catalog regression coverage from Task 4.
+- [ ] **2. Run RED:** go test ./routers ./models -run 'TestLanding|TestCatalog' -count=1 and go test -tags integration ./tests/integration -run 'TestLanding' -count=1. Confirm failures reflect missing policy/presentation, not fixture setup.
+- [ ] **3. Implement the approved layout and branding.** Build the public page with shared tokens, compact Hgs header, exact tagline, approved local Gopher, actual sign-in routes and policy-controlled public Explore. Omit the prototype notice, placeholder repositories, preview dialogs and example host from production. Use real repository URLs for any clone example or omit it when no public repository is available. Reuse server-side catalog policy; never hide fetched private data in JavaScript. Phase out Gogs product labels/default descriptions in retained templates/locales while preserving legal notices, historical attribution, import paths and operator configuration. Add the mascot credit and license alongside the asset. Do not redesign favicons/navigation artwork.
+- [ ] **4. Verify GREEN** with the same focused commands, go build ./..., and the full UI route regression suite from Task 15 after the branding changes. Browser-check both configuration values at 390px and 1440px, keyboard navigation, public-empty state, registration on/off, configured sign-in providers, and sub-URL deployment. Confirm no private repository data in HTML, search results or counts; verify image transparency/legibility and attribution. Record results in docs/mercurial/shared-ui-evidence.md.
+- [ ] **5. Commit** as ui: apply approved Hgs landing page and identity. Complete the whole-branch review for Tasks 0–16, then present integration choices without implicitly merging or pushing.
 
 ## Self-review and execution handoff
 
-Coverage: shared layout/tokens (3); discovery/popouts/recents (4); workspace/source/history/settings (5); complete Issues (6); Admin/accounts/org/auth/installer/errors (7); forks/privacy (8,14); PR lifecycle/comparisons/reviews/merge (9–13); native/runtime/visual cutover (15); prerequisite safety (0–2); landing/logo follow-on recorded above.
+Coverage: shared layout/tokens (3); discovery/popouts/recents (4); workspace/source/history/settings (5); complete Issues (6); Admin/accounts/org/auth/installer/errors (7); forks/privacy (8,14); PR lifecycle/comparisons/reviews/merge (9–13); native/runtime/visual cutover (15); prerequisite safety (0–2); approved landing page, Hgs branding, Gopher asset and public discovery policy (16).
 
 Cross-task types/methods are defined above or attributed to the hosting prerequisite. `collaboration.Service` is introduced in Task 8 after guarded hosting primitives exist; earlier UI tasks do not depend on that package. Routes expose real features only once their service task is complete. Feasibility contracts are gates, not unverified promises or authority to weaken the approved design.
 
-The plan is ready for review, but execution method has not been chosen. Recommended: subagent-driven implementation with an independent review per task, because permission, transaction, artifact-retention and UI boundaries interact and a mistake can expose private repository data or corrupt a merge. Native execution is also available with a whole-branch review at the end. Neither approach bypasses Task 0's failed dependency gate.
+The user approved subagent-driven execution in the existing worktree, and subsequently approved the landing page/Gopher with the public discovery correction now captured in Task 16. Task 0 remains blocked on the hosting prerequisites assigned to the existing chat. Resume with the preserved execution method after those prerequisites pass; no additional design or execution-method approval is required for this scope.

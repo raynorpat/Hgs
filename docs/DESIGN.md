@@ -1,6 +1,6 @@
 # Hgs design system
 
-Status: Shared UI design approved on 2026-10-26. The Hgs landing-page and Go Gopher mascot prototype is pending review; it is not approved production artwork or implementation.
+Status: Shared UI, Hgs landing-page composition, and lab-coat/beaker Go Gopher artwork approved on 2026-10-26. The public-only, configuration-controlled landing Explore rule below is part of that approval. Production implementation remains subject to the existing prerequisite gate.
 
 Updated: 2026-10-26
 
@@ -217,7 +217,7 @@ The visual prototype is not evidence that backend workflows work. Production acc
 
 The requested product name is **Hgs**, described as a **Mercurial service**. Use the exact landing-page tagline: **A painless, self-hosted Mercurial service.** Phase out Gogs from user-facing product copy in a later implementation while preserving existing copyright, license and attribution notices. Internal package/import paths and repository identifiers are not renamed by this visual prototype.
 
-[Open the throwaway landing-page prototype](prototypes/landing-page/index.html). Its adjacent gopher-lab.png is concept artwork. The prototype is pending review and does not change the production home template, public logo, authentication, routes, or backend behavior. Sample repositories and controls are clearly labeled; prototype appearance is not evidence that backend workflows work.
+[Open the throwaway landing-page prototype](prototypes/landing-page/index.html). Its adjacent gopher-lab.png is the approved mascot artwork. The user approved this composition with the public Explore correction below. The prototype does not change the production home template, public logo, authentication, routes, or backend behavior. Sample repositories and controls are clearly labeled; prototype appearance is not evidence that backend workflows work.
 
 ### Landing-page composition
 
@@ -227,14 +227,20 @@ Keep the public layout distinct from the application's side navigation while usi
 
 The prototype has sample repository rows, section links, and a dismissible accessible preview dialog. It does not collect passwords, submit forms, authenticate, or trigger external application changes. A separate Design preview notice identifies the artifact as a throwaway concept. The clone command uses an explicitly labeled placeholder address.
 
+### Public repository discovery
+
+The landing-page Explore repositories links and any repository preview show **public repositories only**, with public-only counts and pagination enforced on the server. Omit all landing Explore links, repository previews, counts, and related empty states when anonymous browsing is blocked in app.ini. In the current configuration this is [service] REQUIRE_SIGNIN_VIEW = true, exposed as setting.Service.RequireSignInView; reuse this setting rather than inventing another switch. Direct anonymous Explore/search requests must still obey the sign-in requirement and return no repository data. Hiding navigation alone is insufficient.
+
+This rule applies to the public landing page and its public catalog destination. Signed-in workspace Explore continues to list all repositories the viewer can access, including permitted private repositories. Landing links select the public catalog filter; anonymous requests cannot widen it with query parameters. If repository previews are retained in production, load real public data and omit them entirely when public browsing is disabled.
+
 ### Authentication and policy in later implementation
 
 Preserve supported sign-in methods, including social sign-in, and existing conditional registration behavior. Do not imply public registration is always available. Production controls must reflect the instance's policy and permitted authentication providers; a redesign must not remove supported paths or weaken CSRF/authorization checks. The prototype explains these policies in a sign-in preview dialog instead of presenting a credential form.
 
 ### Mascot artwork and attribution
 
-The requested composition is the recognizable Go Gopher in a white laboratory coat holding a beaker. Keep the silhouette friendly and readable, with adequate separation between coat, beaker and body. Ship the reviewed artwork locally with a transparent background; inspect the actual PNG for stray backgrounds, rough edges, silhouette clarity, and contrast on white and the shared blue palette. Check both the large landing illustration and reduced-size use before approving it. Provide descriptive alternative text for the meaningful illustration.
+The requested composition is the recognizable Go Gopher in a white laboratory coat holding a beaker. Keep the silhouette friendly and readable, with adequate separation between coat, beaker and body. Ship the reviewed artwork locally with a transparent background; inspect the actual PNG for stray backgrounds, rough edges, silhouette clarity, and contrast on white and the shared blue palette. Check both the large landing illustration and reduced-size use during implementation verification. Provide descriptive alternative text for the meaningful illustration.
 
 Credit the source and adaptation: **Go Gopher by Renee French, CC BY 4.0. Lab-coat and beaker adaptation.** Link [the original Go Gopher attribution](https://go.dev/blog/gopher) and [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Preserve existing Gogs legal notices separately from the Hgs product identity.
 
-After review, a later implementation may replace the main landing PNG using a neutral Hgs asset filename such as public/img/hgs-mascot.png and update its template reference. The prototype does not authorize replacing production assets, favicons, or navigation icons. Review the landing composition and actual mascot PNG together before carrying this direction into the application.
+Implementation plan Task 16 now includes the approved landing page and replacement of the main landing PNG with public/img/hgs-mascot.png, using the approved local artwork and attribution. Phase out Gogs product labels in favor of Hgs or Mercurial service while retaining legal notices and internal identifiers. Favicon and navigation-icon variants remain outside this artwork approval. The prototype is a visual reference, not a replacement for the real template and authorization checks.

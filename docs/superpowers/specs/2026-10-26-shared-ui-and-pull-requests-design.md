@@ -2,7 +2,7 @@
 
 Date: 2026-10-26
 
-Status: Approved by the user on 2026-10-26, including the Issues coverage and shared design system. Implementation planning is authorized. The landing-page/logo work remains a follow-on phase whose composition needs a separate design review. Approval does not waive the transport or merge-feasibility prerequisites below.
+Status: Approved by the user on 2026-10-26, including the Issues coverage and shared design system. Implementation planning is authorized. The Hgs landing page and lab-coat/beaker Go Gopher artwork were also approved on 2026-10-26, with public-only landing Explore omitted when anonymous browsing is blocked. Approval does not waive the transport or merge-feasibility prerequisites below.
 
 Builder check: A fresh reviewer identified two consequential ambiguities: cross-named-branch ancestor merges and authority to assign reviewers/block merging. Both are resolved below as explicit author-proposed defaults, and the reviewer confirmed both questions are answered. This review checks design completeness, not implementation correctness or transport feasibility.
 
@@ -10,7 +10,7 @@ Builder check: A fresh reviewer identified two consequential ambiguities: cross-
 
 Give this self-hosted Mercurial service the navigation and visual character of the Bitbucket screenshots supplied by the user: a blue left navigation area, a narrow utility rail, white content surfaces, compact tables, and contextual repository navigation. Replace the two existing presentation systems with shared components while retaining the Go application. Include a working fork-based pull request workflow and apply the same design to administration.
 
-The screenshots and iterated mockup are the visual reference, rather than an attempt to reproduce an exact historical Bitbucket release. Keep the Gogs name and attribution unless separately changed.
+The screenshots and iterated mockup are the visual reference, rather than an attempt to reproduce an exact historical Bitbucket release. Use the subsequently approved Hgs product name; preserve existing legal attribution and internal import paths.
 
 ## Decisions made with the user
 
@@ -243,9 +243,13 @@ Meaningful acceptance cases include:
 
 Choose concrete shared partial/module names, exact responsive breakpoints, compatible local icon implementation, query indexes, schema/migration mechanics within the fresh-database baseline, bounded artifact formats, job scheduling, and process/time/disk quotas. Tune typography and spacing against the visual reference. Choose exact Mercurial commands only after testing the supported versions and proving the transaction/safety contracts. These choices must not change the product behavior or weaken a prerequisite.
 
-## Requested follow-on phase
+## Approved landing-page and identity phase
 
-The user subsequently requested a public landing-page refactor and a Mercurial-focused replacement for `public/img/gogs-lg.png` after the application UI work. A beaver-and-beaker logo is a tentative concept, with composition still open. Record this phase in the implementation handoff, but design/review it separately once the shared UI work is complete; do not treat the existing application mockup as approval of new branding artwork. Preserve the Gogs name and attribution unless separately requested. [The design system](../../DESIGN.md#follow-on-landing-page-and-mercurial-identity) records the landing-page context and visual constraints.
+After the shared application UI work, implement the approved Hgs landing page and Go Gopher wearing a white laboratory coat and holding a beaker. The exact tagline is **A painless, self-hosted Mercurial service.** The approved [prototype and artwork](../../prototypes/landing-page/index.html) replace the earlier tentative beaver concept. Phase out Gogs in product copy in favor of Hgs or Mercurial service, preserving legal attribution and internal identifiers.
+
+Landing-page Explore links and any repository preview show public repositories only. Omit them entirely when app.ini blocks anonymous browsing; the current policy is [service] REQUIRE_SIGNIN_VIEW = true. Enforce public-only queries/counts/pagination and direct-route access on the server. Signed-in workspace Explore retains its accessible-repositories behavior. Preserve conditional registration, supported social sign-in, and existing authentication policy.
+
+Replace the main landing logo reference with a local Hgs asset based on the approved PNG, retaining the Go Gopher credit to Renee French and CC BY 4.0 attribution. Favicon/navigation-icon variants are not included. [The design system](../../DESIGN.md#follow-on-landing-page-and-mercurial-identity) defines the composition, assets and public discovery rule; implementation plan Task 16 delivers this phase. Approval does not waive transport or backend acceptance gates.
 
 ## Technical references
 
