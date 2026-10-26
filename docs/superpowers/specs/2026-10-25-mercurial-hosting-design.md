@@ -115,7 +115,7 @@ Each write-capable worker/session receives an unguessable, short-lived capabilit
 
 Generated hook command strings contain only the correctly quoted application executable and fixed internal arguments. Repository names, client commands, and credentials never enter those strings. Mercurial runs external hooks through the platform shell (`cmd.exe` on Windows, `/bin/sh` elsewhere), so quoting of executable paths with spaces and Unicode must be verified through real hook execution on every OS, not only by string construction. No separate shell script is required.
 
-Reads are authorized at request/session start; already-streamed data cannot be revoked. Bound session duration. Writes are rechecked at transaction close; an already committed transaction cannot be revoked retroactively. Account/key revocation blocks new sessions and cancels tracked sessions where possible.
+Reads are authorized at request/session start; already-streamed data cannot be revoked. Bound session duration. Writes are rechecked at transaction close; an already committed transaction cannot be revoked retroactively. Exception: a stream-clone bundle unbundled into an empty repository by a writer revoked between transaction open and close is not undone (its store files bypass the transaction journal); accepted 2026-10-26 by the user as a documented limitation, see `docs/mercurial/transport-evidence.md`. Account/key revocation blocks new sessions and cancels tracked sessions where possible.
 
 ## HTTPS transport
 

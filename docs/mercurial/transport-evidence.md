@@ -1,6 +1,6 @@
 # Transport and authorization feasibility evidence (Task 6)
 
-Gate: FAILED — revocation-at-transaction-close does not hold for stream-clone bundles unbundled into empty repositories (design decision required); all other rows passed on Windows; Linux/macOS and 5.0.2/2.0.2 unavailable.
+Gate: FAILED → accepted limitation (user sign-off 2026-10-26); still unverified on Linux/macOS and 5.0.2/2.0.2. Revocation at transaction close does not hold for stream-clone bundles unbundled into empty repositories; the user accepted this as a documented limitation. All other rows passed on Windows.
 
 See [The gap: stream bundles survive revocation](#the-gap-stream-bundles-survive-revocation).
 
@@ -187,7 +187,8 @@ behaviour is source-derived only.
 
 ## The gap: stream bundles survive revocation
 
-This is why the gate failed. `TestKnownGapStreamBundleRevocation` reproduces
+This is why the gate failed; the user accepted it as a documented limitation on
+2026-10-26 (remedy 1 below). `TestKnownGapStreamBundleRevocation` reproduces
 it on both transports and asserts the current, unsafe behaviour, so it fails
 visibly once Mercurial or a later design closes the gap.
 
@@ -259,7 +260,11 @@ rewritten from the bundle's requirements.
   repository"), non-empty repositories (the handler aborts), and every
   journaled write path (`TestTransportRevocation`).
 
-### Candidate remedies (not implemented; the user decides)
+### Candidate remedies
+
+User decision 2026-10-26: remedy 1. Remedy 3 is drafted locally in
+[`upstream-stream-push-proposal.md`](upstream-stream-push-proposal.md) and has
+not been sent.
 
 1. Accept and document it as a known limitation: revocation is enforced at
    transaction close except for stream bundles into empty repositories.
@@ -275,6 +280,64 @@ rewritten from the bundle's requirements.
    in Go conflicts with the design's rule against parsing the wire protocol,
    and over SSH it is impossible without parsing the stdio stream. An
    extension conflicts with "no custom Python helper".
+
+### Stream bundles: which files they can write
+
+Question: can a stream bundle write files Mercurial would not normally create,
+and can any of them change later behaviour (configuration, hooks,
+requirements)? Source: Mercurial 7.2.4 `streamclone.py`, `store.py`, `vfs.py`,
+`bundle2_part_handlers.py`. Test: `TestStreamBundleFileNames` sends
+hand-built `stream2` bundles as an authorized writer over SSH into empty
+repositories and records what lands (Windows, 7.2.4, passed).
+
+- Targets. Each streamed file names a vfs by one byte: `s` (store,
+  `.hg/store`) or `c` (cache, `.hg/cache`) (`_makemap`, `streamclone.py:777`).
+  `repo.vfs` (`.hg`, where `hgrc`, `sharedpath`, `requires` live) is excluded
+  on purpose and asserted twice (`:785`, `:1156`, `:1639`). Any other byte is a
+  `KeyError` that kills the server process before anything is written
+  (observed).
+- Names are arbitrary within those directories. `consumev2` passes them through
+  `prepare_streamed_file` (`vfs.py:480`), which audits the joined path:
+  `..` components, nested repositories and Windows-illegal names abort
+  (observed for the cache: "path contains illegal component", "is inside
+  nested repo"). The store vfs first dot-encodes names, so `../hgrc` lands
+  harmlessly as `store/~2e~2e/hgrc` and `Upper/x` as `store/_upper/x`.
+  `consumev3` (`stream3-exp`) writes through `vfs(name, 'w')`, the same audit.
+- Landed in the test: `store/hgrc`, `store/data/odd.i` (not a revlog; also
+  added to `store/fncache`, which accepts any `data/*.i`/`.d` name,
+  `store.py:74`, `:1334`), `store/_upper/x`, `cache/hgrc`,
+  `cache/branch2-served` (garbage). A streamed `store/requires` was replaced:
+  `applybundlev2` rewrites `.hg/requires` and `store/requires` after the files
+  (`scmutil.writereporequirements`), and removes `store/requires` when the
+  repository is not share-safe.
+- Configuration and hooks: Mercurial reads no configuration from the store or
+  cache. With a streamed `store/hgrc` and `cache/hgrc` containing a
+  `[hooks]` section, `hg config` showed none of it. A share-safe repository
+  reads a share source's `hgrc` only through `.hg/sharedpath`, which no stream
+  can write.
+- Requirements: the part's `requirements` parameter is written to
+  `.hg/requires`/`store/requires`, limited to requirements this Mercurial
+  supports (`applybundlev2`, `new_stream_clone_requirements`). Adding `shared`
+  without a `.hg/sharedpath` leaves a repository Mercurial refuses to open
+  (observed: exit 255 on every later command). Other supported requirements
+  select storage formats (`bookmarksinstore`, `treemanifest`, `revlogv2`, …)
+  that change how the writer's own data is read, not configuration or hooks.
+- Caches: arbitrary files under `.hg/cache` can be planted. Mercurial validates
+  the branch and tags caches against the repository and recomputes them when
+  they do not match (by source: `branchmap.py:580-620`, `tags.py:432-464`); a
+  writer can plant a cache consistent with history they
+  could push anyway. No cache file is a configuration source.
+- Side observation: after applying a `stream2` part over SSH, Mercurial 7.2.4
+  crashes formatting the reply (`wireprotoserver.py:520`, `TypeError` on
+  `rsp.res` being `None`) after the transaction has committed.
+
+Finding: a writer (authorized, or revoked within the accepted gap) can leave
+an empty repository that Mercurial will not open (`shared` requirement) or
+with stray, inert files in the store and cache. The writer could already
+damage that repository's content by pushing; the new effect is that the
+repository stops opening at all, which the application must survive. Nothing found reaches
+configuration, hooks, or files outside `.hg/store`, `.hg/cache` and the two
+`requires` files.
 
 ## Other observations
 
