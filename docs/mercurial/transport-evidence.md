@@ -293,7 +293,7 @@ repositories and records what lands (Windows, 7.2.4, passed).
 - Targets. Each streamed file names a vfs by one byte: `s` (store,
   `.hg/store`) or `c` (cache, `.hg/cache`) (`_makemap`, `streamclone.py:777`).
   `repo.vfs` (`.hg`, where `hgrc`, `sharedpath`, `requires` live) is excluded
-  on purpose and asserted twice (`:785`, `:1156`, `:1639`). Any other byte is a
+  on purpose and asserted three times (`:785`, `:1156`, `:1639`). Any other byte is a
   `KeyError` that kills the server process before anything is written
   (observed).
 - Names are arbitrary within those directories. `consumev2` passes them through
@@ -315,13 +315,20 @@ repositories and records what lands (Windows, 7.2.4, passed).
   `[hooks]` section, `hg config` showed none of it. A share-safe repository
   reads a share source's `hgrc` only through `.hg/sharedpath`, which no stream
   can write.
-- Requirements: the part's `requirements` parameter is written to
-  `.hg/requires`/`store/requires`, limited to requirements this Mercurial
-  supports (`applybundlev2`, `new_stream_clone_requirements`). Adding `shared`
-  without a `.hg/sharedpath` leaves a repository Mercurial refuses to open
-  (observed: exit 255 on every later command). Other supported requirements
-  select storage formats (`bookmarksinstore`, `treemanifest`, `revlogv2`, …)
-  that change how the writer's own data is read, not configuration or hooks.
+- Requirements: the part's `requirements` parameter decides the repository's
+  requirements. `new_stream_clone_requirements` (`streamclone.py:78-93`) keeps
+  only the stream-ignorable defaults and adds whatever the part declares, and
+  `applybundlev2` refuses only names outside the supported set
+  (`repo/requirements.py:25-48`, `BASE_SUPPORTED`); the result is written to
+  `.hg/requires`/`store/requires`. So any supported requirement set can land:
+  `shared` or `relshared` without a `.hg/sharedpath` leaves a repository
+  Mercurial refuses to open (`shared` observed: exit 255 on every later
+  command); a set missing `revlogv1`/`generaldelta` silently drops the revlog
+  format; `internal-phase`, `archived-phase`, `bookmarksinstore` and other
+  format requirements change how the repository is read. None of this reaches
+  configuration or hooks: configuration is read only from the share source
+  through `.hg/sharedpath`, `.hg/hgrc` and `.hg/hgrc-not-shared`
+  (`localrepo.py:827-843`), none of which a stream can write.
 - Caches: arbitrary files under `.hg/cache` can be planted. Mercurial validates
   the branch and tags caches against the repository and recomputes them when
   they do not match (by source: `branchmap.py:580-620`, `tags.py:432-464`); a
@@ -331,13 +338,16 @@ repositories and records what lands (Windows, 7.2.4, passed).
   crashes formatting the reply (`wireprotoserver.py:520`, `TypeError` on
   `rsp.res` being `None`) after the transaction has committed.
 
-Finding: a writer (authorized, or revoked within the accepted gap) can leave
-an empty repository that Mercurial will not open (`shared` requirement) or
-with stray, inert files in the store and cache. The writer could already
-damage that repository's content by pushing; the new effect is that the
-repository stops opening at all, which the application must survive. Nothing found reaches
-configuration, hooks, or files outside `.hg/store`, `.hg/cache` and the two
-`requires` files.
+Finding: a writer (authorized, or revoked within the accepted gap) can give an
+empty repository any supported requirement set, including `shared`/`relshared`
+or one missing the revlog format, which can leave it unopenable or in an
+unintended format, and can leave stray, inert files in the store and cache.
+The writer could already damage that repository's content by pushing; the new
+effect is that the repository may stop opening at all, which the application
+must survive. Candidate fix, for the user to decide: after any push into an
+empty repository, check its requirements against an allowlist. Nothing found
+reaches configuration, hooks, or files outside `.hg/store`, `.hg/cache` and
+the two `requires` files.
 
 ## Other observations
 
