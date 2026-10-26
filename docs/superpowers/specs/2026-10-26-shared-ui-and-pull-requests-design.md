@@ -43,7 +43,7 @@ Neither option supplies the missing Mercurial fork and PR backend; that is subst
 
 ## Existing system and integration boundary
 
-Read this alongside [the Mercurial hosting design](2026-10-25-mercurial-hosting-design.md), [its implementation plan](../plans/2026-10-25-mercurial-hosting.md), and [transport evidence](../../mercurial/transport-evidence.md).
+Read this alongside [the Mercurial hosting design](2026-10-25-mercurial-hosting-design.md), [its implementation plan](../plans/2026-10-25-mercurial-hosting.md), and the historical transport evidence at prerequisite commit e01f391a97182b30c9adf23dad514f6f56b1f828 (read with `git show e01f391a97182b30c9adf23dad514f6f56b1f828:docs/mercurial/transport-evidence.md`). That prerequisite history is deliberately excluded from this documentation-only merge to master; revalidate its current implementation/evidence when resuming Task 0.
 
 Observed on 2026-10-26:
 
