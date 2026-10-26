@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"regexp"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -41,14 +43,76 @@ func TestRealHookRejectsTransaction(t *testing.T) {
 	}
 }
 
-// buildGogs installs the application binary where quoting matters: spaces,
-// a single quote and non-ASCII letters (ANSI-representable on Windows).
-func buildGogs(t *testing.T) string {
-	name := "gogs"
-	if runtime.GOOS == "windows" {
-		name += ".exe"
+// TestHookCommandSurvivesTonative feeds accepted hook commands through
+// Mercurial's own hooks.tonative rewrite (procutil.shelltonative, which is
+// shelltocmdexe on Windows and the identity elsewhere) and requires them to
+// come back unchanged, so enabling that option cannot alter what runs.
+func TestHookCommandSurvivesTonative(t *testing.T) {
+	exe := os.Getenv("GOGS_TEST_HG")
+	if exe == "" {
+		t.Fatal("GOGS_TEST_HG must name the Mercurial executable for integration tests")
 	}
-	gogs := filepath.Join(t.TempDir(), "gogs bin é ü it's", name)
+	r, err := hg.NewRunner(hg.Config{Executable: exe, ConfigPath: filepath.Join(t.TempDir(), "managed", "hgrc")})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	goos, paths := runtime.GOOS, windowsAccepted
+	if goos != "windows" {
+		paths = []string{`/opt/Gogs é ü/it's "$HOME" ~/x/gogs`}
+	}
+	var accepted []string
+	for _, p := range paths {
+		q, err := quoteFor(goos, p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		accepted = append(accepted, q+" "+HookCommand+" check pretxnopen")
+	}
+	installed, err := HookConfig(filepath.Join(t.TempDir(), "gogs bin é ü PROGRA~1", "gogs.exe"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accepted = append(accepted, values(installed)...)
+	// The reviewer's injection, which the rewrite must visibly alter on
+	// Windows; this shows the probe really reaches shelltocmdexe.
+	injection := `"C:\x'&echo PWN&'\gogs.exe" ` + HookCommand + " check pretxnopen"
+
+	var hexes []string
+	for _, c := range append(accepted, injection) {
+		hexes = append(hexes, "'"+hex.EncodeToString([]byte(c))+"'")
+	}
+	code := "print(*[__import__('binascii').hexlify(__import__('mercurial.utils.procutil', fromlist=['_'])" +
+		".shelltonative(__import__('binascii').unhexlify(h), {b'HG_NODE': b'abc'})).decode()" +
+		" for h in [" + strings.Join(hexes, ", ") + "]], sep=' ')"
+	var out bytes.Buffer
+	if err := r.Run(context.Background(), "", []string{"debugshell", "-c", code}, nil, &out); err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Fields(out.String())
+	if len(got) != len(hexes) {
+		t.Fatalf("shelltonative probe returned %d results for %d commands: %q", len(got), len(hexes), out.String())
+	}
+	for i, c := range accepted {
+		if b, _ := hex.DecodeString(got[i]); string(b) != c {
+			t.Errorf("Mercurial rewrites accepted hook command\n%s\ninto\n%s", c, b)
+		}
+	}
+	b, _ := hex.DecodeString(got[len(got)-1])
+	if rewritten := string(b) != injection; rewritten != (goos == "windows") {
+		t.Errorf("shelltonative(%q) = %q; probe does not exercise Mercurial's rewrite", injection, b)
+	}
+}
+
+// buildGogs installs the application binary where quoting matters: spaces,
+// non-ASCII letters (ANSI-representable on Windows) and, for sh, a single
+// quote, which quoteFor rejects for cmd.exe.
+func buildGogs(t *testing.T) string {
+	name, dir := "gogs", "gogs bin é ü it's"
+	if runtime.GOOS == "windows" {
+		name, dir = "gogs.exe", "gogs bin é ü PROGRA~1"
+	}
+	gogs := filepath.Join(t.TempDir(), dir, name)
 	if err := hg.CheckPath(gogs); err != nil {
 		t.Fatal(err)
 	}

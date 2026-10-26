@@ -68,7 +68,10 @@ func quoteFor(goos, exe string) (string, error) {
 	}
 	// cmd.exe expands %VAR% (and !VAR! when delayed expansion is enabled)
 	// even inside double quotes, which cannot themselves be escaped there.
-	if strings.ContainsAny(exe, `"%!`) {
+	// Mercurial's opt-in hooks.tonative.<name> rewrite (shelltocmdexe) turns
+	// '...' into "...", $VAR into %VAR% and ~\ into %USERPROFILE%, and drops
+	// the \ of \~ and \$; 8.3 names such as PROGRA~1 are left alone.
+	if strings.ContainsAny(exe, `"%!'$`) || strings.Contains(exe, `~\`) || strings.Contains(exe, `~/`) || strings.Contains(exe, `\~`) {
 		return "", fmt.Errorf("hgbridge: hook executable path %q cannot be quoted safely for cmd.exe", exe)
 	}
 	return `"` + exe + `"`, nil

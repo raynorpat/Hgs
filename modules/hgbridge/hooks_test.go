@@ -7,6 +7,7 @@ package hgbridge
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -53,12 +54,20 @@ func TestReaderHooksDenyWithoutController(t *testing.T) {
 	}
 }
 
+// windowsAccepted are executable paths quoteFor accepts for cmd.exe; the
+// integration test proves Mercurial's tonative rewrite leaves their hook
+// commands intact.
+var windowsAccepted = []string{
+	`C:\Program Files\Gogs é ü\PROGRA~1\gogs.exe`,
+	`C:\a&b(c)^d;e,f=g[h]{i}#j@k+l\gogs.exe`,
+}
+
 func TestHookExecutablePathQuoting(t *testing.T) {
 	for _, tc := range []struct {
 		goos, exe, want string
 	}{
-		{"windows", `C:\Program Files\Gogs é ü\it's\gogs.exe`, `"C:\Program Files\Gogs é ü\it's\gogs.exe"`},
-		{"windows", `C:\a&b(c)^d\gogs.exe`, `"C:\a&b(c)^d\gogs.exe"`},
+		{"windows", windowsAccepted[0], `"` + windowsAccepted[0] + `"`},
+		{"windows", windowsAccepted[1], `"` + windowsAccepted[1] + `"`},
 		{"linux", `/opt/Gogs é ü/gogs`, `'/opt/Gogs é ü/gogs'`},
 		{"linux", `/opt/it's "$HOME" ` + "`x`" + `/gogs`, `'/opt/it'\''s "$HOME" ` + "`x`" + `/gogs'`},
 		{"darwin", `/Applications/Gogs %PATH%!/gogs`, `'/Applications/Gogs %PATH%!/gogs'`},
@@ -72,6 +81,13 @@ func TestHookExecutablePathQuoting(t *testing.T) {
 		{"windows", `C:\a"b\gogs.exe`},
 		{"windows", `C:\100%PATH%\gogs.exe`},
 		{"windows", `C:\bang!\gogs.exe`},
+		{"windows", `C:\x'&echo PWN&'\gogs.exe`},
+		{"windows", `C:\it's\gogs.exe`},
+		{"windows", `C:\$HG\gogs.exe`},
+		{"windows", `C:\${HG}\gogs.exe`},
+		{"windows", `C:\a~\gogs.exe`},
+		{"windows", `C:\a~/gogs.exe`},
+		{"windows", `C:\~a\gogs.exe`},
 		{"windows", "C:\\new\nline\\gogs.exe"},
 		{"linux", "/new\nline/gogs"},
 	} {
@@ -81,5 +97,10 @@ func TestHookExecutablePathQuoting(t *testing.T) {
 	}
 	if _, err := HookConfig("gogs", true); err == nil {
 		t.Fatal("relative executable accepted")
+	}
+	if runtime.GOOS == "windows" {
+		if _, err := HookConfig(filepath.Join(t.TempDir(), "x'&echo PWN&'", "gogs.exe"), true); err == nil {
+			t.Fatal("HookConfig accepted a path Mercurial's tonative rewrite would alter")
+		}
 	}
 }
