@@ -1,8 +1,6 @@
-# Contributing to Gogs
+# Contributing to Hgs
 
-> This guidelines sheet is forked from [CONTRIBUTING.md](https://github.com/drone/drone/blob/master/CONTRIBUTING.md).
-
-Gogs is not perfect and it has bugs, or incomplete features for rare cases. You're welcome to tell us or contribute some code. This document describes details about how can you contribute to Gogs project.
+Hgs is not perfect and it has bugs, or incomplete features for rare cases. You're welcome to tell us or contribute some code. This document describes details about how can you contribute to Hgs project.
 
 ## Contribution guidelines
 
@@ -18,8 +16,8 @@ Depends on the situation, you will:
 If you find or consider something is a bug, please create a issue on [GitHub](https://github.com/gogits/gogs/issues). To reduce unnecessary time wasting of interacting and waiting with team members, please include following information in the first place with a comfortable form for you:
 
 - Bug Description
-- Gogs Version
-- Git Version
+- Hgs Version
+- Mercurial Version
 - System Type
 - Error Log
 - Other information
@@ -28,7 +26,7 @@ Please take a moment to check that an issue on [GitHub](https://github.com/gogit
 
 #### Bug Report Example
 
-Gogs crashed when create repository with license, using v0.5.13.0207, SQLite3, Git 1.9.0, Ubuntu 12.04.
+Hgs crashed when create repository with license, using v0.5.13.0207, SQLite3, Git 1.9.0, Ubuntu 12.04.
 
 Error log:
 
@@ -68,7 +66,6 @@ Examples of unacceptable behavior by participants include the use of sexual lang
 
 Project maintainers have the right and responsibility to remove, edit, or reject comments, commits, code, wiki edits, issues, and other contributions that are not aligned to this Code of Conduct. Project maintainers who do not follow the Code of Conduct may be removed from the project team.
 
-Instances of abusive, harassing, or otherwise unacceptable behavior can be
-reported by emailing contact@gitlab.com
+Instances of abusive, harassing, or otherwise unacceptable behavior can be reported by emailing contact@gitlab.com
 
 This Code of Conduct is adapted from the [Contributor Covenant](http:contributor-covenant.org), version 1.0.0, available at [http://contributor-covenant.org/version/1/0/0/](http://contributor-covenant.org/version/1/0/0/)
