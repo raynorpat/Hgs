@@ -29,19 +29,22 @@ D:\github\gogs\go.mod
 - Mercurial 2.0.2: **not on PyPI** (`pip download mercurial==2.0.2` found no distribution; the oldest PyPI release is 2.6.2). It exists as the upstream tarball `https://www.mercurial-scm.org/release/mercurial-2.0.2.tar.gz` (HTTP 200, sha256 `ca8b8fb93f2e3e8c3cdf2f81d87e92592f5f20c5bfcaaeb6a75550d4a69572c9`); CI installs it from there with the checksum verified.
 
 ## Dependency pins
-Timebox: the legacy-pin translation was budgeted at one working session and met. It needed no substitutions (see below), so the budget was never extended.
+Timebox: the legacy-pin translation was budgeted at one working session and met. The 1:1 translation needed no substitutions; the one substitution made (SQLite driver) was a deliberate choice, not a failed translation.
 
-The 27 direct dependencies in `.gopmfile` were translated 1:1 to pseudo-versions of the same legacy commits. No substitutions were needed; nothing was replaced or upgraded. Module resolution is pinned by `go.sum`; CI runs `go mod verify`.
+The `.gopmfile` entries with a commit were translated 1:1 to pseudo-versions of the same legacy commits (27 direct dependencies, all resolved). Module resolution is pinned by `go.sum`; CI runs `go mod verify`.
 
-Modern, maintained modules added or bumped (needed by Go 1.27.3 and the SQLite driver):
+Substitutions and additions, each with its reason:
 
-| Module | Version |
-|---|---|
-| golang.org/x/crypto | v0.58.0 |
-| golang.org/x/net | v0.61.0 |
-| golang.org/x/text | v0.43.0 |
-| golang.org/x/sys | v0.49.0 |
-| modernc.org/sqlite | v1.60.1 |
+| Change | Version | Reason |
+|---|---|---|
+| `github.com/mattn/go-sqlite3` replaced by `modernc.org/sqlite` as the SQLite driver | v1.60.1 (published 2026-09-29; v1.61.0 skipped as under 14 days old) | The 2015 go-sqlite3 pin needs cgo and a C toolchain. The pure-Go driver builds identically on Windows, Linux and macOS. Registered as driver name `sqlite3` because xorm, `app.ini` and the installer use that name. |
+| New transitive modules from modernc.org/sqlite | `github.com/dustin/go-humanize` v1.1.0, `github.com/google/uuid` v1.6.0, `github.com/mattn/go-isatty` v0.0.24, `github.com/ncruces/go-strftime` v1.1.0, `github.com/remyoudompheng/bigfft` v0.0.0-20230129092748-24d4a6f8daec (plus the `modernc.org/*` runtime modules in `go.sum`) | Required by the driver. |
+| `golang.org/x/net`, `golang.org/x/text` | v0.61.0, v0.43.0 | `.gopmfile` listed these without a commit (unpinned); pinned to maintained releases compatible with Go 1.27.3. |
+| `golang.org/x/crypto` | v0.58.0 | Imported by `modules/ssh` but not pinned in `.gopmfile`; pinned to a maintained release. |
+| `golang.org/x/sys` | v0.49.0 (indirect) | Required by the above; maintained version for Go 1.27.3. |
+| `github.com/mattn/go-sqlite3` | legacy pin kept as `// indirect` | Kept as `// indirect` because `go mod why -m` shows only `go-xorm/core`'s test package imports it; the application does not (not compiled in). |
+
+No other dependency was replaced, upgraded or removed.
 
 ## SQLite
 SQLite uses the pure-Go `modernc.org/sqlite` driver, registered as `sqlite3` in `models/models.go` because xorm opens SQLite by that name. It is compiled in by default (no `sqlite` build tag, no cgo), which keeps Windows, Linux and macOS builds identical and toolchain-free. MySQL and PostgreSQL drivers are retained.
