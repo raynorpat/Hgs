@@ -36,11 +36,10 @@ const HookCommand = "internal-hg-hook"
 // without any callback; writers get "check" hooks that call the controller.
 // Commands contain only the quoted executable and fixed arguments.
 //
-// Writers get no pretxnclose-bookmark or pretxnclose-phase hook: those run
-// once per bookmark and per changeset in the same validate step immediately
-// before pretxnclose, which rolls back everything they would guard
-// (mercurial/localrepo.py transaction validate, 7.2.4 lines 2359-2421), so
-// they only cost a callback per pushed changeset.
+// Writers get no transaction-close hooks: as in Heptapod, write access is
+// checked when a transaction opens (and before a pushkey), not rechecked at
+// close. A close-time recheck cannot undo stream-clone data, which Mercurial
+// writes outside the transaction journal.
 func HookConfig(executable string, canWrite bool) (map[string]string, error) {
 	if !filepath.IsAbs(executable) {
 		return nil, fmt.Errorf("hgbridge: hook executable %q is not an absolute path", executable)
@@ -58,7 +57,7 @@ func HookConfig(executable string, canWrite bool) (map[string]string, error) {
 	}
 	cfg := make(map[string]string, len(hooks))
 	for _, h := range hooks {
-		if canWrite && (h == "pretxnclose-bookmark" || h == "pretxnclose-phase") {
+		if canWrite && strings.HasPrefix(h, "pretxnclose") {
 			continue
 		}
 		cfg["hooks."+h] = exe + " " + HookCommand + " " + mode + " " + h

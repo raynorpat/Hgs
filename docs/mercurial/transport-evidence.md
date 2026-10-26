@@ -1,6 +1,6 @@
 # Transport and authorization feasibility evidence (Task 6)
 
-Gate: FAILED → accepted limitation (user sign-off 2026-10-26); still unverified on Linux/macOS and 5.0.2/2.0.2. Revocation at transaction close does not hold for stream-clone bundles unbundled into empty repositories; the user accepted this as a documented limitation. All other rows passed on Windows.
+Gate: FAILED → accepted limitation (user sign-off 2026-10-26), then resolved by a design change the same day; still unverified on Linux/macOS and 5.0.2/2.0.2. Revocation at transaction close did not hold for stream-clone bundles unbundled into empty repositories. Writers are now checked only when a transaction opens, as in Heptapod, so there is no close-time guarantee left to break. All other rows passed on Windows.
 
 See [The gap: stream bundles survive revocation](#the-gap-stream-bundles-survive-revocation).
 
@@ -187,10 +187,11 @@ behaviour is source-derived only.
 
 ## The gap: stream bundles survive revocation
 
-This is why the gate failed; the user accepted it as a documented limitation on
-2026-10-26 (remedy 1 below). `TestKnownGapStreamBundleRevocation` reproduces
-it on both transports and asserts the current, unsafe behaviour, so it fails
-visibly once Mercurial or a later design closes the gap.
+Superseded 2026-10-26: writers no longer get a close-time recheck (see
+[Writer hook set](#writer-hook-set)), so a stream bundle is authorized at
+`pretxnopen` like any other push. The tests named below were removed or
+replaced by `TestTransportWriteAuthorizedAtOpen`; this section records why the
+gate failed.
 
 ### Reproduction
 
@@ -262,9 +263,8 @@ rewritten from the bundle's requirements.
 
 ### Candidate remedies
 
-User decision 2026-10-26: remedy 1. Remedy 3 is drafted locally in
-[`upstream-stream-push-proposal.md`](upstream-stream-push-proposal.md) and has
-not been sent.
+User decision 2026-10-26: remedy 1, then superseded the same day by dropping
+the close-time recheck (matching Heptapod), which needs none of these.
 
 1. Accept and document it as a known limitation: revocation is enforced at
    transaction close except for stream bundles into empty repositories.
@@ -413,26 +413,24 @@ is unchanged.
   integration tests) override the setting with `--config http_proxy.host=`
   on their own command lines.
 
-## Writer hook set (user decision 2026-10-26)
+## Writer hook set
 
-Writers get `pretxnopen`, `prepushkey` and `pretxnclose` in `check` mode; no
-`pretxnclose-bookmark` or `pretxnclose-phase`. Mercurial 7.2.4 runs those once
-per moved bookmark and once per changeset whose phase changes, inside the same
-`validate` step and immediately before `pretxnclose`
-(`localrepo.py:2359-2421`); a `pretxnclose` refusal rolls back everything they
-would have guarded. Readers keep all five hooks in `deny` mode.
+User decision 2026-10-26, matching Heptapod (`py-heptapod`
+`heptapod/hooks/perm.py`: `check_write` runs at `pretxnopen` only): writers get
+`pretxnopen` and `prepushkey` in `check` mode and no transaction-close hooks.
+Write access is checked when each transaction opens (and before each pushkey);
+a transaction already open when its writer is revoked may complete without a further authorization check; live cancellation is best-effort. This guarantees neither completion nor rollback/store integrity after cancellation. Readers
+keep all five hooks in `deny` mode.
 
-Revocation still rolls back bookmark-only and phase-only pushes:
-`TestTransportRevocationWithoutChangesets` pushes a bookmark move of an
-existing changeset and a draft → public phase move (no changesets) over
-HTTPS and SSH, bundle2 and bundle1 (pushkey). For each case it revokes the
-writer after the first, second, … allowed callback until the push succeeds,
-and requires every refused push to leave the repository unchanged and
-verifiable; the last refusal is at the final callback, `pretxnclose`. All
-8 cases passed (Windows, 7.2.4): 3 callbacks for every case except bundle2
-phase-only, which has 2 (`pretxnopen`, `pretxnclose`). RED check: with
-`pretxnclose` also removed from writers, all 4 bundle2 cases failed (the push
-succeeded after a single callback despite revocation).
+`TestTransportWriteAuthorizedAtOpen` revokes the writer after the first
+callback of a bundle2 changeset push over HTTPS and SSH and requires the push
+to land after exactly one callback. Bookmark updates still pass `prepushkey`,
+which runs inside the bundle2 transaction. The `modules/hgbridge` real-hook test
+requires revoked writers to be refused before anything is written (commits,
+bookmark and phase moves, bundle2 and bundle1 pushes, bundle1 pushkey), and an
+allowed local commit, bookmark move and phase move to need one callback each.
+
+The callback counts and timings below were measured with the earlier hook sets.
 
 Push of 500 new changesets into an empty repository over HTTPS (writer, 7.2.4
 client and server, Windows; three runs each):

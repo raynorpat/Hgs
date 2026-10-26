@@ -35,8 +35,8 @@ func TestReaderHooksDenyWithoutController(t *testing.T) {
 		sort.Strings(keys)
 		want := "hooks.prepushkey hooks.pretxnclose hooks.pretxnclose-bookmark hooks.pretxnclose-phase hooks.pretxnopen"
 		if canWrite {
-			// pretxnclose guards bookmark and phase changes for writers.
-			want = "hooks.prepushkey hooks.pretxnclose hooks.pretxnopen"
+			// Writers are checked when a transaction opens, not at close.
+			want = "hooks.prepushkey hooks.pretxnopen"
 		}
 		if got := strings.Join(keys, " "); got != want {
 			t.Fatalf("hook keys %q, want %q", got, want)

@@ -422,8 +422,8 @@ var wireMutations = []mutation{
 	{
 		// A stream clone bundle is applied only to an empty repository and
 		// writes store files directly, outside the transaction journal. No
-		// client pushes one, so there is no writer control; what a revoked
-		// writer can do with it is TestTransportRevocation's concern.
+		// client pushes one, so there is no writer control. Writers are
+		// checked at pretxnopen like any other push.
 		name:       "wire unbundle stream bundle into empty repository",
 		driver:     true,
 		empty:      true,

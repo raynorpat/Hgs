@@ -41,136 +41,6 @@ func newCase(t *testing.T, s *stack, tp *template, transport, user, name string)
 	return c
 }
 
-// TestTransportRevocation revokes the writer after the transaction opened:
-// the transaction-close hooks must reject it and the push must roll back.
-func TestTransportRevocation(t *testing.T) {
-	for _, v := range matrix(t) {
-		t.Run(v.name, func(t *testing.T) {
-			s := newStack(t, v, stackOptions{})
-			tp := newTemplate(s)
-			for _, transport := range []string{transportHTTP, transportSSH} {
-				for _, exchange := range []struct {
-					name string
-					args []string
-				}{{"bundle2", nil}, {"bundle1", bundle1}} {
-					if v.legacyClient && exchange.name == "bundle2" {
-						continue
-					}
-					t.Run(transport+" "+exchange.name, func(t *testing.T) {
-						c := newCase(t, s, tp, transport, "writer", "revoke-"+transport+"-"+exchange.name)
-						c.commit("revoked change")
-						c.s.client.must(t, c.client, "bookmark", "-r", "tip", "revoked")
-
-						before := snapshotRepository(t, s.server, c.server)
-						s.authz.reset(func(_ context.Context, call int) {
-							if call == 1 {
-								s.authz.setWriter(writerID, false)
-							}
-						})
-						ok, out := c.push(append([]string{"-B", "revoked"}, exchange.args...)...)
-						calls := s.authz.callCount()
-						s.authz.reset(nil)
-						s.authz.setWriter(writerID, true)
-						after := snapshotRepository(t, s.server, c.server)
-						if ok || !reflect.DeepEqual(before.withoutJournal(), after.withoutJournal()) {
-							t.Fatalf("push by a writer revoked mid-transaction changed the repository (succeeded=%v):\n%s\n%s", ok, before.diff(after), out)
-						}
-						if calls < 2 {
-							t.Fatalf("only %d hook callbacks; the revocation was not tested at transaction close:\n%s", calls, out)
-						}
-						s.server.must(t, c.server, "verify", "-q")
-
-						// Restored access: the same push now succeeds.
-						if ok, out = c.push(append([]string{"-B", "revoked"}, exchange.args...)...); !ok {
-							t.Fatalf("push after access was restored failed:\n%s", out)
-						}
-						if after = snapshotRepository(t, s.server, c.server); !bookmark(after, "revoked", c.tip()) {
-							t.Fatalf("restored push did not land: %s", after.Bookmarks)
-						}
-					})
-				}
-			}
-		})
-	}
-}
-
-// TestTransportRevocationWithoutChangesets revokes the writer after each
-// hook callback in turn of a bookmark-only and a phase-only push, which
-// writers' pretxnclose alone must guard. Every refused push must leave the
-// repository unchanged; the last one is refused by pretxnclose itself.
-func TestTransportRevocationWithoutChangesets(t *testing.T) {
-	v := matrix(t)[0]
-	s := newStack(t, v, stackOptions{})
-	tp := newTemplate(s)
-	for _, transport := range []string{transportHTTP, transportSSH} {
-		for _, exchange := range []struct {
-			name string
-			args []string
-		}{{"bundle2", nil}, {"bundle1", bundle1}} {
-			for _, kind := range []string{"bookmark", "phase"} {
-				t.Run(transport+" "+exchange.name+" "+kind, func(t *testing.T) {
-					c := newCase(t, s, tp, transport, "writer", "close-"+transport+"-"+exchange.name+"-"+kind)
-					args := exchange.args
-					if kind == "bookmark" {
-						// Publish the draft on the server first, or bundle1 would
-						// push its phase in a separate pushkey transaction.
-						s.server.must(t, c.server, "phase", "--public", "-r", tp.nodes[3])
-						c.s.client.must(t, c.client, "bookmark", "-f", "-r", tp.nodes[3], "main")
-						args = append([]string{"-B", "main"}, args...)
-					}
-					// The client sees the server's draft changeset as public
-					// (publishing server), so a plain push only publishes it.
-					// Mercurial runs pretxnclose last, so the last refused push,
-					// which reached as many callbacks as the successful one, was
-					// refused by pretxnclose after the change was applied.
-					var last string
-					lastCalls := 0
-					for allowed := 1; ; allowed++ {
-						before := snapshotRepository(t, s.server, c.server)
-						s.authz.reset(func(_ context.Context, call int) {
-							if call == allowed {
-								s.authz.setWriter(writerID, false)
-							}
-						})
-						ok, out := c.push(args...)
-						calls := s.authz.callCount()
-						s.authz.reset(nil)
-						s.authz.setWriter(writerID, true)
-						if ok {
-							if calls != allowed || lastCalls != calls {
-								t.Fatalf("push succeeded after %d callbacks, %d allowed, last refusal at callback %d:\n%s", calls, allowed, lastCalls, out)
-							}
-							t.Logf("refused after each of the first %d of %d callbacks, then succeeded", allowed-1, calls)
-							break
-						}
-						if after := snapshotRepository(t, s.server, c.server); !reflect.DeepEqual(before.withoutJournal(), after.withoutJournal()) {
-							t.Fatalf("push refused after %d allowed callbacks changed the repository:\n%s\n%s", allowed, before.diff(after), out)
-						}
-						s.server.must(t, c.server, "verify", "-q")
-						last, lastCalls = out, calls
-						if allowed == 10 {
-							t.Fatalf("push still refused after %d allowed callbacks:\n%s", allowed, out)
-						}
-					}
-					// HTTP bundle1 pushkey failures reach the client as a bare 500.
-					if strings.Contains(last, "hook exited") && !strings.Contains(last, "pretxnclose hook") {
-						t.Fatalf("the last refusal did not come from pretxnclose:\n%s", last)
-					}
-					after := snapshotRepository(t, s.server, c.server)
-					if kind == "bookmark" && !bookmark(after, "main", tp.nodes[3]) {
-						t.Fatalf("authorized bookmark push did not land: %s", after.Bookmarks)
-					}
-					if kind == "phase" {
-						if err := publishedDraft(c, after, after); err != nil {
-							t.Fatal(err)
-						}
-					}
-				})
-			}
-		}
-	}
-}
-
 // TestTransportAmbiguousCompletion drops the connection of a push after
 // Mercurial committed it but before the client read the result. The push
 // must be present exactly once, the bridge must not replay it, nothing may
@@ -282,47 +152,34 @@ func (s *stack) dropAfter(t *testing.T, transport, name string, bundle []byte, d
 	waitFor(t, "the push to commit", done)
 }
 
-// TestKnownGapStreamBundleRevocation records a known gap, see "The gap:
-// stream bundles survive revocation" in docs/mercurial/transport-evidence.md.
-// A stream clone bundle unbundled into an empty repository writes store
-// files outside the transaction journal, so when a writer revoked after
-// pretxnopen is refused at transaction close, the history stays. The test
-// asserts that current behaviour; it fails once Mercurial or a later design
-// closes the gap, and must then become a revocation assertion.
-func TestKnownGapStreamBundleRevocation(t *testing.T) {
+// TestTransportWriteAuthorizedAtOpen revokes the writer after pretxnopen
+// allowed the push. As in Heptapod, write access is checked when the
+// transaction opens and not again at close, so the push lands. It pushes no
+// bookmark: a bookmark travels as a pushkey part, which prepushkey checks.
+func TestTransportWriteAuthorizedAtOpen(t *testing.T) {
 	v := matrix(t)[0]
 	s := newStack(t, v, stackOptions{})
 	tp := newTemplate(s)
-	bundle, err := os.ReadFile(tp.stream)
-	if err != nil {
-		t.Fatal(err)
-	}
 	for _, transport := range []string{transportHTTP, transportSSH} {
 		t.Run(transport, func(t *testing.T) {
-			name := "known-gap-" + transport
-			c := &caseEnv{t: t, s: s, tp: tp, transport: transport, user: "writer", name: name}
-			c.server = filepath.Join(s.root, "repos", name)
-			s.server.must(t, "", "init", c.server)
-			s.addRepo(name, c.server)
+			c := newCase(t, s, tp, transport, "writer", "authorized-at-open-"+transport)
+			c.commit("revoked after open")
 
 			s.authz.reset(func(_ context.Context, call int) {
 				if call == 1 {
 					s.authz.setWriter(writerID, false)
 				}
 			})
-			ok, out := c.wireUnbundle(bundle)
+			ok, out := c.push()
 			calls := s.authz.callCount()
 			s.authz.reset(nil)
 			s.authz.setWriter(writerID, true)
-			after := snapshotRepository(t, s.server, c.server)
-			if ok || calls < 2 {
-				t.Fatalf("expected the close-time hook to refuse the revoked writer (succeeded=%v, %d callbacks):\n%s", ok, calls, out)
+			if !ok || calls != 1 {
+				t.Fatalf("push by a writer revoked after pretxnopen: succeeded=%v after %d callbacks, want success after 1:\n%s", ok, calls, out)
 			}
-			if !node(after, tp.nodes[3]) {
-				t.Fatalf("known gap no longer reproduces: the refused stream bundle left no history. "+
-					"Turn this into a revocation assertion and update the evidence doc.\n%s", out)
+			if after := snapshotRepository(t, s.server, c.server); !node(after, c.tip()) {
+				t.Fatalf("push did not land:\n%s", out)
 			}
-			t.Logf("known gap reproduced: history present after the close-time refusal\n%s", out)
 		})
 	}
 }

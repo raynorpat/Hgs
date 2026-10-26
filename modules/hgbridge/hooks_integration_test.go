@@ -252,8 +252,8 @@ func checkRealHooks(t *testing.T, exe, gogs string) {
 	h := &hgHarness{t: t, r: r, ctx: ctx}
 
 	// The authorizer allows the first allowCalls checks of a session; -1
-	// allows all. Allowing exactly one lets pretxnopen pass so that the
-	// transaction-close hook is what must reject.
+	// allows all. Allowing exactly one shows that a transaction is checked
+	// only when it opens: revocation after pretxnopen does not roll it back.
 	var allowCalls, calls atomic.Int64
 	authorize := func(context.Context, Grant) error {
 		if n := allowCalls.Load(); n >= 0 && calls.Add(1) > n {
@@ -308,17 +308,15 @@ func checkRealHooks(t *testing.T, exe, gogs string) {
 	h.denied("writer with another repository's capability", dest, writer, otherRepo, commit...)
 	policy(0)
 	h.denied("revoked writer", dest, writer, env, commit...)
-	policy(1)
-	h.denied("writer revoked before commit", dest, writer, env, commit...)
-	policy(1)
-	h.denied("writer revoked before bookmark move", dest, writer, env, "bookmark", "-r", "0", "latebook")
-	policy(1)
-	h.denied("writer revoked before phase move", dest, writer, env, "phase", "--public", "-r", "0")
+	h.denied("revoked writer bookmark move", dest, writer, env, "bookmark", "-r", "0", "latebook")
+	h.denied("revoked writer phase move", dest, writer, env, "phase", "--public", "-r", "0")
 
-	policy(-1)
 	before := h.snapshot(dest)
+	policy(1)
 	h.must(dest, writer, env, commit...)
+	policy(1)
 	h.must(dest, writer, env, "bookmark", "-r", ".", "main")
+	policy(1)
 	h.must(dest, writer, env, "phase", "--public", "-r", ".")
 	if h.snapshot(dest) == before {
 		t.Fatal("authorized writer changed nothing")
@@ -344,10 +342,7 @@ func checkRealHooks(t *testing.T, exe, gogs string) {
 	writerURL, writerLog := h.serve(dest, writer, env)
 	policy(0)
 	h.deniedPush("revoked writer push", writerLog, dest, src, push(writerURL))
-	policy(1)
-	h.deniedPush("writer revoked before push commit", writerLog, dest, src, push(writerURL))
-	policy(1)
-	h.deniedPush("writer revoked before bundle1 push commit", writerLog, dest, src, push(writerURL, bundle1...))
+	h.deniedPush("revoked writer bundle1 push", writerLog, dest, src, push(writerURL, bundle1...))
 
 	policy(-1)
 	h.must(src, nil, nil, push(writerURL)...)
@@ -358,10 +353,9 @@ func checkRealHooks(t *testing.T, exe, gogs string) {
 
 	// Bookmark-only push: no changegroup, only bookmark updates.
 	h.must(src, nil, nil, "bookmark", "-r", "0", "-f", "feature")
-	policy(1)
-	h.deniedPush("writer revoked before bookmark-only push", writerLog, dest, src, push(writerURL))
-	policy(1)
-	h.deniedPush("writer revoked before bundle1 pushkey", writerLog, dest, src, push(writerURL, bundle1...))
+	policy(0)
+	h.deniedPush("revoked writer bookmark-only push", writerLog, dest, src, push(writerURL))
+	h.deniedPush("revoked writer bundle1 pushkey", writerLog, dest, src, push(writerURL, bundle1...))
 
 	revoke()
 	policy(-1)
