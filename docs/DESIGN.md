@@ -205,6 +205,37 @@ PR controls must reflect actual permission and comparison state. “Open,” “
 - Use short, subtle transitions only where they help track a state change; honor reduced-motion preferences. No essential meaning depends on animation.
 - Ensure disabled controls have an understandable reason nearby. Unauthorized data/actions may be omitted; do not expose private details in tooltips or hidden markup.
 
+## User and organization profile READMEs
+
+Render a prominent Markdown introduction below the profile identity and above repository/activity tabs or repository lists, using the shared README typography and responsive content surface.
+
+| Profile | Special repository | File |
+| --- | --- | --- |
+| User alice | alice/alice | README.md at the repository root |
+| Organization example | example/.github | profile/README.md |
+
+Repository matching follows existing canonical, case-insensitive owner/repository name lookup; file paths are exact and case-sensitive as stored by Mercurial. The organization convention is literally .github, not .hgs. It grants no Git-specific behavior: these are ordinary local Mercurial repositories. Verify that creation and rename validation allow this safe repository name without relaxing traversal or metadata-path restrictions.
+
+Read from the same default/landing revision policy as the source browser, pinning the resolved node for Markdown, relative links and images. Do not hard-code main/master or check out a working tree. For user content resolve relative paths from the repository root; for organization content resolve them from profile/. Route local images/files through existing authorization-checked source/raw handlers and respect AppSubUrl. Reject traversal outside repository content, unsafe URL schemes, metadata paths and active content. Use the existing Markdown sanitizer rather than treating repository HTML as trusted.
+
+The panel is visible only to visitors with current read access to the special repository, including private-fork ancestry rules. Public visitors never receive private text, filenames, source links or cached fragments; authorized viewers may see private profile content. Retain instance sign-in policy. Cache by repository ID, immutable revision and rendering context, with authorization rechecked on every response; never publish a private rendered fragment through a shared public cache.
+
+Missing repository/file, empty content or an empty repository leaves the normal profile intact with no empty README panel. Render only ordinary UTF-8 text up to 1 MiB; binary, oversized or symlink README files are not rendered as Markdown. For an accessible but unrenderable README show a compact unavailable message and safe source link; operational failure must not take down the whole profile. Updates, deletion, visibility/access changes and transfers take effect on the next authorized view. Renaming a user or repository re-evaluates the name convention; do not silently rename a repository or keep displaying the old match.
+
+Show a subtle source-repository/README link beneath rendered content. Management happens through the existing repository workflow; no separate web editor or automatic repository creation is introduced.
+
+## User profile icons and Gravatar
+
+Carry existing Gravatar support into all shared user-avatar components, including profile pages, account rail, lists, comments and PR review. Preserve uploaded-avatar preference: selected custom upload first, otherwise Gravatar when enabled, otherwise the local fallback/initials. A missing/broken custom upload or failed Gravatar load falls back locally without collapsing layout. Only the profile owner sees avatar-edit controls.
+
+Respect [picture] DISABLE_GRAVATAR, GRAVATAR_SOURCE, and [service] ENABLE_CACHE_AVATAR. Disabling Gravatar prevents remote image URLs and outbound avatar-cache requests; uploaded/local avatars remain usable. Retain the configurable avatar email, falling back to the account email under existing rules. Do not expose the raw email address in markup or URLs merely to render an avatar.
+
+For the official Gravatar source, normalize the avatar email by trimming and lowercasing and use its documented SHA-256 identifier over HTTPS. Preserve explicitly configured legacy-provider compatibility without silently switching providers or downgrading HTTPS. Keep lookup consistent across creation, profile edits and avatar caching; do not append malformed duplicate size parameters. The source and cache path must use the same hash format. No Gravatar profile API, API key or third-party profile import is needed.
+
+Keep dimensions stable, meaningful alt text and image-error fallbacks. The account rail remains a centered 28px circle inside its 40px control; profile images can be larger using the same source. With local caching enabled, use bounded HTTPS fetches/timeouts, validated image data, and a local fallback on remote failure. Test using a fake remote image service, never real user emails.
+
+References: [Gravatar identifier normalization](https://docs.gravatar.com/rest/hash/) and [avatar image requests](https://docs.gravatar.com/sdk/images/).
+
 ## Account creation and first-run installation
 
 Both are explicit redesign deliverables, including the real /user/sign_up and /install routes. They must not retain legacy form styling after the shared UI refactor.

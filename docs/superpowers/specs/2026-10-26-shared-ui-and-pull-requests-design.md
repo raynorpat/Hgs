@@ -265,6 +265,12 @@ For issue/PR editors, recover unsaved work after session expiry only while the o
 
 The [design system](../../DESIGN.md#draft-recovery-after-login-expiry) specifies timing, limits, cookie attributes, failure feedback and cleanup. Its 30-minute inactivity TTL removes unreachable records when unload cleanup cannot be delivered; it is not a cross-navigation draft history. Implement and test these details in Tasks 17–18 after the existing core/landing work. This scope addition does not change ownership or status of the Mercurial prerequisites.
 
+## Profile repositories and user avatars
+
+Support the requested special repository conventions: a user's same-name repository supplies root README.md; an organization's .github repository supplies profile/README.md. Display sanitized Markdown prominently below the identity and above repository/activity content. Use the normal Mercurial landing revision, immutable links, bounded reads, and current repository/ancestry authorization; inaccessible content must not leak through a public profile or cache. Missing content leaves the ordinary profile unchanged. Repository renames/transfers and permission changes re-evaluate eligibility without automatic renames or repository creation. .github is a naming convention, not Git support.
+
+Preserve and modernize the existing Gravatar path in shared user-avatar components. Uploaded avatars take precedence, then configured Gravatar, then local fallback; honor disabled/cached/source settings and avatar email selection. Use official-source HTTPS and normalized SHA-256 identifiers consistently, local failure fallbacks and centered stable geometry. No third-party profile import is added. [The design system](../../DESIGN.md#user-and-organization-profile-readmes) provides exact layout, file-path, size, permission and avatar rules; implementation Tasks 19–20 cover these additions.
+
 ## Technical references
 
 The following are command-level evidence, not proof of our complete merge design:
