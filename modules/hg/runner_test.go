@@ -100,6 +100,9 @@ func fakeHg(args []string) int {
 			return 255
 		}
 		fmt.Print(m)
+	case "branches":
+		recordFakeCall()
+		fmt.Print(fixture("fake-branches", ""))
 	case "flood":
 		// The grandchild, sharing both pipes, starts flooding first; its marker
 		// file proves it ran before the child floods too.

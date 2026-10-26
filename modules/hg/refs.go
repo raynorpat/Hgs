@@ -10,25 +10,34 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"unicode/utf8"
 )
 
+// Branches enumerates each named branch, including closed/secret heads.
+// Recompute that branch's heads after excluding secrets: subtracting secrets
+// from head() would fail to promote their served ancestors. Mercurial's %d
+// formatting selects a revision without interpolating branch names.
+// Hidden revisions stay out because no browse command passes --hidden.
+const branchHeadsTemplate = `{revset("heads(branch(%d) and not secret())", rev) % '{dict(rev, node, branch, bookmarks, tags, head="1", closed=get(extras, "close"))|json}\n'}`
+
 // referencesRevset is fixed text; reference names never reach a revset.
-// Secret changesets are not served, and hidden ones stay out because no
-// browse command passes --hidden.
-const referencesRevset = "sort((head() or bookmark() or tag()) and not secret(), -rev)"
+const referencesRevset = "sort((bookmark() or tag()) and not secret(), -rev)"
 
 // referencesTemplate prints one JSON object per changeset. Mercurial keeps
 // branch, bookmark and tag names in UTF-8 and its json filter emits that
 // form whatever HGENCODING is, so names arrive unchanged.
-const referencesTemplate = `{dict(rev, node, branch, bookmarks, tags, head=ifcontains(rev, revset("head()"), "1"), closed=get(extras, "close"))|json}\n`
+const referencesTemplate = `{dict(rev, node, branch, bookmarks, tags)|json}\n`
 
 // References lists every branch head (closed ones included), bookmark and
-// tag, newest revision first, with one Mercurial command.
+// tag, newest revision first, with two Mercurial commands.
 func (r *Runner) References(ctx context.Context, path string) ([]Reference, error) {
 	ctx, cancel := context.WithTimeout(ctx, BrowserCommandTimeout)
 	defer cancel()
 	var out bytes.Buffer
+	if err := r.Run(ctx, path, []string{"branches", "--closed", "-T", branchHeadsTemplate}, nil, &out); err != nil {
+		return nil, err
+	}
 	if err := r.Run(ctx, path, []string{"log", "-r", referencesRevset, "-T", referencesTemplate}, nil, &out); err != nil {
 		return nil, err
 	}
@@ -42,6 +51,13 @@ func parseReferences(b []byte) ([]Reference, error) {
 		return nil, ErrUnsupportedEncoding
 	}
 	refs := []Reference{}
+	seen := make(map[Reference]bool)
+	appendRef := func(ref Reference) {
+		if !seen[ref] {
+			seen[ref] = true
+			refs = append(refs, ref)
+		}
+	}
 	d := json.NewDecoder(bytes.NewReader(b))
 	for {
 		var cs struct {
@@ -52,6 +68,9 @@ func parseReferences(b []byte) ([]Reference, error) {
 			Head, Closed    string
 		}
 		if err := d.Decode(&cs); err == io.EOF {
+			// Branches groups its output by branch. References on those heads
+			// can appear again in log; keep each typed reference only once.
+			sort.SliceStable(refs, func(i, j int) bool { return refs[i].Revision > refs[j].Revision })
 			return refs, nil
 		} else if err != nil {
 			return nil, fmt.Errorf("hg: unrecognized reference output: %v", err)
@@ -61,15 +80,15 @@ func parseReferences(b []byte) ([]Reference, error) {
 			return nil, fmt.Errorf("hg: unrecognized changeset %q in reference output", cs.Node)
 		}
 		if cs.Head == "1" {
-			refs = append(refs, Reference{Kind: RefBranch, Name: cs.Branch, Node: node, Revision: cs.Rev, Closed: cs.Closed == "1"})
+			appendRef(Reference{Kind: RefBranch, Name: cs.Branch, Node: node, Revision: cs.Rev, Closed: cs.Closed == "1"})
 		}
 		for _, name := range cs.Bookmarks {
-			refs = append(refs, Reference{Kind: RefBookmark, Name: name, Node: node, Revision: cs.Rev})
+			appendRef(Reference{Kind: RefBookmark, Name: name, Node: node, Revision: cs.Rev})
 		}
 		for _, name := range cs.Tags {
 			// tip is Mercurial's moving pseudo-tag, not a tracked tag.
 			if name != "tip" {
-				refs = append(refs, Reference{Kind: RefTag, Name: name, Node: node, Revision: cs.Rev})
+				appendRef(Reference{Kind: RefTag, Name: name, Node: node, Revision: cs.Rev})
 			}
 		}
 	}

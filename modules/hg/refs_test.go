@@ -5,10 +5,14 @@
 package hg
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -41,8 +45,8 @@ func parseGoldenReferences(t *testing.T, name string) []Reference {
 	return refs
 }
 
-// newBrowseRunner returns a fake-Mercurial runner whose log output is the
-// named testdata file, and a repository directory holding only .hg.
+// newBrowseRunner splits the recorded reference output across fake branches
+// and log commands, with a repository directory holding only .hg.
 func newBrowseRunner(t *testing.T, logFile string) (*Runner, string) {
 	t.Helper()
 	r := newTestRunner(t, Config{})
@@ -51,7 +55,30 @@ func newBrowseRunner(t *testing.T, logFile string) (*Runner, string) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		writeFakeFixture(t, r, "fake-log", string(b))
+		// Branch enumeration emits heads; the second command supplies
+		// references on other revisions. Both use the recorded JSON shape.
+		var heads, others bytes.Buffer
+		d := json.NewDecoder(bytes.NewReader(b))
+		for {
+			var raw json.RawMessage
+			if err := d.Decode(&raw); err == io.EOF {
+				break
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			var cs struct{ Head string }
+			if err := json.Unmarshal(raw, &cs); err != nil {
+				t.Fatal(err)
+			}
+			out := &others
+			if cs.Head == "1" {
+				out = &heads
+			}
+			out.Write(raw)
+			out.WriteByte('\n')
+		}
+		writeFakeFixture(t, r, "fake-branches", heads.String())
+		writeFakeFixture(t, r, "fake-log", others.String())
 	}
 	repo := t.TempDir()
 	if err := os.Mkdir(filepath.Join(repo, ".hg"), 0700); err != nil {
@@ -91,8 +118,8 @@ func TestLandingSelectsOpenDefaultHead(t *testing.T) {
 	if selected != newerDefaultNode {
 		t.Errorf("landing %s; want the newer open default head %s", selected, newerDefaultNode)
 	}
-	if calls := fakeCalls(t, r); len(calls) != 1 {
-		t.Errorf("landing ran %d Mercurial commands; want 1", len(calls))
+	if calls := fakeCalls(t, r); len(calls) != 2 {
+		t.Errorf("landing ran %d Mercurial commands; want 2", len(calls))
 	}
 
 	r, repo = newBrowseRunner(t, "browse-refs-closed.jsonl")
@@ -178,6 +205,22 @@ func TestReferencesRejectInvalidEncoding(t *testing.T) {
 	b = append(b, []byte(`","head":"1"}`)...)
 	if refs, err := parseReferences(b); !errors.Is(err, ErrUnsupportedEncoding) {
 		t.Fatalf("invalid reference encoding gave %v, %v; want ErrUnsupportedEncoding", refs, err)
+	}
+}
+
+func TestReferencesMergeHeadAndNamedReferences(t *testing.T) {
+	// The log command can repeat bookmarks/tags already emitted with a
+	// branch head, and branch enumeration groups heads by branch, not rev.
+	input := `{"rev":0,"node":"5a5d8f1ece2eb0c248d510d928a9476c6511c3f9","branch":"default","head":"1"}
+{"rev":7,"node":"f63f99903c6f738b1dc0cc74e4402d4da6d33c1e","branch":"default","head":"1","bookmarks":["same"]}
+{"rev":7,"node":"f63f99903c6f738b1dc0cc74e4402d4da6d33c1e","branch":"default","bookmarks":["same"]}`
+	want := []Reference{
+		{Kind: RefBranch, Name: "default", Node: newerDefaultNode, Revision: 7},
+		{Kind: RefBookmark, Name: "same", Node: newerDefaultNode, Revision: 7},
+		{Kind: RefBranch, Name: "default", Node: baseNode, Revision: 0},
+	}
+	if refs, err := parseReferences([]byte(input)); err != nil || !reflect.DeepEqual(refs, want) {
+		t.Fatalf("merged references = %v, %v; want %v", refs, err, want)
 	}
 }
 

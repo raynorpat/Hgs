@@ -279,3 +279,47 @@ func TestBrowseHiddenChangeset(t *testing.T) {
 		t.Errorf("hidden file: %v", err)
 	}
 }
+
+func TestReferencesPromoteServedBranchHead(t *testing.T) {
+	r, root := newIntegrationRunner(t)
+	ctx := context.Background()
+	repo := filepath.Join(root, "secret-child")
+	hg := func(path string, args ...string) string {
+		t.Helper()
+		var out bytes.Buffer
+		if err := r.Run(ctx, path, args, nil, &out); err != nil {
+			t.Fatalf("hg %q: %v", args, err)
+		}
+		return out.String()
+	}
+	commit := func(message string) NodeID {
+		t.Helper()
+		hg(repo, "commit", "-q", "-u", "t", "-d", "0 0", "-m", message, "--config", "ui.allowemptycommit=1")
+		return NodeID(hg(repo, "log", "-r", ".", "-T", "{node}"))
+	}
+	hg("", "init", repo)
+	visible := commit("visible")
+	secret := commit("secret child")
+	hg(repo, "phase", "-q", "--secret", "--force", "-r", string(secret))
+	check := func(want []Reference) {
+		t.Helper()
+		if refs, err := r.References(ctx, repo); err != nil || !reflect.DeepEqual(refs, want) {
+			t.Errorf("served branch references = %v, %v; want %v", refs, err, want)
+		}
+		if n, err := r.Landing(ctx, repo); err != nil || n != visible {
+			t.Errorf("landing = %s, %v; want served default head %s", n, err, visible)
+		}
+		if n, err := r.Resolve(ctx, repo, RefSelection{RefBranch, "default"}); err != nil || n != visible {
+			t.Errorf("default = %s, %v; want %s", n, err, visible)
+		}
+	}
+	defaultRef := Reference{Kind: RefBranch, Name: "default", Node: visible, Revision: 0}
+	check([]Reference{defaultRef})
+
+	// A descendant on a different branch must not suppress the default
+	// named-branch head, even though it is no longer a DAG head.
+	hg(repo, "update", "-q", "-r", string(visible))
+	hg(repo, "branch", "-q", "side")
+	side := commit("side child")
+	check([]Reference{{Kind: RefBranch, Name: "side", Node: side, Revision: 2}, defaultRef})
+}
