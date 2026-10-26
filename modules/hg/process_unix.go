@@ -57,3 +57,7 @@ func (t *processTree) wait(cmd *exec.Cmd) error {
 func CheckPath(string) error { return nil }
 
 func localEncoding() string { return "utf-8" }
+
+// LocalBytes encodes s as Mercurial reads configuration files: in HGENCODING,
+// which is UTF-8 here.
+func LocalBytes(s string) ([]byte, error) { return []byte(s), nil }

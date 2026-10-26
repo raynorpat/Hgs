@@ -380,3 +380,25 @@ func TestRunnerSessionConfig(t *testing.T) {
 		t.Errorf("argv %q, want %q", got, want)
 	}
 }
+
+func TestLocalBytes(t *testing.T) {
+	got, err := LocalBytes("gogs bin é")
+	if err != nil {
+		t.Fatal(err)
+	}
+	switch enc := localEncoding(); enc {
+	case "utf-8":
+		if string(got) != "gogs bin é" {
+			t.Errorf("LocalBytes = %q, want UTF-8", got)
+		}
+	case "cp1252":
+		if string(got) != "gogs bin \xe9" {
+			t.Errorf("LocalBytes = %q, want Windows-1252", got)
+		}
+		if _, err = LocalBytes("雪"); err == nil {
+			t.Error("LocalBytes accepted a character outside the code page")
+		}
+	default:
+		t.Logf("encoding %s: only checked for errors", enc)
+	}
+}

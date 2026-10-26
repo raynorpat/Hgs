@@ -57,8 +57,14 @@ func NewStdioBridge(runner *hg.Runner, controller *Controller, hookExecutable, c
 			lines = append(lines, strings.TrimPrefix(k, "hooks.")+" = "+v+"\n")
 		}
 		sort.Strings(lines)
+		// Command-line --config values reach Mercurial already in its
+		// encoding; file contents must be written in it.
+		rc, err := hg.LocalBytes("[hooks]\n" + strings.Join(lines, ""))
+		if err != nil {
+			return nil, err
+		}
 		path := filepath.Join(configDir, name)
-		if err = os.WriteFile(path, []byte("[hooks]\n"+strings.Join(lines, "")), 0600); err != nil {
+		if err = os.WriteFile(path, rc, 0600); err != nil {
 			return nil, fmt.Errorf("hgbridge: write stdio session config: %v", err)
 		}
 		b.rc[canWrite] = path

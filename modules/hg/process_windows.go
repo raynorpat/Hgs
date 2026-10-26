@@ -146,3 +146,28 @@ func localEncoding() string {
 	}
 	return "utf-8"
 }
+
+// LocalBytes encodes s as Mercurial reads configuration files: in HGENCODING,
+// which the runner sets to the ANSI code page. Mercurial decodes hook
+// commands from that encoding before passing them to cmd.exe.
+func LocalBytes(s string) ([]byte, error) {
+	const cpACP, wcNoBestFitChars = 0, 0x400
+	if windows.GetACP() == 65001 || s == "" {
+		return []byte(s), nil
+	}
+	u, err := windows.UTF16FromString(s)
+	if err != nil {
+		return nil, err
+	}
+	u = u[:len(u)-1]
+	var usedDefault int32
+	n, _, _ := procWideCharToMultiByte.Call(cpACP, wcNoBestFitChars, uintptr(unsafe.Pointer(&u[0])), uintptr(len(u)),
+		0, 0, 0, uintptr(unsafe.Pointer(&usedDefault)))
+	if n == 0 || usedDefault != 0 {
+		return nil, fmt.Errorf("hg: %q is not representable in Windows code page %d", s, windows.GetACP())
+	}
+	b := make([]byte, n)
+	procWideCharToMultiByte.Call(cpACP, wcNoBestFitChars, uintptr(unsafe.Pointer(&u[0])), uintptr(len(u)),
+		uintptr(unsafe.Pointer(&b[0])), n, 0, 0)
+	return b, nil
+}
