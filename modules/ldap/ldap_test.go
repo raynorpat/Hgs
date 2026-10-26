@@ -1,3 +1,6 @@
+//go:build integration
+// Needs outbound access to ldap.itd.umich.edu:389; run with -tags integration.
+
 package ldap
 
 import (

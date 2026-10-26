@@ -1,3 +1,6 @@
+//go:build integration
+// Needs outbound access to httpbin.org; run with -tags integration.
+
 // Copyright 2013 The Beego Authors. All rights reserved.
 // Copyright 2014 The Gogs Authors. All rights reserved.
 // Use of this source code is governed by a MIT-style

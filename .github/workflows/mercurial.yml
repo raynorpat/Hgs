@@ -1,0 +1,49 @@
+name: mercurial
+
+on:
+  push:
+    branches: [mercurial-hosting]
+  pull_request:
+
+env:
+  CGO_ENABLED: "0"
+  GO_VERSION: "1.27.3"
+  HG_VERSION: "7.2.4"
+
+jobs:
+  unit:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest] # macos-latest is arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - run: go mod verify
+      - run: go build ./...
+      - run: go test ./...
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned Mercurial
+        run: pip install mercurial==${{ env.HG_VERSION }}
+      - run: hg --version
+
+  # Mercurial 5.0.2 (server) and 2.0.2 (client) need Python 2.7, which no
+  # current hosted runner provides; use a python:2.7 container. Windows and
+  # macOS arm64 cannot run these rows: record them as unavailable, not passed.
+  legacy-hg:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    container: python:2.7
+    steps:
+      - uses: actions/checkout@v3
+      - run: |
+          pip install mercurial==5.0.2
+          hg --version | head -1
+      - run: |
+          pip install --target /opt/hg202 mercurial==2.0.2
+          PYTHONPATH=/opt/hg202 python /opt/hg202/bin/hg --version | head -1

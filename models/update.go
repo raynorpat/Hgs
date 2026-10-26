@@ -144,17 +144,17 @@ func Update(refName, oldCommitId, newCommitId, userName, repoUserName, repoName 
 			actEmail = commit.Committer.Email
 		}
 		commits = append(commits,
-			&base.PushCommit{commit.Id.String(),
-				commit.Message(),
-				commit.Author.Email,
-				commit.Author.Name})
+			&base.PushCommit{Sha1: commit.Id.String(),
+				Message:     commit.Message(),
+				AuthorEmail: commit.Author.Email,
+				AuthorName:  commit.Author.Name})
 		if len(commits) >= MAX_COMMITS {
 			break
 		}
 	}
 
 	if err = CommitRepoAction(userId, ru.Id, userName, actEmail,
-		repos.Id, repoUserName, repoName, refName, &base.PushCommits{l.Len(), commits, ""}, oldCommitId, newCommitId); err != nil {
+		repos.Id, repoUserName, repoName, refName, &base.PushCommits{Len: l.Len(), Commits: commits}, oldCommitId, newCommitId); err != nil {
 		return fmt.Errorf("runUpdate.models.CommitRepoAction: %s/%s:%v", repoUserName, repoName, err)
 	}
 	return nil
