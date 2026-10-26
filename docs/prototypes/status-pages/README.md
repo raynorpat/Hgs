@@ -12,7 +12,7 @@ All three PNGs were generated with the built-in image_gen tool on 2026-10-26 usi
 - hgs-error.png: lab-coat Gopher with soot, ruffled fur and a cracked smoking beaker after a harmless experiment mishap.
 - hgs-not-found.png: lab-coat Gopher searching through a magnifying glass.
 
-Exact generation/edit prompts are in [PROMPTS.md](PROMPTS.md). These are review candidates; neither the new artwork nor these page compositions are marked approved yet. Keep any accepted images when implementing Tasks 24–25 rather than regenerating them unnecessarily. The header beaker is a code-drawn prototype mark; the shared production mark remains governed by Task 16.
+Exact generation/edit prompts are in [PROMPTS.md](PROMPTS.md). The user approved all three page compositions and these exact Gopher illustrations on 2026-10-26, including the white lab coat on the hardhat Gopher. Reuse these PNGs when implementing Tasks 24–25; do not regenerate or replace the artwork unless the user requests a change. Prototype controls, simulated actions and the fictional reference ID are excluded from production. The header beaker is a code-drawn prototype mark; the shared production mark remains governed by Task 16.
 
 ## Attribution
 

@@ -1,6 +1,6 @@
 # Hgs design system
 
-Status: Shared UI, Hgs landing-page composition, lab-coat/beaker Go Gopher artwork, profile pages and contribution tracking approved on 2026-10-26. The public-only, configuration-controlled landing Explore rule below is part of that approval. Production implementation remains subject to the existing prerequisite gate.
+Status: Shared UI, Hgs landing-page composition, lab-coat/beaker Go Gopher artwork, profile pages, contribution tracking, and maintenance/500/404 pages with their Gopher illustrations approved on 2026-10-26. The public-only, configuration-controlled landing Explore rule below is part of that approval. Production implementation remains subject to the existing prerequisite gate.
 
 Updated: 2026-10-26
 
@@ -274,7 +274,7 @@ References: [Gravatar identifier normalization](https://docs.gravatar.com/rest/h
 
 ## Final phase: maintenance and error pages
 
-The user requested these as the final parts of the implementation plan on 2026-10-26. Use a reduced Hgs layout with the beaker mark, shared typography, a single local illustration, a short heading/message and useful recovery links. Keep page text separate from the artwork. These pages must remain usable without a session, database, remote image server or full application navigation.
+The user approved all three page compositions and their exact Gopher illustrations on 2026-10-26. These remain the final parts of the implementation plan. Use a reduced Hgs layout with the beaker mark, shared typography, a single local illustration, a short heading/message and useful recovery links. Keep page text separate from the artwork. These pages must remain usable without a session, database, remote image server or full application navigation.
 
 | State | Illustration | Heading and actions |
 | --- | --- | --- |
@@ -282,7 +282,7 @@ The user requested these as the final parts of the implementation plan on 2026-1
 | Internal error, HTTP 500 | The Go Gopher in a lab coat, with soot/ruffled appearance as though a beaker experiment just exploded in front of him | "Something went wrong." Say the request could not be completed; offer Home and Help, and an opaque request ID when available. |
 | Not found, HTTP 404 | The Go Gopher in a lab coat, using a magnifying glass to search for something | "We couldn't find that page." Offer Home and Help without implying whether a private resource exists. |
 
-Match the approved landing Gopher's character, palette and illustration style. The 500 scene is a lighthearted, non-graphic lab mishap; no injury is needed. Keep a transparent background, retain Renee French/Go Gopher CC BY 4.0 attribution and adaptation credits, and package all images locally. The [status-page prototype](prototypes/status-pages/index.html) now includes three generated review candidates matching the existing mascot, with [prompts and attribution](prototypes/status-pages/README.md). The user additionally requested the maintenance Gopher retain a white lab coat. Review the candidates before production integration; the exact images and page compositions are not yet marked approved. Use alt="" for decorative illustrations when adjacent text already communicates the status; image failure must not remove the explanation or actions.
+Match the approved landing Gopher's character, palette and illustration style. The 500 scene is a lighthearted, non-graphic lab mishap; no injury is needed. Keep a transparent background, retain Renee French/Go Gopher CC BY 4.0 attribution and adaptation credits, and package all images locally. The [status-page prototype](prototypes/status-pages/index.html) contains the three approved illustrations and page compositions matching the existing mascot, with [prompts and attribution](prototypes/status-pages/README.md). The user additionally requested the maintenance Gopher retain a white lab coat. Reuse the exact approved hgs-maintenance.png, hgs-error.png and hgs-not-found.png files from docs/prototypes/status-pages during production integration; do not regenerate or replace them unless the user requests an art change. Keep the maintenance Gopher in its yellow hardhat and white lab coat with the wrench. Approval covers the visual design and artwork, not the prototype switches, simulated actions or fictional reference ID. Use alt="" for decorative illustrations when adjacent text already communicates the status; image failure must not remove the explanation or actions.
 
 Implementation default: add startup configuration [server] MAINTENANCE_MODE=false, MAINTENANCE_MESSAGE="" and MAINTENANCE_RETRY_AFTER=300. The operator changes mode with a normal process restart; do not add a live Admin toggle, countdown, automatic restart, or promise that a page toggle drains writes. Retry-After accepts 60–86400 seconds and is a suggested retry interval, not a completion estimate. Escape the optional plain-text message and limit it to 300 characters.
 
