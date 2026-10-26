@@ -71,7 +71,10 @@ Task completion record (commit ranges are `start..end`, end inclusive):
 - Task 4 — complete 2026-10-25 (`5b9aabb..765b3d5`).
 - Task 5 — complete 2026-10-26 (`765b3d5..4694a42`).
 - Task 6 — complete 2026-10-26 (`4694a42..1cb1c12`). Recorded result: **Gate: FAILED → accepted limitation (user sign-off 2026-10-26)** — revocation at transaction close does not hold for stream-clone bundles unbundled into empty repositories, accepted and documented; every other row passed on Windows — and **still unverified** on Linux/macOS and Mercurial 5.0.2/2.0.2, which were unavailable. Evidence: `docs/mercurial/transport-evidence.md`.
-- Tasks 7–15 — not started.
+- Task 7 — complete 2026-10-26 (`609b70e..d8a398c`), reviewed; shared authorization and portable SSH key storage.
+- Task 8 — complete 2026-10-26 (`d8a398c..5a9bd8a`), reviewed; ID-based repository lifecycle and transfer/deletion fixes.
+- Task 9 — complete 2026-10-26 (`5a9bd8a..4fae7f4`), reviewed; inherited implementation adopted with encoding/branch-ancestry fixes. Windows/Mercurial 7.2.4 checks pass; native Linux/macOS and Mercurial 5.0.2 remain unverified.
+- Tasks 10–15 — not started. User authorized continuation with subagents on 2026-10-26; execution ledger: `.superpowers/sdd/2026-10-25-mercurial-hosting/progress.md`.
 - User decisions (resolved 2026-10-26): the stream-bundle revocation gap is accepted as a documented limitation (spec, Task 15 docs, local upstream proposal draft `docs/mercurial/upstream-stream-push-proposal.md`); writers drop the per-changeset close hooks (`pretxnclose-phase`, `pretxnclose-bookmark`), readers keep all deny hooks.
 
 ## File and interface map

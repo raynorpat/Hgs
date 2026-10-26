@@ -1,7 +1,7 @@
 # Mercurial-only Gogs design
 
 Date: 2026-10-25
-Status: Approved by the user on 2026-10-25; implementation planning authorized. Implementation has not started.
+Status: Approved by the user on 2026-10-25; implementation is in progress. Continuation with subagents authorized on 2026-10-26. Subsequent user-approved scope and validation overrides are recorded below and in the execution plan.
 Revision: 2026-10-25, after design/plan review, at the user's request: Mercurial version policy (server ≥ 5.0, native clients ≥ 2.0), repository-ID-keyed access records, static deny hooks for read-only sessions, browse performance, readable file URLs, and explicit Mercurial transport details.
 
 Builder check: a fresh reviewer reported "nothing important left" to resolve before planning. This is a design review, not validation of an implementation.
@@ -213,7 +213,7 @@ Product branding and historical source import-path renaming are deferred. Existi
 
 The selected architecture is already agreed. Approval of this document additionally accepts the author's proposed first-release boundaries: empty-repository creation; embedded SSH; per-request HTTP workers on a trusted host; named branches/bookmarks/tags with the stated landing behavior; and deferral of forks, mirrors, releases, webhooks, automatic issue closing, and Git API compatibility.
 
-The user approved this document and requested the implementation plan. The current authorized deliverable is that plan; implementation is a subsequent handoff.
+The user approved this document, requested the implementation plan, and subsequently authorized its execution. On 2026-10-26 the user requested continuation with subagents after Claude's work through Task 9. Preserve the user-approved validation overrides and accurately report outstanding platform/version evidence.
 
 ## References
 
