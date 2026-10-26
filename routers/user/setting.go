@@ -309,7 +309,7 @@ func SettingsSSHKeysPost(ctx *middleware.Context, form auth.AddSSHKeyForm) {
 			return
 		}
 
-		if err = models.DeletePublicKey(&models.PublicKey{Id: id}); err != nil {
+		if err = models.DeletePublicKey(&models.PublicKey{Id: id, OwnerId: ctx.User.Id}); err != nil {
 			ctx.Handle(500, "DeletePublicKey", err)
 		} else {
 			log.Trace("SSH key deleted: %s", ctx.User.Name)
@@ -331,16 +331,6 @@ func SettingsSSHKeysPost(ctx *middleware.Context, form auth.AddSSHKeyForm) {
 			ctx.Flash.Error(ctx.Tr("form.invalid_ssh_key", err.Error()))
 			ctx.Redirect(setting.AppSubUrl + "/user/settings/ssh")
 			return
-		}
-
-		if ok, err := models.CheckPublicKeyString(content); !ok {
-			if err == models.ErrKeyUnableVerify {
-				ctx.Flash.Info(ctx.Tr("form.unable_verify_ssh_key"))
-			} else {
-				ctx.Flash.Error(ctx.Tr("form.invalid_ssh_key", err.Error()))
-				ctx.Redirect(setting.AppSubUrl + "/user/settings/ssh")
-				return
-			}
 		}
 
 		k := &models.PublicKey{

@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"path"
 
 	"github.com/Unknwon/com"
 
@@ -170,19 +169,11 @@ func SettingsCollaboration(ctx *middleware.Context) {
 	ctx.Data["Title"] = ctx.Tr("repo.settings")
 	ctx.Data["PageIsSettingsCollaboration"] = true
 
-	repoLink := path.Join(ctx.Repo.Owner.LowerName, ctx.Repo.Repository.LowerName)
+	repoId := ctx.Repo.Repository.Id
 
 	if ctx.Req.Method == "POST" {
 		name := strings.ToLower(ctx.Query("collaborator"))
 		if len(name) == 0 || ctx.Repo.Owner.LowerName == name {
-			ctx.Redirect(setting.AppSubUrl + ctx.Req.URL.Path)
-			return
-		}
-		has, err := models.HasAccess(name, repoLink, models.WRITABLE)
-		if err != nil {
-			ctx.Handle(500, "HasAccess", err)
-			return
-		} else if has {
 			ctx.Redirect(setting.AppSubUrl + ctx.Req.URL.Path)
 			return
 		}
@@ -198,6 +189,15 @@ func SettingsCollaboration(ctx *middleware.Context) {
 			return
 		}
 
+		has, err := models.HasAccess(u.Id, repoId, models.WRITABLE)
+		if err != nil {
+			ctx.Handle(500, "HasAccess", err)
+			return
+		} else if has {
+			ctx.Redirect(setting.AppSubUrl + ctx.Req.URL.Path)
+			return
+		}
+
 		// Check if user is organization member.
 		if ctx.Repo.Owner.IsOrganization() && ctx.Repo.Owner.IsOrgMember(u.Id) {
 			ctx.Flash.Info(ctx.Tr("repo.settings.user_is_org_member"))
@@ -205,7 +205,7 @@ func SettingsCollaboration(ctx *middleware.Context) {
 			return
 		}
 
-		if err = models.AddAccess(&models.Access{UserName: name, RepoName: repoLink,
+		if err = models.AddAccess(&models.Access{UserId: u.Id, RepoId: repoId,
 			Mode: models.WRITABLE}); err != nil {
 			ctx.Handle(500, "AddAccess", err)
 			return
@@ -240,7 +240,11 @@ func SettingsCollaboration(ctx *middleware.Context) {
 		}
 
 		if needDelete {
-			if err := models.DeleteAccess(&models.Access{UserName: remove, RepoName: repoLink}); err != nil {
+			u, err := models.GetUserByName(remove)
+			if err == nil {
+				err = models.DeleteAccess(&models.Access{UserId: u.Id, RepoId: repoId})
+			}
+			if err != nil && err != models.ErrUserNotExist {
 				ctx.Handle(500, "DeleteAccess", err)
 				return
 			}
@@ -250,19 +254,14 @@ func SettingsCollaboration(ctx *middleware.Context) {
 		return
 	}
 
-	names, err := models.GetCollaboratorNames(repoLink)
+	us, err := models.GetCollaborators(repoId)
 	if err != nil {
 		ctx.Handle(500, "GetCollaborators", err)
 		return
 	}
 
-	collaborators := make([]*models.User, 0, len(names))
-	for _, name := range names {
-		u, err := models.GetUserByName(name)
-		if err != nil {
-			ctx.Handle(500, "GetUserByName", err)
-			return
-		}
+	collaborators := make([]*models.User, 0, len(us))
+	for _, u := range us {
 		// Does not show organization members.
 		if ctx.Repo.Owner.IsOrganization() && ctx.Repo.Owner.IsOrgMember(u.Id) {
 			continue

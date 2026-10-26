@@ -237,7 +237,7 @@ func ListMyRepos(ctx *middleware.Context) {
 	}
 	numOwnRepos := len(ownRepos)
 
-	collaRepos, err := models.GetCollaborativeRepos(ctx.User.Name)
+	collaRepos, err := models.GetCollaborativeRepos(ctx.User.Id)
 	if err != nil {
 		ctx.JSON(500, &base.ApiJsonErr{"GetCollaborativeRepos: " + err.Error(), base.DOC_URL})
 		return

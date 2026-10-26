@@ -142,13 +142,13 @@ func Http(ctx *middleware.Context) {
 				tp = models.READABLE
 			}
 
-			has, err := models.HasAccess(authUsername, username+"/"+reponame, tp)
+			has, err := models.HasAccess(authUser.Id, repo.Id, tp)
 			if err != nil {
 				ctx.Handle(401, "no basic auth and digit auth", nil)
 				return
 			} else if !has {
 				if tp == models.READABLE {
-					has, err = models.HasAccess(authUsername, username+"/"+reponame, models.WRITABLE)
+					has, err = models.HasAccess(authUser.Id, repo.Id, models.WRITABLE)
 					if err != nil || !has {
 						ctx.Handle(401, "no basic auth and digit auth", nil)
 						return

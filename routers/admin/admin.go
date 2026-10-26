@@ -146,9 +146,6 @@ func Dashboard(ctx *middleware.Context) {
 		case GIT_GC_REPOS:
 			success = ctx.Tr("admin.dashboard.git_gc_repos_success")
 			err = models.GitGcRepos()
-		case SYNC_SSH_AUTHORIZED_KEY:
-			success = ctx.Tr("admin.dashboard.resync_all_sshkeys_success")
-			err = models.RewriteAllPublicKeys()
 		case SYNC_REPOSITORY_UPDATE_HOOK:
 			success = ctx.Tr("admin.dashboard.resync_all_update_hooks_success")
 			err = models.RewriteRepositoryUpdateHook()

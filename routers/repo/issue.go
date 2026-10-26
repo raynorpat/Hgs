@@ -174,7 +174,7 @@ func CreateIssue(ctx *middleware.Context) {
 		return
 	}
 
-	us, err := models.GetCollaborators(strings.TrimPrefix(ctx.Repo.RepoLink, "/"))
+	us, err := models.GetCollaborators(ctx.Repo.Repository.Id)
 	if err != nil {
 		ctx.Handle(500, "issue.CreateIssue(GetCollaborators)", err)
 		return
@@ -218,7 +218,7 @@ func CreateIssuePost(ctx *middleware.Context, form auth.CreateIssueForm) {
 		return
 	}
 
-	_, err = models.GetCollaborators(strings.TrimPrefix(ctx.Repo.RepoLink, "/"))
+	_, err = models.GetCollaborators(ctx.Repo.Repository.Id)
 	if err != nil {
 		send(500, nil, err)
 		return
@@ -247,7 +247,7 @@ func CreateIssuePost(ctx *middleware.Context, form auth.CreateIssueForm) {
 		send(500, nil, err)
 		return
 	} else if err := models.NewIssueUserPairs(issue.RepoId, issue.Id, ctx.Repo.Owner.Id,
-		ctx.User.Id, form.AssigneeId, ctx.Repo.Repository.Name); err != nil {
+		ctx.User.Id, form.AssigneeId); err != nil {
 		send(500, nil, err)
 		return
 	}
@@ -384,7 +384,7 @@ func ViewIssue(ctx *middleware.Context) {
 	}
 
 	// Get all collaborators.
-	ctx.Data["Collaborators"], err = models.GetCollaborators(strings.TrimPrefix(ctx.Repo.RepoLink, "/"))
+	ctx.Data["Collaborators"], err = models.GetCollaborators(ctx.Repo.Repository.Id)
 	if err != nil {
 		ctx.Handle(500, "issue.CreateIssue(GetCollaborators)", err)
 		return

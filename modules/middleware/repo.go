@@ -29,13 +29,7 @@ func ApiRepoAssignment() macaron.Handler {
 			err error
 		)
 
-		// Collaborators who have write access can be seen as owners.
 		if ctx.IsSigned {
-			ctx.Repo.IsOwner, err = models.HasAccess(ctx.User.Name, userName+"/"+repoName, models.WRITABLE)
-			if err != nil {
-				ctx.JSON(500, &base.ApiJsonErr{"HasAccess: " + err.Error(), base.DOC_URL})
-				return
-			}
 			ctx.Repo.IsTrueOwner = ctx.User.LowerName == strings.ToLower(userName)
 		}
 
@@ -73,6 +67,15 @@ func ApiRepoAssignment() macaron.Handler {
 			return
 		}
 
+		// Collaborators who have write access can be seen as owners.
+		if ctx.IsSigned {
+			ctx.Repo.IsOwner, err = models.HasAccess(ctx.User.Id, repo.Id, models.WRITABLE)
+			if err != nil {
+				ctx.JSON(500, &base.ApiJsonErr{"HasAccess: " + err.Error(), base.DOC_URL})
+				return
+			}
+		}
+
 		// Check if the mirror repository owner(mirror repository doesn't have access).
 		if ctx.IsSigned && !ctx.Repo.IsOwner {
 			if repo.OwnerId == ctx.User.Id {
@@ -99,7 +102,7 @@ func ApiRepoAssignment() macaron.Handler {
 				return
 			}
 
-			hasAccess, err := models.HasAccess(ctx.User.Name, ctx.Repo.Owner.Name+"/"+repo.Name, models.READABLE)
+			hasAccess, err := models.HasAccess(ctx.User.Id, repo.Id, models.READABLE)
 			if err != nil {
 				ctx.JSON(500, &base.ApiJsonErr{"HasAccess: " + err.Error(), base.DOC_URL})
 				return
@@ -242,13 +245,7 @@ func RepoAssignment(redirect bool, args ...bool) macaron.Handler {
 			refName = ctx.Params(":path")
 		}
 
-		// Collaborators who have write access can be seen as owners.
 		if ctx.IsSigned {
-			ctx.Repo.IsOwner, err = models.HasAccess(ctx.User.Name, userName+"/"+repoName, models.WRITABLE)
-			if err != nil {
-				ctx.Handle(500, "HasAccess", err)
-				return
-			}
 			ctx.Repo.IsTrueOwner = ctx.User.LowerName == strings.ToLower(userName)
 		}
 
@@ -301,6 +298,15 @@ func RepoAssignment(redirect bool, args ...bool) macaron.Handler {
 			return
 		}
 
+		// Collaborators who have write access can be seen as owners.
+		if ctx.IsSigned {
+			ctx.Repo.IsOwner, err = models.HasAccess(ctx.User.Id, repo.Id, models.WRITABLE)
+			if err != nil {
+				ctx.Handle(500, "HasAccess", err)
+				return
+			}
+		}
+
 		// Check if the mirror repository owner(mirror repository doesn't have access).
 		if ctx.IsSigned && !ctx.Repo.IsOwner {
 			if repo.OwnerId == ctx.User.Id {
@@ -327,7 +333,7 @@ func RepoAssignment(redirect bool, args ...bool) macaron.Handler {
 				return
 			}
 
-			hasAccess, err := models.HasAccess(ctx.User.Name, ctx.Repo.Owner.Name+"/"+repo.Name, models.READABLE)
+			hasAccess, err := models.HasAccess(ctx.User.Id, repo.Id, models.READABLE)
 			if err != nil {
 				ctx.Handle(500, "HasAccess", err)
 				return

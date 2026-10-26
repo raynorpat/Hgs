@@ -5,10 +5,8 @@
 package models
 
 import (
-	"strings"
+	"errors"
 	"time"
-
-	"github.com/go-xorm/xorm"
 )
 
 type AccessType int
@@ -20,61 +18,36 @@ const (
 
 // Access represents the accessibility of user to repository.
 type Access struct {
-	Id       int64
-	UserName string     `xorm:"UNIQUE(s)"`
-	RepoName string     `xorm:"UNIQUE(s)"` // <user name>/<repo name>
-	Mode     AccessType `xorm:"UNIQUE(s)"`
-	Created  time.Time  `xorm:"CREATED"`
+	Id      int64
+	UserId  int64      `xorm:"UNIQUE(s) INDEX NOT NULL"`
+	RepoId  int64      `xorm:"UNIQUE(s) INDEX NOT NULL"`
+	Mode    AccessType `xorm:"NOT NULL"`
+	Created time.Time  `xorm:"CREATED"`
 }
 
-// AddAccess adds new access record.
+// AddAccess adds new access record, or changes the mode of an existing one.
 func AddAccess(access *Access) error {
-	access.UserName = strings.ToLower(access.UserName)
-	access.RepoName = strings.ToLower(access.RepoName)
-	_, err := x.Insert(access)
-	return err
+	return addAccessWithAuthorize(x, &Access{UserId: access.UserId, RepoId: access.RepoId}, access.Mode)
 }
 
-// UpdateAccess updates access information.
-func UpdateAccess(access *Access) error {
-	access.UserName = strings.ToLower(access.UserName)
-	access.RepoName = strings.ToLower(access.RepoName)
-	_, err := x.Id(access.Id).Update(access)
-	return err
-}
-
-// DeleteAccess deletes access record.
+// DeleteAccess deletes access record of given user and repository.
 func DeleteAccess(access *Access) error {
-	_, err := x.Delete(access)
+	if access.UserId == 0 || access.RepoId == 0 {
+		return errors.New("access user and repository must be given")
+	}
+	_, err := x.Delete(&Access{UserId: access.UserId, RepoId: access.RepoId})
 	return err
 }
 
-// UpdateAccess updates access information with session for rolling back.
-func UpdateAccessWithSession(sess *xorm.Session, access *Access) error {
-	if _, err := sess.Id(access.Id).Update(access); err != nil {
-		sess.Rollback()
-		return err
-	}
-	return nil
-}
-
-// HasAccess returns true if someone can read or write to given repository.
-// The repoName should be in format <username>/<reponame>.
-func HasAccess(uname, repoName string, mode AccessType) (bool, error) {
-	if len(repoName) == 0 {
+// HasAccess returns true if user has at least given mode of access record to repository.
+func HasAccess(userId, repoId int64, mode AccessType) (bool, error) {
+	if userId == 0 || repoId == 0 {
 		return false, nil
 	}
-	access := &Access{
-		UserName: strings.ToLower(uname),
-		RepoName: strings.ToLower(repoName),
-	}
+	access := &Access{UserId: userId, RepoId: repoId}
 	has, err := x.Get(access)
-	if err != nil {
+	if err != nil || !has {
 		return false, err
-	} else if !has {
-		return false, nil
-	} else if mode > access.Mode {
-		return false, nil
 	}
-	return true, nil
+	return mode <= access.Mode, nil
 }

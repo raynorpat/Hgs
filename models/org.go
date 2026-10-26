@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path"
 	"strings"
 
 	"github.com/Unknwon/com"
@@ -371,10 +370,10 @@ func RemoveOrgUser(orgId, uid int64) error {
 		return err
 	}
 	access := &Access{
-		UserName: u.LowerName,
+		UserId: u.Id,
 	}
 	for _, repo := range org.Repos {
-		access.RepoName = path.Join(org.LowerName, repo.LowerName)
+		access.RepoId = repo.Id
 		if _, err = sess.Delete(access); err != nil {
 			sess.Rollback()
 			return err
@@ -512,9 +511,7 @@ func (t *Team) AddRepository(repo *Repository) (err error) {
 		return nil
 	}
 
-	if err = repo.GetOwner(); err != nil {
-		return err
-	} else if err = t.GetMembers(); err != nil {
+	if err = t.GetMembers(); err != nil {
 		return err
 	}
 
@@ -542,8 +539,8 @@ func (t *Team) AddRepository(repo *Repository) (err error) {
 		}
 
 		access := &Access{
-			UserName: u.LowerName,
-			RepoName: path.Join(repo.Owner.LowerName, repo.LowerName),
+			UserId: u.Id,
+			RepoId: repo.Id,
 		}
 		if auth < t.Authorize {
 			if err = addAccessWithAuthorize(sess, access, mode); err != nil {
@@ -571,9 +568,7 @@ func (t *Team) RemoveRepository(repoId int64) error {
 		return err
 	}
 
-	if err = repo.GetOwner(); err != nil {
-		return err
-	} else if err = t.GetMembers(); err != nil {
+	if err = t.GetMembers(); err != nil {
 		return err
 	}
 
@@ -599,8 +594,8 @@ func (t *Team) RemoveRepository(repoId int64) error {
 		}
 
 		access := &Access{
-			UserName: u.LowerName,
-			RepoName: path.Join(repo.Owner.LowerName, repo.LowerName),
+			UserId: u.Id,
+			RepoId: repo.Id,
 		}
 		if auth == 0 {
 			if _, err = sess.Delete(access); err != nil {
@@ -704,8 +699,8 @@ func getHighestAuthorize(e Engine, orgId, uid, repoId, teamId int64) (AuthorizeT
 		// Not current team and has given repository.
 		if t.Id != teamId && strings.Contains(t.RepoIds, "$"+com.ToStr(repoId)+"|") {
 			// Fast return.
-			if t.Authorize == ORG_WRITABLE {
-				return ORG_WRITABLE, nil
+			if t.Authorize == ORG_ADMIN {
+				return ORG_ADMIN, nil
 			}
 			if t.Authorize > auth {
 				auth = t.Authorize
@@ -745,12 +740,6 @@ func UpdateTeam(t *Team, authChanged bool) (err error) {
 			return err
 		}
 
-		// Get organization.
-		org, err := GetUserById(t.OrgId)
-		if err != nil {
-			return err
-		}
-
 		// Update access.
 		mode := AuthorizeToAccessType(t.Authorize)
 
@@ -770,8 +759,8 @@ func UpdateTeam(t *Team, authChanged bool) (err error) {
 				}
 
 				access := &Access{
-					UserName: u.LowerName,
-					RepoName: path.Join(org.LowerName, repo.LowerName),
+					UserId: u.Id,
+					RepoId: repo.Id,
 				}
 				if err = addAccessWithAuthorize(sess, access, mode); err != nil {
 					sess.Rollback()
@@ -820,8 +809,8 @@ func DeleteTeam(t *Team) error {
 			}
 
 			access := &Access{
-				UserName: u.LowerName,
-				RepoName: path.Join(org.LowerName, repo.LowerName),
+				UserId: u.Id,
+				RepoId: repo.Id,
 			}
 			if auth == 0 {
 				if _, err = sess.Delete(access); err != nil {
@@ -936,12 +925,6 @@ func AddTeamMember(orgId, teamId, uid int64) error {
 		return err
 	}
 
-	// Get organization.
-	org, err := GetUserById(orgId)
-	if err != nil {
-		return err
-	}
-
 	// Get user.
 	u, err := GetUserById(uid)
 	if err != nil {
@@ -978,8 +961,8 @@ func AddTeamMember(orgId, teamId, uid int64) error {
 		}
 
 		access := &Access{
-			UserName: u.LowerName,
-			RepoName: path.Join(org.LowerName, repo.LowerName),
+			UserId: u.Id,
+			RepoId: repo.Id,
 		}
 		if auth < t.Authorize {
 			if err = addAccessWithAuthorize(sess, access, mode); err != nil {
@@ -1030,12 +1013,6 @@ func removeTeamMember(e Engine, orgId, teamId, uid int64) error {
 		return err
 	}
 
-	// Get organization.
-	org, err := GetUserById(orgId)
-	if err != nil {
-		return err
-	}
-
 	// Get user.
 	u, err := GetUserById(uid)
 	if err != nil {
@@ -1062,8 +1039,8 @@ func removeTeamMember(e Engine, orgId, teamId, uid int64) error {
 		}
 
 		access := &Access{
-			UserName: u.LowerName,
-			RepoName: path.Join(org.LowerName, repo.LowerName),
+			UserId: u.Id,
+			RepoId: repo.Id,
 		}
 		// Delete access if this is the last team user belongs to.
 		if auth == 0 {
@@ -1082,7 +1059,7 @@ func removeTeamMember(e Engine, orgId, teamId, uid int64) error {
 
 	// This must exist.
 	ou := new(OrgUser)
-	_, err = e.Where("uid=?", uid).And("org_id=?", org.Id).Get(ou)
+	_, err = e.Where("uid=?", uid).And("org_id=?", orgId).Get(ou)
 	if err != nil {
 		return err
 	}
