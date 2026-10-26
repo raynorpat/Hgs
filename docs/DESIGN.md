@@ -1,6 +1,6 @@
-# Gogs design system
+# Hgs design system
 
-Status: Approved with the shared UI design on 2026-10-26. The landing-page/logo follow-on remains to be designed separately; its tentative mascot composition is not approved artwork.
+Status: Shared UI design approved on 2026-10-26. The Hgs landing-page and Go Gopher mascot prototype is pending review; it is not approved production artwork or implementation.
 
 Updated: 2026-10-26
 
@@ -8,7 +8,7 @@ Updated: 2026-10-26
 
 Use one visual and interaction system across workspace, repositories, **Issues**, pull requests, organizations, accounts, and administration. Retain the Go server-rendered application and Mercurial terminology.
 
-The visual direction comes from the user's Bitbucket screenshots: blue navigation on the left, a slim utility rail, white content, restrained borders, and compact readable lists. Keep the Gogs name and attribution. A Mercurial-focused replacement for the main logo is scheduled as a follow-on phase below. Do not introduce Bitbucket logos or proprietary assets.
+The visual direction comes from the user's Bitbucket screenshots: blue navigation on the left, a slim utility rail, white content, restrained borders, and compact readable lists. Use Hgs as the requested product identity and retain existing legal attribution. The landing-page and Mercurial-focused mascot direction is recorded in the follow-on phase below. Do not introduce Bitbucket logos or proprietary assets.
 
 - [Project design and behavior](superpowers/specs/2026-10-26-shared-ui-and-pull-requests-design.md)
 - [Saved interactive layout study](superpowers/specs/references/2026-10-26-bitbucket-layout-study.html)
@@ -215,10 +215,26 @@ The visual prototype is not evidence that backend workflows work. Production acc
 
 ## Follow-on: landing page and Mercurial identity
 
-After the shared application UI work, refactor the public landing page (`templates/home.tmpl`) and replace its main logo (`public/img/gogs-lg.png`) to match the service's Mercurial focus. The user suggested a beaver-and-beaker concept; the composition and final artwork are still to be decided.
+The requested product name is **Hgs**, described as a **Mercurial service**. Use the exact landing-page tagline: **A painless, self-hosted Mercurial service.** Phase out Gogs from user-facing product copy in a later implementation while preserving existing copyright, license and attribution notices. Internal package/import paths and repository identifiers are not renamed by this visual prototype.
 
-The current landing page combines the large logo, product heading, sign-in form, conditional registration, social sign-in, and feature descriptions. Its redesign should use this system's typography, colors, spacing, forms, and responsive rules with an appropriate public-page layout. Preserve authentication/registration policy and supported sign-in paths. Update product and feature copy to describe the actual Mercurial service rather than unsupported Git-era features or deployment claims.
+[Open the throwaway landing-page prototype](prototypes/landing-page/index.html). Its adjacent gopher-lab.png is concept artwork. The prototype is pending review and does not change the production home template, public logo, authentication, routes, or backend behavior. Sample repositories and controls are clearly labeled; prototype appearance is not evidence that backend workflows work.
 
-Explore a distinctive, readable beaver/beaker mark that works on white and beside the blue navigation palette. Review the composition, silhouette, transparency, and small-size legibility before replacing the current PNG. The existing Gogs name and legal attribution remain; product renaming and favicon/navigation-icon replacement are not implied by this request.
+### Landing-page composition
 
-This section records the requested next phase, not an approved logo design or permission to replace assets before that phase is designed. Present landing-page and logo concepts for review when that work begins.
+Use a compact Hgs identity with the descriptive “Mercurial service,” Explore repositories, and Sign in. Lead with the exact tagline and a short factual explanation of the service. Pair the text with the Go Gopher wearing a laboratory coat and holding a beaker. The earlier beaver direction is superseded.
+
+Keep the public layout distinct from the application's side navigation while using the same blue (#0747A6, #0052CC), ink (#172B4D), system typography, borders and spacing. Use a white, flat surface, restrained feature columns, and a native hg clone example with a working Copy action. Avoid oversized decorative cards, gradients, unsupported performance/security/platform claims, or Git-era feature promises. Review at 1200–1440px desktop widths and a 390px mobile width, with legible text, no page-level horizontal overflow, visible keyboard focus, and reachable actions.
+
+The prototype has sample repository rows, section links, and a dismissible accessible preview dialog. It does not collect passwords, submit forms, authenticate, or trigger external application changes. A separate Design preview notice identifies the artifact as a throwaway concept. The clone command uses an explicitly labeled placeholder address.
+
+### Authentication and policy in later implementation
+
+Preserve supported sign-in methods, including social sign-in, and existing conditional registration behavior. Do not imply public registration is always available. Production controls must reflect the instance's policy and permitted authentication providers; a redesign must not remove supported paths or weaken CSRF/authorization checks. The prototype explains these policies in a sign-in preview dialog instead of presenting a credential form.
+
+### Mascot artwork and attribution
+
+The requested composition is the recognizable Go Gopher in a white laboratory coat holding a beaker. Keep the silhouette friendly and readable, with adequate separation between coat, beaker and body. Ship the reviewed artwork locally with a transparent background; inspect the actual PNG for stray backgrounds, rough edges, silhouette clarity, and contrast on white and the shared blue palette. Check both the large landing illustration and reduced-size use before approving it. Provide descriptive alternative text for the meaningful illustration.
+
+Credit the source and adaptation: **Go Gopher by Renee French, CC BY 4.0. Lab-coat and beaker adaptation.** Link [the original Go Gopher attribution](https://go.dev/blog/gopher) and [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Preserve existing Gogs legal notices separately from the Hgs product identity.
+
+After review, a later implementation may replace the main landing PNG using a neutral Hgs asset filename such as public/img/hgs-mascot.png and update its template reference. The prototype does not authorize replacing production assets, favicons, or navigation icons. Review the landing composition and actual mascot PNG together before carrying this direction into the application.
