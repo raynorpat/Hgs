@@ -39,6 +39,11 @@ type StdioBridge struct {
 // stdio only for exactly "-R <repo> serve --stdio", so the hooks go into two
 // session config files, rewritten here, in configDir: an absolute directory
 // owned by the application, such as the managed config's.
+//
+// Mercurial reads the repository's .hg/hgrc after HGRCPATH, so a [hooks]
+// section there could override these bare hooks.<name> keys and disable
+// write checks. Repository hgrc files must therefore never contain [hooks]
+// (nor %unset or %include); the application writes them and must keep it so.
 func NewStdioBridge(runner *hg.Runner, controller *Controller, hookExecutable, configDir string) (*StdioBridge, error) {
 	if !filepath.IsAbs(configDir) {
 		return nil, fmt.Errorf("hgbridge: stdio config directory %q is not absolute", configDir)

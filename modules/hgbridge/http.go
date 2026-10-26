@@ -36,7 +36,11 @@ type Target struct {
 // (between, branches, changegroup, changegroupsubset, bundle1 unbundle,
 // pushkey with x-hgarg headers). debugwireargs is a test aid, and
 // get_cached_bundle_inline serves files from a server bundle cache Gogs never
-// configures. Any other cmd value would reach hgweb's HTML interface.
+// configures, so neither may be the top-level cmd. Any other cmd value would
+// reach hgweb's HTML interface. The commands inside a batch are not filtered:
+// a batch can still name debugwireargs or get_cached_bundle_inline. The
+// latter then fails only on batch's Python assert that every result is
+// bytes, which stays enabled because the runner passes no PYTHONOPTIMIZE.
 var wireCommands = map[string]bool{
 	"batch":                 true,
 	"between":               true,
