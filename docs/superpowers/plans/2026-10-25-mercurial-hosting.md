@@ -47,7 +47,21 @@ All file paths below are relative to `D:/github/gogs`. New package names are dec
 
 For each test cycle, observe the expected failure before implementing. Infrastructure/build tasks use the failing build or diagnostic as their red check; do not invent a test that merely asserts a config file's contents. After each green task, run the affected package tests and `go build ./...` to keep intermediate code compilable. Run the complete suite at integration milestones, not after every tiny edit.
 
-**Commit checkpoints:** Commit only the listed task's files if execution occurs in a real version-controlled checkout. This folder currently has no `.git` or `.hg`; do not initialize one automatically, invent a remote, or claim commits occurred. Record completed task/check results in this plan when commits are unavailable. Worktree setup belongs to execution, not plan authoring.
+**Commit checkpoints:** The project is a Git repository (initialized at the user's request on 2026-10-25; no remote). Commit each task's files at its checkpoint with the listed message. Do not add a remote or push. Worktree setup belongs to execution, not plan authoring.
+
+## Execution status and environment (updated 2026-10-25)
+
+Done before plan execution began (commits `cb8e76e`..`a5bed02`):
+- `go.mod`/`go.sum` replace `.gopmfile`; all 27 dependencies pinned to their exact legacy commits (no substitutions were needed); `toolchain go1.27.3`. `go mod verify`, `go build ./...` and `go vet` on touched packages pass with `CGO_ENABLED=0`.
+- SQLite uses pure-Go `modernc.org/sqlite` v1.60.1, compiled in by default (no `sqlite` build tag, no C toolchain); `TestSQLiteEngineRoundTrip` covers it.
+- Modern-Go fixes: `ldap_test.go` printf vet errors; `templates/repo/issue/list.tmpl` `{{..` typo that panicked at startup; nil `MultipartForm` panic in `routers/repo/issue.go` `uploadFiles` (regression test added).
+- Smoke-tested `gogs web` on Windows: SQLite install, login, admin pages, repository creation, issue creation/view.
+
+Task 1 remaining: `docs/mercurial/build-baseline.md`, `newTestDatabase` helper and `TestFreshDatabasePreservesUsersAndIssues`/`TestPasswordVerification`, `.github/workflows/mercurial.yml`, retire `.travis.yml`. `modules/ldap` tests dial a dead public LDAP server and must move behind an explicit integration opt-in.
+
+Local environment: Windows 11 only. Go 1.27.3 at `C:\Program Files\Go`. Mercurial 7.0.3 via scoop, whose ambient configuration loads a missing `hggit` extension (useful evidence for the isolation tests). Python 3.13; no Python 2.7. The required tested versions (server 5.0.2 and 7.2.4, clients 2.0.2 and 7.2.4) are not installed, and there are no Linux or macOS runners and no CI remote. Consequences:
+- Integration steps against real Mercurial run locally only on Windows, and only with versions the user has approved installing; anything else is recorded as unavailable, never passed.
+- The Task 6 gate requires native Windows, Linux and macOS results. Without those runners it cannot pass, so execution stops after Task 6 and reports the gate as unverified rather than starting Task 7.
 
 ## File and interface map
 

@@ -20,7 +20,7 @@ This is a substantial project, not a library substitution. Scope and behavior be
 - `modules/git` models Git commits, trees, branches, and tags. `models/repo.go` also directly runs Git for creation, mirroring, maintenance, and other operations, and builds `.git` paths and clone URLs.
 - `routers/repo/http.go` implements Git HTTP transport. `cmd/serve.go` dispatches Git commands over external SSH. `modules/ssh/ssh.go` is an unfinished embedded SSH prototype with hard-coded paths and key identity; it is not a production authentication implementation.
 - Repository middleware, source/history handlers, diffs, release handling, API routes, and push notifications depend on Git concepts. Issue discussion and account management provide reusable application behavior.
-- This directory currently has neither `.git` nor `.hg` metadata. The design can be saved here, but cannot be committed to existing history. Do not initialize version control or invent a remote merely to commit this document.
+- The directory had no version control when this design was written; at the user's request it is now a Git repository with no remote. Work is committed there; do not add a remote or push without being asked.
 - Local inspection found Mercurial 7.0.3 installed. Its normal startup attempts to load a missing `hggit` extension from ambient configuration. This is evidence that server processes must use isolated configuration, not a supported-version declaration.
 
 ## Approaches
