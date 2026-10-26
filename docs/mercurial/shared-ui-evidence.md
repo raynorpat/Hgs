@@ -10,7 +10,7 @@ Audit date: 2026-10-26. **Task 0: BLOCKED / incomplete.** Neither the transport 
 - An initial sandboxed status call reported `fatal: this operation must be run in a work tree`; the authorized elevated call succeeded. This was an access-context issue, not evidence of a dirty baseline.
 - `go version`: `go1.27.3 windows/amd64`.
 - `git remote -v` shows existing origin `git@github.com:raynorpat/Hgs.git`. Historical statements that there is no remote are stale; this audit did not fetch, push, or infer that CI has run.
-- Reviewed: approved hosting design/plan, approved shared UI/PR design, Task 0 brief, `CLAUDE.md`, transport evidence, source APIs, integration tests, and native CI configuration. The full shared UI implementation plan was not read.
+- Reviewed: approved hosting design/plan, approved shared UI/PR design, `docs/DESIGN.md` (approved shared design system), Task 0 brief, `CLAUDE.md`, transport evidence, source APIs, integration tests, and native CI configuration. The full shared UI implementation plan was not read.
 
 ## Transport gate: FAILED and native matrix unverified
 
