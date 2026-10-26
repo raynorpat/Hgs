@@ -180,24 +180,29 @@ func checkHTTPBridge(t *testing.T, serverExe, clientExe, gogs string) {
 
 	// A writer that disconnects mid-upload leaves no worker and no change.
 	before = server.snapshot(dest)
-	n := started.Load()
-	conn, err := tls.Dial("tcp", frontend.Listener.Addr().String(), &tls.Config{InsecureSkipVerify: true})
-	if err != nil {
-		t.Fatal(err)
+	stall := func() (disconnect func()) {
+		n := started.Load()
+		conn, err := tls.Dial("tcp", frontend.Listener.Addr().String(), &tls.Config{InsecureSkipVerify: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(conn, "POST %s?cmd=unbundle HTTP/1.1\r\nHost: %s\r\nAuthorization: Basic %s\r\n"+
+			"Content-Type: application/mercurial-0.1\r\nX-HgArg-1: heads=666f726365\r\nContent-Length: 1000000\r\n\r\nHG10UN",
+			prefix, frontend.Listener.Addr(), base64.StdEncoding.EncodeToString([]byte("writer:writer-secret")))
+		waitFor(t, "stalled push to start a worker", func() bool { return started.Load() > n })
+		return func() { conn.Close() }
 	}
-	fmt.Fprintf(conn, "POST %s?cmd=unbundle HTTP/1.1\r\nHost: %s\r\nAuthorization: Basic %s\r\n"+
-		"Content-Type: application/mercurial-0.1\r\nX-HgArg-1: heads=666f726365\r\nContent-Length: 1000000\r\n\r\nHG10UN",
-		prefix, frontend.Listener.Addr(), base64.StdEncoding.EncodeToString([]byte("writer:writer-secret")))
-	waitFor(t, "disconnecting push to start a worker", func() bool { return started.Load() > n })
-	conn.Close()
+	stall()()
 	waitFor(t, "disconnected push's worker to be reaped", func() bool { return active.Load() == 0 })
+
+	// Close ends a worker whose client is still connected but sends nothing.
+	defer stall()()
+	b.Close()
+	waitFor(t, "Close to reap the stalled push's worker", func() bool { return active.Load() == 0 })
 	if server.snapshot(dest) != before {
-		t.Fatal("disconnected push changed the repository")
+		t.Fatal("interrupted push changed the repository")
 	}
 	server.must(dest, nil, nil, "verify", "-q")
-	if a := active.Load(); a != 0 {
-		t.Fatalf("%d workers still running", a)
-	}
 }
 
 func port(s *httptest.Server) string {

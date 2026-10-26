@@ -13,6 +13,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -31,6 +32,10 @@ type fakeWorkers struct {
 	envs    []map[string]string
 	started int
 	reaped  int
+	// idle, when set, kills a worker without touches for that long, as the
+	// runner's idle watchdog does.
+	idle   time.Duration
+	killed int
 }
 
 func (f *fakeWorkers) count() (started, reaped int) {
@@ -61,9 +66,36 @@ func newTestBridge(t *testing.T, backend http.HandlerFunc) (*HTTPBridge, *Contro
 		f.args = append(f.args, args)
 		f.envs = append(f.envs, env)
 		f.started++
+		idle := f.idle
 		f.mu.Unlock()
-		return &worker{addr: srv.Listener.Addr().String(), touch: func() {}, reap: func() {
+		var last atomic.Int64
+		touch := func() { last.Store(time.Now().UnixNano()) }
+		touch()
+		stop, done := make(chan struct{}), make(chan struct{})
+		var exit sync.Once
+		if idle > 0 {
+			go func() {
+				for {
+					select {
+					case <-stop:
+						return
+					case <-time.After(idle / 10):
+					}
+					if time.Since(time.Unix(0, last.Load())) > idle {
+						f.mu.Lock()
+						f.killed++
+						f.mu.Unlock()
+						srv.CloseClientConnections()
+						exit.Do(func() { close(done) })
+						return
+					}
+				}
+			}()
+		}
+		return &worker{addr: srv.Listener.Addr().String(), touch: touch, done: done, reap: func() {
+			close(stop)
 			srv.Close()
+			exit.Do(func() { close(done) })
 			f.mu.Lock()
 			f.reaped++
 			f.mu.Unlock()
@@ -388,5 +420,86 @@ func TestHTTPBridgeCommandTable(t *testing.T) {
 		if !wireCommands[cmd] {
 			t.Errorf("wire command %q is not allowed", cmd)
 		}
+	}
+}
+
+func TestHTTPBridgeHoldsWorkerDuringTransaction(t *testing.T) {
+	b, _, f := newTestBridge(t, func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		// Applying the changegroup and running hooks: no traffic at all.
+		time.Sleep(time.Second)
+		io.WriteString(w, "1\nadded 1 changeset\n")
+	})
+	f.idle, b.holdInterval = 150*time.Millisecond, 20*time.Millisecond
+
+	w, err := serve(t, b, wireRequest("POST", "?cmd=unbundle", "HG10UN changegroup"), testWriter)
+	if err != nil || w.Code != 200 || w.Body.String() != "1\nadded 1 changeset\n" {
+		t.Fatalf("long transaction: %d %q, %v", w.Code, w.Body, err)
+	}
+	if f.killed != 0 {
+		t.Fatal("idle limit killed a worker applying a fully received push")
+	}
+	for _, target := range []string{"?cmd=getbundle", "?cmd=heads"} {
+		if w, err := serve(t, b, wireRequest("GET", target, ""), testReader); err != nil || w.Code != 200 || f.killed != 0 {
+			t.Fatalf("GET %s while the worker computes: %d, %v, killed %d", target, w.Code, err, f.killed)
+		}
+	}
+
+	// A client that stops sending its body leaves the worker idle. A real
+	// frontend connection shows Serve does not wait for the stalled client.
+	done := make(chan error, 1)
+	frontend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		done <- b.Serve(context.Background(), w, r, testTarget, testWriter)
+	}))
+	defer frontend.Close()
+	pr, pw := io.Pipe()
+	defer pw.Close()
+	go pw.Write([]byte("HG10UN"))
+	r, _ := http.NewRequest("POST", frontend.URL+"?cmd=unbundle", pr)
+	r.ContentLength = 1000
+	go http.DefaultClient.Do(r)
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("stalled upload served")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("stalled upload was not ended by the idle limit")
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.killed != 1 || f.started != f.reaped {
+		t.Fatalf("killed %d, started %d, reaped %d", f.killed, f.started, f.reaped)
+	}
+}
+
+func TestHTTPBridgeCloseEndsWorkers(t *testing.T) {
+	entered := make(chan struct{}, 1)
+	b, _, f := newTestBridge(t, func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		entered <- struct{}{}
+		<-r.Context().Done()
+	})
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := serve(t, b, wireRequest("POST", "?cmd=unbundle", "HG10UN changegroup"), testWriter)
+		done <- err
+	}()
+	<-entered
+	b.Close()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("Serve reported success for an exchange Close aborted")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not end an in-flight exchange")
+	}
+	if _, err := serve(t, b, wireRequest("GET", "?cmd=heads", ""), testReader); err == nil {
+		t.Fatal("closed bridge served a request")
+	}
+	if started, reaped := f.count(); started != 1 || reaped != 1 {
+		t.Fatalf("started %d, reaped %d", started, reaped)
 	}
 }

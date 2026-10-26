@@ -64,16 +64,25 @@ type HTTPBridge struct {
 	controller                 *Controller
 	readerConfig, writerConfig []string
 
+	// base ends every worker and exchange when Close cancels it.
+	base       context.Context
+	cancelBase context.CancelFunc
+	// holdInterval is how often an exchange touches its worker while
+	// Mercurial works on a fully received request; tests shorten it.
+	holdInterval time.Duration
+
 	// start launches a worker; tests replace it with an in-process backend.
 	start func(ctx context.Context, repoPath string, args []string, env map[string]string) (*worker, error)
 }
 
 // worker is a started backend: its loopback address, a way to tell the
-// runner that proxied traffic is flowing, and reap, which kills and waits.
+// runner that proxied traffic is flowing, reap, which kills and waits, and
+// done, closed once the worker has exited.
 type worker struct {
 	addr  string
 	touch func()
 	reap  func()
+	done  <-chan struct{}
 }
 
 // NewHTTPBridge prepares workers that run hookExecutable (the absolute path
@@ -89,14 +98,23 @@ func NewHTTPBridge(runner *hg.Runner, controller *Controller, hookExecutable str
 	}
 	b := &HTTPBridge{
 		controller:   controller,
+		holdInterval: hg.TransferIdleTimeout / 4,
 		readerConfig: workerArgs(reader, "web.deny_push=*", "web.allow-push="),
 		// Public TLS terminates in Go; the worker only listens on loopback.
 		writerConfig: workerArgs(writer, "web.allow-push=*", "web.push_ssl=false"),
 	}
+	b.base, b.cancelBase = context.WithCancel(context.Background())
 	b.start = func(ctx context.Context, repoPath string, args []string, env map[string]string) (*worker, error) {
-		return startWorker(ctx, runner, repoPath, args, env)
+		return startWorker(ctx, b.base, runner, repoPath, args, env)
 	}
 	return b, nil
+}
+
+// Close kills every running worker and aborts its exchange, so in-flight
+// pushes may be cut off mid-transaction; later Serve calls fail. Call it
+// after the shutdown drain period.
+func (b *HTTPBridge) Close() {
+	b.cancelBase()
 }
 
 func workerArgs(hooks map[string]string, extra ...string) []string {
@@ -122,7 +140,10 @@ func workerArgs(hooks map[string]string, extra ...string) []string {
 // response has started, failures are logged and Serve returns nil. ctx bounds
 // waiting for and starting the worker; after that the exchange is bounded by
 // the runner's idle and session limits, so a push Mercurial has received runs
-// to completion even if the client disconnects. Nothing is ever retried.
+// to completion even if the client disconnects, until Close. While Mercurial
+// works on a fully received request, before its response starts, the worker
+// is kept from the idle limit; only the session ceiling and Close bound it.
+// Nothing is ever retried.
 func (b *HTTPBridge) Serve(ctx context.Context, w http.ResponseWriter, r *http.Request, target Target, grant Grant) error {
 	cmd, query, ok := wireCommand(r.URL)
 	if !ok {
@@ -142,6 +163,9 @@ func (b *HTTPBridge) Serve(ctx context.Context, w http.ResponseWriter, r *http.R
 	if grant.RepoID != target.RepoID {
 		return errors.New("hgbridge: grant is for another repository")
 	}
+	if b.base.Err() != nil {
+		return errors.New("hgbridge: HTTP bridge is closed")
+	}
 
 	args, env := b.readerConfig, map[string]string(nil)
 	if grant.CanWrite {
@@ -158,11 +182,14 @@ func (b *HTTPBridge) Serve(ctx context.Context, w http.ResponseWriter, r *http.R
 	}
 	defer wk.reap()
 
+	bodyDone := make(chan struct{})
 	var body io.Reader = http.NoBody
 	if r.ContentLength > 0 {
-		body = &touchReader{r.Body, wk.touch}
+		body = &touchReader{r: r.Body, touch: wk.touch, left: r.ContentLength, done: bodyDone}
+	} else {
+		close(bodyDone)
 	}
-	out, err := http.NewRequest(r.Method, "http://"+wk.addr+"/?"+query, body)
+	out, err := http.NewRequestWithContext(b.base, r.Method, "http://"+wk.addr+"/?"+query, body)
 	if err != nil {
 		return err
 	}
@@ -179,7 +206,19 @@ func (b *HTTPBridge) Serve(ctx context.Context, w http.ResponseWriter, r *http.R
 		DisableKeepAlives:  true,
 		DisableCompression: true,
 	}
+	waiting := make(chan struct{})
+	go b.hold(wk, bodyDone, waiting)
+	go func() {
+		select {
+		case <-wk.done:
+			// The transport waits for its body writer, which may be blocked
+			// on a stalled client; a dead worker needs no more of the body.
+			http.NewResponseController(w).SetReadDeadline(time.Now())
+		case <-waiting:
+		}
+	}()
 	resp, err := transport.RoundTrip(out)
+	close(waiting)
 	if err != nil {
 		return fmt.Errorf("hgbridge: %s for repository %d: %v", cmd, target.RepoID, err)
 	}
@@ -222,15 +261,45 @@ func forwardRequestHeader(k string) bool {
 	return strings.HasPrefix(k, "X-Hgarg-") || strings.HasPrefix(k, "X-Hgproto-")
 }
 
+// hold keeps the worker from the idle limit from the moment the whole
+// request has been forwarded until the response starts or the exchange
+// fails: a stalled upload stays subject to it, a long transaction does not.
+func (b *HTTPBridge) hold(wk *worker, bodyDone, waiting <-chan struct{}) {
+	select {
+	case <-bodyDone:
+	case <-waiting:
+		return
+	}
+	t := time.NewTicker(b.holdInterval)
+	defer t.Stop()
+	for {
+		wk.touch()
+		select {
+		case <-t.C:
+		case <-waiting:
+			return
+		}
+	}
+}
+
+// touchReader reports upload traffic and closes done once all left bytes
+// have been read.
 type touchReader struct {
 	r     io.Reader
 	touch func()
+	left  int64
+	done  chan struct{}
 }
 
 func (t *touchReader) Read(p []byte) (int, error) {
 	n, err := t.r.Read(p)
 	if n > 0 {
 		t.touch()
+	}
+	if t.left > 0 {
+		if t.left -= int64(n); t.left <= 0 {
+			close(t.done)
+		}
 	}
 	return n, err
 }
@@ -266,8 +335,10 @@ var listeningPort = regexp.MustCompile(`\(bound to 127\.0\.0\.1:(\d+)\)`)
 
 const maxWorkerStderr = 4 << 10
 
-func startWorker(ctx context.Context, runner *hg.Runner, repoPath string, args []string, env map[string]string) (*worker, error) {
-	wctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+// startWorker starts hg serve under base; ctx can end it only until it is
+// listening.
+func startWorker(ctx, base context.Context, runner *hg.Runner, repoPath string, args []string, env map[string]string) (*worker, error) {
+	wctx, cancel := context.WithCancel(base)
 	stop := context.AfterFunc(ctx, cancel)
 	c, err := runner.Start(wctx, repoPath, args, env)
 	if err != nil {
@@ -316,13 +387,15 @@ func startWorker(ctx context.Context, runner *hg.Runner, repoPath string, args [
 			reap()
 			return nil, ctx.Err()
 		}
-		return &worker{addr: "127.0.0.1:" + p, touch: c.Touch, reap: func() { reap() }}, nil
+		exited := make(chan struct{})
+		go func() { c.Wait(); close(exited) }()
+		return &worker{addr: "127.0.0.1:" + p, touch: c.Touch, reap: func() { reap() }, done: exited}, nil
 	case <-stdoutDone:
 		err = errors.New("exited before listening")
 	case <-timer.C:
 		err = errors.New("did not start listening in time")
 	case <-wctx.Done():
-		err = ctx.Err()
+		err = wctx.Err()
 	}
 	msg := reap()
 	return nil, fmt.Errorf("hgbridge: hg serve %s: %v: %s", repoPath, err, strings.TrimSpace(string(msg)))
