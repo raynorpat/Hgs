@@ -69,16 +69,8 @@ var (
 	CookieRememberName   string
 	ReverseProxyAuthUser string
 
-	// Webhook settings.
-	Webhook struct {
-		TaskInterval   int
-		DeliverTimeout int
-		SkipTLSVerify  bool
-	}
-
 	// Repository settings.
 	RepoRootPath string
-	ScriptType   string
 
 	// Picture settings.
 	PictureService   string
@@ -111,17 +103,6 @@ var (
 
 	// Session settings.
 	SessionConfig session.Options
-
-	// Git settings.
-	Git struct {
-		MaxGitDiffLines int
-		GcArgs          []string `delim:" "`
-		Fsck            struct {
-			Enable   bool
-			Interval int
-			Args     []string `delim:" "`
-		} `ini:"git.fsck"`
-	}
 
 	// Mercurial settings.
 	Mercurial struct {
@@ -203,7 +184,7 @@ func NewConfigContext() {
 	LogRootPath = Cfg.Section("log").Key("ROOT_PATH").MustString(path.Join(workDir, "log"))
 
 	sec := Cfg.Section("server")
-	AppName = Cfg.Section("").Key("APP_NAME").MustString("Gogs: Go Git Service")
+	AppName = Cfg.Section("").Key("APP_NAME").MustString("Gogs: Mercurial Hosting")
 	AppUrl = sec.Key("ROOT_URL").MustString("http://localhost:3000/")
 	if AppUrl[len(AppUrl)-1] != '/' {
 		AppUrl += "/"
@@ -301,7 +282,7 @@ func NewConfigContext() {
 		log.Fatal(4, "Expect user(%s) but current user is: %s", RunUser, curUser)
 	}
 
-	// Determine and create root git repository path.
+	// Determine and create repository root path.
 	homeDir, err := com.HomeDir()
 	if err != nil {
 		log.Fatal(4, "Fail to get home directory: %v", err)
@@ -316,7 +297,6 @@ func NewConfigContext() {
 	if err = os.MkdirAll(RepoRootPath, os.ModePerm); err != nil {
 		log.Fatal(4, "Fail to create repository root path(%s): %v", RepoRootPath, err)
 	}
-	ScriptType = sec.Key("SCRIPT_TYPE").MustString("bash")
 
 	sec = Cfg.Section("picture")
 	PictureService = sec.Key("SERVICE").In("server", []string{"server"})
@@ -329,10 +309,6 @@ func NewConfigContext() {
 		GravatarSource = "//1.gravatar.com/avatar/"
 	}
 	DisableGravatar = sec.Key("DISABLE_GRAVATAR").MustBool()
-
-	if err = Cfg.Section("git").MapTo(&Git); err != nil {
-		log.Fatal(4, "Fail to map Git settings: %v", err)
-	}
 
 	sec = Cfg.Section("mercurial")
 	Mercurial.Executable = sec.Key("EXECUTABLE").MustString("hg")
@@ -547,13 +523,6 @@ func newNotifyMailService() {
 	log.Info("Notify Mail Service Enabled")
 }
 
-func newWebhookService() {
-	sec := Cfg.Section("webhook")
-	Webhook.TaskInterval = sec.Key("TASK_INTERVAL").MustInt(1)
-	Webhook.DeliverTimeout = sec.Key("DELIVER_TIMEOUT").MustInt(5)
-	Webhook.SkipTLSVerify = sec.Key("SKIP_TLS_VERIFY").MustBool()
-}
-
 func NewServices() {
 	newService()
 	newLogService()
@@ -562,6 +531,5 @@ func NewServices() {
 	newMailService()
 	newRegisterMailService()
 	newNotifyMailService()
-	newWebhookService()
 	// ssh.Listen("2222")
 }

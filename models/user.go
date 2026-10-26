@@ -6,7 +6,6 @@ package models
 
 import (
 	"bytes"
-	"container/list"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -23,7 +22,6 @@ import (
 
 	"github.com/gogits/gogs/modules/avatar"
 	"github.com/gogits/gogs/modules/base"
-	"github.com/gogits/gogs/modules/git"
 	"github.com/gogits/gogs/modules/log"
 	"github.com/gogits/gogs/modules/setting"
 )
@@ -73,9 +71,8 @@ type User struct {
 	Updated     time.Time `xorm:"UPDATED"`
 
 	// Permissions.
-	IsActive     bool
-	IsAdmin      bool
-	AllowGitHook bool
+	IsActive bool
+	IsAdmin  bool
 
 	// Avatar.
 	Avatar          string `xorm:"VARCHAR(2048) NOT NULL"`
@@ -130,15 +127,6 @@ func (u *User) AvatarLink() string {
 		return setting.AppSubUrl + "/avatar/" + u.Avatar
 	}
 	return setting.GravatarSource + u.Avatar
-}
-
-// NewGitSig generates and returns the signature of given user.
-func (u *User) NewGitSig() *git.Signature {
-	return &git.Signature{
-		Name:  u.Name,
-		Email: u.Email,
-		When:  time.Now(),
-	}
 }
 
 // EncodePasswd encodes password to safe format.
@@ -497,11 +485,6 @@ func DeleteInactivateUsers() error {
 	return err
 }
 
-// UserPath returns the path absolute path of user repositories.
-func UserPath(userName string) string {
-	return filepath.Join(setting.RepoRootPath, strings.ToLower(userName))
-}
-
 func GetUserByKeyId(keyId int64) (*User, error) {
 	user := new(User)
 	rawSql := "SELECT a.* FROM `user` AS a, public_key AS b WHERE a.id = b.owner_id AND b.id=?"
@@ -679,45 +662,6 @@ func MakeEmailPrimary(email *EmailAddress) error {
 }
 
 // UserCommit represents a commit with validation of user.
-type UserCommit struct {
-	User *User
-	*git.Commit
-}
-
-// ValidateCommitWithEmail chceck if author's e-mail of commit is corresponsind to a user.
-func ValidateCommitWithEmail(c *git.Commit) *User {
-	u, err := GetUserByEmail(c.Author.Email)
-	if err != nil {
-		return nil
-	}
-	return u
-}
-
-// ValidateCommitsWithEmails checks if authors' e-mails of commits are corresponding to users.
-func ValidateCommitsWithEmails(oldCommits *list.List) *list.List {
-	emails := map[string]*User{}
-	newCommits := list.New()
-	e := oldCommits.Front()
-	for e != nil {
-		c := e.Value.(*git.Commit)
-
-		var u *User
-		if v, ok := emails[c.Author.Email]; !ok {
-			u, _ = GetUserByEmail(c.Author.Email)
-			emails[c.Author.Email] = u
-		} else {
-			u = v
-		}
-
-		newCommits.PushBack(UserCommit{
-			User:   u,
-			Commit: c,
-		})
-		e = e.Next()
-	}
-	return newCommits
-}
-
 // GetUserByEmail returns the user object by given e-mail if exists.
 func GetUserByEmail(email string) (*User, error) {
 	if len(email) == 0 {

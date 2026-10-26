@@ -5,7 +5,7 @@
 // Use of this source code is governed by a MIT-style
 // license that can be found in the LICENSE file.
 
-// Gogs(Go Git Service) is a painless self-hosted Git Service written in Go.
+// Gogs hosts Mercurial repositories, accounts, and issues.
 package main
 
 import (
@@ -28,11 +28,10 @@ func init() {
 func main() {
 	app := cli.NewApp()
 	app.Name = "Gogs"
-	app.Usage = "Go Git Service"
+	app.Usage = "Mercurial hosting"
 	app.Version = APP_VER
 	app.Commands = []cli.Command{
 		cmd.CmdWeb,
-		cmd.CmdDump,
 		cmd.CmdCert,
 		cmd.CmdHGHook,
 	}

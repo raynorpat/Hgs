@@ -7,7 +7,6 @@ package routers
 import (
 	"errors"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 
@@ -55,14 +54,13 @@ func GlobalInit() error {
 	NewServices()
 
 	if setting.InstallLock {
-		models.LoadRepoConfig()
 
 		if err := models.NewEngine(); err != nil {
 			return err
 		}
 
 		models.HasEngine = true
-		log.NewGitLogger(path.Join(setting.LogRootPath, "http.log"))
+
 	}
 	checkRunMode()
 	return nil

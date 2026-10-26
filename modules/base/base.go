@@ -14,5 +14,3 @@ type (
 		DocUrl  string `json:"url"`
 	}
 )
-
-var GoGetMetas = make(map[string]bool)

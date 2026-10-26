@@ -7,6 +7,7 @@ package user
 import (
 	"bytes"
 	"fmt"
+	"github.com/gogits/gogs/modules/setting"
 	"strings"
 
 	"github.com/Unknwon/com"
@@ -15,12 +16,10 @@ import (
 	"github.com/gogits/gogs/modules/base"
 	"github.com/gogits/gogs/modules/log"
 	"github.com/gogits/gogs/modules/middleware"
-	"github.com/gogits/gogs/modules/setting"
 )
 
 const (
 	DASHBOARD base.TplName = "user/dashboard/dashboard"
-	PULLS     base.TplName = "user/dashboard/pulls"
 	ISSUES    base.TplName = "user/issues"
 	STARS     base.TplName = "user/stars"
 	PROFILE   base.TplName = "user/profile"
@@ -72,20 +71,6 @@ func Dashboard(ctx *middleware.Context) {
 	}
 	ctx.Data["Repos"] = repos
 
-	// Get mirror repositories.
-	mirrors := make([]*models.Repository, 0, len(repos)/2)
-	for _, repo := range repos {
-		if repo.IsMirror {
-			if err = repo.GetMirror(); err != nil {
-				ctx.Handle(500, "GetMirror: "+repo.Name, err)
-				return
-			}
-			mirrors = append(mirrors, repo)
-		}
-	}
-	ctx.Data["MirrorCount"] = len(mirrors)
-	ctx.Data["Mirrors"] = mirrors
-
 	// Get feeds.
 	actions, err := models.GetFeeds(ctxUser.Id, 0, false)
 	if err != nil {
@@ -116,20 +101,6 @@ func Dashboard(ctx *middleware.Context) {
 	}
 	ctx.Data["Feeds"] = feeds
 	ctx.HTML(200, DASHBOARD)
-}
-
-func Pulls(ctx *middleware.Context) {
-	ctx.Data["Title"] = ctx.Tr("pull_requests")
-	ctx.Data["PageIsDashboard"] = true
-	ctx.Data["PageIsPulls"] = true
-
-	if err := ctx.User.GetOrganizations(); err != nil {
-		ctx.Handle(500, "GetOrganizations", err)
-		return
-	}
-	ctx.Data["ContextUser"] = ctx.User
-
-	ctx.HTML(200, PULLS)
 }
 
 func ShowSSHKeys(ctx *middleware.Context, uid int64) {

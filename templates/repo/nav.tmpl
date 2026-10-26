@@ -2,7 +2,7 @@
     <div class="container">
         <div class="row">
             <div class="col-md-7">
-                <h3 class="name"><i class="fa fa-book fa-lg"></i><a href="{{.Owner.HomeLink}}">{{.Owner.Name}}</a> / <a href="{{AppSubUrl}}/{{.Owner.Name}}/{{.Repository.Name}}">{{.Repository.Name}}</a> {{if .Repository.IsPrivate}}<span class="label label-default">Private</span>{{else if .Repository.IsMirror}}<span class="label label-default">Mirror</span>{{end}}</h3>
+                <h3 class="name"><i class="fa fa-book fa-lg"></i><a href="{{.Owner.HomeLink}}">{{.Owner.Name}}</a> / <a href="{{AppSubUrl}}/{{.Owner.Name}}/{{.Repository.Name}}">{{.Repository.Name}}</a> {{if .Repository.IsPrivate}}<span class="label label-default">Private</span>{{end}}</h3>
                 <p class="desc">{{.Repository.DescriptionHtml}}{{if .Repository.Website}} <a href="{{.Repository.Website}}">{{.Repository.Website}}</a>{{end}}</p>
             </div>
             <div class="col-md-5 actions text-right clone-group-btn">
@@ -33,9 +33,7 @@
                 <!-- <div class="btn-group">
                     <button type="button" class="btn btn-default" data-toggle="tooltip" data-placement="top" title="Star"><i class="fa fa-star"></i>&nbsp;{{.Repository.NumStars}}</button>
                 </div> -->
-                <!-- <div class="btn-group">
-                    <a type="button" {{if not .IsRepositoryOwner}}href="{{AppSubUrl}}/{{.Username}}/{{.Reponame}}/fork"{{end}} class="btn btn-default" data-toggle="tooltip" data-placement="top" title="Fork"><i class="fa fa-code-fork fa-lg"></i>&nbsp;{{.Repository.NumForks}}</a>
-                </div> -->
+
             </div>
         </div>
     </div>

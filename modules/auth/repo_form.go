@@ -27,29 +27,11 @@ func (f *CreateRepoForm) Validate(ctx *macaron.Context, errs binding.Errors) bin
 	return validate(errs, ctx.Data, f, ctx.Locale)
 }
 
-type MigrateRepoForm struct {
-	HttpsUrl     string `form:"url" binding:"Required;Url"`
-	AuthUserName string `form:"auth_username"`
-	AuthPasswd   string `form:"auth_password"`
-	Uid          int64  `form:"uid" binding:"Required"`
-	RepoName     string `form:"repo_name" binding:"Required;AlphaDashDot;MaxSize(100)"`
-	Mirror       bool   `form:"mirror"`
-	Private      bool   `form:"private"`
-	Description  string `form:"desc" binding:"MaxSize(255)"`
-}
-
-func (f *MigrateRepoForm) Validate(ctx *macaron.Context, errs binding.Errors) binding.Errors {
-	return validate(errs, ctx.Data, f, ctx.Locale)
-}
-
 type RepoSettingForm struct {
 	RepoName    string `form:"repo_name" binding:"Required;AlphaDashDot;MaxSize(100)"`
 	Description string `form:"desc" binding:"MaxSize(255)"`
 	Website     string `form:"site" binding:"Url;MaxSize(100)"`
-	Branch      string `form:"branch"`
-	Interval    int    `form:"interval"`
 	Private     bool   `form:"private"`
-	GoGet       bool   `form:"goget"`
 }
 
 func (f *RepoSettingForm) Validate(ctx *macaron.Context, errs binding.Errors) binding.Errors {
@@ -62,31 +44,6 @@ func (f *RepoSettingForm) Validate(ctx *macaron.Context, errs binding.Errors) bi
 //  \        /\  ___/| \_\ \   Y  \   Y  (  <_> )    <
 //   \__/\  /  \___  >___  /___|  /___|  /\____/|__|_ \
 //        \/       \/    \/     \/     \/            \/
-
-type NewWebhookForm struct {
-	HookTaskType string `form:"hook_type" binding:"Required"`
-	PayloadUrl   string `form:"payload_url" binding:"Required;Url"`
-	ContentType  string `form:"content_type" binding:"Required"`
-	Secret       string `form:"secret"`
-	PushOnly     bool   `form:"push_only"`
-	Active       bool   `form:"active"`
-}
-
-func (f *NewWebhookForm) Validate(ctx *macaron.Context, errs binding.Errors) binding.Errors {
-	return validate(errs, ctx.Data, f, ctx.Locale)
-}
-
-type NewSlackHookForm struct {
-	HookTaskType string `form:"hook_type" binding:"Required"`
-	PayloadUrl   string `form:"payload_url" binding:"Required`
-	Channel      string `form:"channel" binding:"Required"`
-	PushOnly     bool   `form:"push_only"`
-	Active       bool   `form:"active"`
-}
-
-func (f *NewSlackHookForm) Validate(ctx *macaron.Context, errs binding.Errors) binding.Errors {
-	return validate(errs, ctx.Data, f, ctx.Locale)
-}
 
 // .___
 // |   | ______ ________ __   ____
@@ -146,27 +103,3 @@ func (f *CreateLabelForm) Validate(ctx *macaron.Context, errs binding.Errors) bi
 //  |    |   \  ___/|  |_\  ___/ / __ \_\___ \\  ___/
 //  |____|_  /\___  >____/\___  >____  /____  >\___  >
 //         \/     \/          \/     \/     \/     \/
-
-type NewReleaseForm struct {
-	TagName    string `form:"tag_name" binding:"Required"`
-	Target     string `form:"tag_target" binding:"Required"`
-	Title      string `form:"title" binding:"Required"`
-	Content    string `form:"content" binding:"Required"`
-	Draft      string `form:"draft"`
-	Prerelease bool   `form:"prerelease"`
-}
-
-func (f *NewReleaseForm) Validate(ctx *macaron.Context, errs binding.Errors) binding.Errors {
-	return validate(errs, ctx.Data, f, ctx.Locale)
-}
-
-type EditReleaseForm struct {
-	Title      string `form:"title" binding:"Required"`
-	Content    string `form:"content" binding:"Required"`
-	Draft      string `form:"draft"`
-	Prerelease bool   `form:"prerelease"`
-}
-
-func (f *EditReleaseForm) Validate(ctx *macaron.Context, errs binding.Errors) binding.Errors {
-	return validate(errs, ctx.Data, f, ctx.Locale)
-}

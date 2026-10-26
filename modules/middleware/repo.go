@@ -6,113 +6,13 @@ package middleware
 
 import (
 	"net/url"
-	"strings"
 
 	"github.com/Unknwon/macaron"
 
 	"github.com/gogits/gogs/models"
-	"github.com/gogits/gogs/modules/base"
 	"github.com/gogits/gogs/modules/hosting"
 	"github.com/gogits/gogs/modules/setting"
 )
-
-func ApiRepoAssignment() macaron.Handler {
-	return func(ctx *Context) {
-		userName := ctx.Params(":username")
-		repoName := ctx.Params(":reponame")
-
-		var (
-			u   *models.User
-			err error
-		)
-
-		if ctx.IsSigned {
-			ctx.Repo.IsTrueOwner = ctx.User.LowerName == strings.ToLower(userName)
-		}
-
-		if !ctx.Repo.IsTrueOwner {
-			u, err = models.GetUserByName(userName)
-			if err != nil {
-				if err == models.ErrUserNotExist {
-					ctx.Error(404)
-				} else {
-					ctx.JSON(500, &base.ApiJsonErr{"GetUserByName: " + err.Error(), base.DOC_URL})
-				}
-				return
-			}
-		} else {
-			u = ctx.User
-		}
-		ctx.Repo.Owner = u
-
-		// Organization owner team members are true owners as well.
-		if ctx.IsSigned && ctx.Repo.Owner.IsOrganization() && ctx.Repo.Owner.IsOwnedBy(ctx.User.Id) {
-			ctx.Repo.IsTrueOwner = true
-		}
-
-		// Get repository.
-		repo, err := models.GetRepositoryByName(u.Id, repoName)
-		if err != nil {
-			if err == models.ErrRepoNotExist {
-				ctx.Error(404)
-				return
-			}
-			ctx.JSON(500, &base.ApiJsonErr{"GetRepositoryByName: " + err.Error(), base.DOC_URL})
-			return
-		} else if err = repo.GetOwner(); err != nil {
-			ctx.JSON(500, &base.ApiJsonErr{"GetOwner: " + err.Error(), base.DOC_URL})
-			return
-		}
-
-		// Collaborators who have write access can be seen as owners.
-		if ctx.IsSigned {
-			ctx.Repo.IsOwner, err = models.HasAccess(ctx.User.Id, repo.Id, models.WRITABLE)
-			if err != nil {
-				ctx.JSON(500, &base.ApiJsonErr{"HasAccess: " + err.Error(), base.DOC_URL})
-				return
-			}
-		}
-
-		// Check if the mirror repository owner(mirror repository doesn't have access).
-		if ctx.IsSigned && !ctx.Repo.IsOwner {
-			if repo.OwnerId == ctx.User.Id {
-				ctx.Repo.IsOwner = true
-			}
-			// Check if current user has admin permission to repository.
-			if u.IsOrganization() {
-				auth, err := models.GetHighestAuthorize(u.Id, ctx.User.Id, repo.Id, 0)
-				if err != nil {
-					ctx.JSON(500, &base.ApiJsonErr{"GetHighestAuthorize: " + err.Error(), base.DOC_URL})
-					return
-				}
-				if auth == models.ORG_ADMIN {
-					ctx.Repo.IsOwner = true
-					ctx.Repo.IsAdmin = true
-				}
-			}
-		}
-
-		// Check access.
-		if repo.IsPrivate && !ctx.Repo.IsOwner {
-			if ctx.User == nil {
-				ctx.Error(404)
-				return
-			}
-
-			hasAccess, err := models.HasAccess(ctx.User.Id, repo.Id, models.READABLE)
-			if err != nil {
-				ctx.JSON(500, &base.ApiJsonErr{"HasAccess: " + err.Error(), base.DOC_URL})
-				return
-			} else if !hasAccess {
-				ctx.Error(404)
-				return
-			}
-		}
-		ctx.Repo.HasAccess = true
-
-		ctx.Repo.Repository = repo
-	}
-}
 
 // RepoAssignment resolves metadata and authority without opening repository storage.
 func RepoAssignment(redirect bool, args ...bool) macaron.Handler {
@@ -189,16 +89,6 @@ func RequireTrueOwner() macaron.Handler {
 				return
 			}
 			ctx.Handle(404, ctx.Req.RequestURI, nil)
-			return
-		}
-	}
-}
-
-// GitHookService checks if repository Git hooks service has been enabled.
-func GitHookService() macaron.Handler {
-	return func(ctx *Context) {
-		if !ctx.User.AllowGitHook && !ctx.User.IsAdmin {
-			ctx.Handle(404, "GitHookService", nil)
 			return
 		}
 	}

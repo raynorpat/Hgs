@@ -232,7 +232,6 @@ func CreateHgRepository(ctx context.Context, runner *hg.Runner, root string, opt
 		LowerName:    strings.ToLower(opts.Name),
 		Description:  opts.Description,
 		IsPrivate:    opts.Private,
-		IsBare:       true,
 		State:        RepositoryProvisioning,
 		StorageNonce: hex.EncodeToString(nonce),
 	}

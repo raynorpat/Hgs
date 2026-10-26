@@ -2,12 +2,10 @@
 <div id="repo-header" class="clear">
     <div class="container clear">
         <h1 id="repo-header-name" class="left public">
-            <i class="mega-octicon octicon-{{if .IsPrivate}}lock{{else if .IsMirror}}repo-clone{{else if .IsFork}}repo-forked{{else}}repo{{end}}"></i>
+            <i class="mega-octicon octicon-{{if .IsPrivate}}lock{{else}}repo{{end}}"></i>
             <a class="author" href="{{AppSubUrl}}/{{.Owner.Name}}">{{.Owner.Name}}</a>
             <span class="divider">/</span>
             <a class="repo text-bold" href="{{$.RepoLink}}">{{.Name}}</a>
-            {{if .IsMirror}}<span class="label label-gray">{{$.i18n.Tr "mirror"}}</span>{{end}}
-            {{if .IsFork}}<span class="fork-flag">forked from <a href="{{.ForkRepo.RepoLink}}">{{SubStr .ForkRepo.RepoLink 1 -1}}</a></span>{{end}}
         </h1>
         <ul id="repo-header-meta" class="right menu menu-line">
             <li><details id="repo-header-download" class="drop">

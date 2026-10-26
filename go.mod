@@ -5,7 +5,6 @@ go 1.27.0
 toolchain go1.27.3
 
 require (
-	github.com/Unknwon/cae v0.0.0-20140730095710-2e70a1351ba7
 	github.com/Unknwon/com v0.0.0-20150211180045-188d690b1aea
 	github.com/Unknwon/i18n v0.0.0-20141230132937-1e88666229da
 	github.com/Unknwon/macaron v0.0.0-20150211174126-e089393c3f23

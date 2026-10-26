@@ -1018,31 +1018,6 @@ function initIssue() {
     })
 }
 
-function initRelease() {
-// release new ajax preview
-    (function () {
-        $('[data-ajax-name=release-preview]').on("click", function () {
-            var $this = $(this);
-            $this.toggleAjax(function (resp) {
-                $($this.data("preview")).html(resp);
-            }, function () {
-                $($this.data("preview")).html("no content");
-            })
-        });
-        $('.release-write a[data-toggle]').on("click", function () {
-            $('.release-preview-content').html("loading...");
-        });
-    }());
-
-    // release new target selection
-    (function () {
-        $('#release-new-target-branch-list').on('click', 'a', function () {
-            $('#tag-target').val($(this).text());
-            $('#release-new-target-name').text(" " + $(this).text());
-        });
-    }());
-}
-
 function initRepoSetting() {
     // repo member add
     $('#repo-collaborator').on('keyup', function () {
@@ -1138,9 +1113,6 @@ function initTimeSwitch() {
         }
         if ($('#issue').length) {
             initIssue();
-        }
-        if ($('#release').length) {
-            initRelease();
         }
         if ($('#repo-setting-container').length) {
             initRepoSetting();

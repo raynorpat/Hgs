@@ -38,9 +38,7 @@
             <a {{if $.PageIsIssues}}class="current"{{end}} href="{{.ContextUser.DashboardLink}}issues"><i class="octicon octicon-issue-opened"></i>{{.i18n.Tr "issues"}}</a>
         </li>
         {{end}}
-        <!-- <li class="right">
-            <a {{if .PageIsPulls}}class="current"{{end}} href="{{.ContextUser.DashboardLink}}pulls"><i class="octicon octicon-git-pull-request"></i>{{.i18n.Tr "pull_requests"}}</a>
-        </li> -->
+
         <li class="right">
             <a {{if $.PageIsNews}}class="current"{{end}} href="{{.ContextUser.DashboardLink}}"><i class="octicon octicon-rss"></i>{{.i18n.Tr "news_feed"}}</a>
         </li>

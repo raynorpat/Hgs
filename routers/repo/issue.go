@@ -278,8 +278,8 @@ func CreateIssuePost(ctx *middleware.Context, form auth.CreateIssueForm) {
 		RepoId:       ctx.Repo.Repository.Id,
 		RepoUserName: ctx.Repo.Owner.Name,
 		RepoName:     ctx.Repo.Repository.Name,
-		RefName:      ctx.Repo.BranchName,
-		IsPrivate:    ctx.Repo.Repository.IsPrivate,
+
+		IsPrivate: ctx.Repo.Repository.IsPrivate,
 	}
 	// Notify watchers.
 	if err := models.NotifyWatchers(act); err != nil {
@@ -780,7 +780,7 @@ func Comment(ctx *middleware.Context) {
 				cmtType = models.COMMENT_TYPE_REOPEN
 			}
 
-			if _, err = models.CreateComment(ctx.User.Id, ctx.Repo.Repository.Id, issue.Id, 0, 0, cmtType, "", nil); err != nil {
+			if _, err = models.CreateComment(ctx.User.Id, ctx.Repo.Repository.Id, issue.Id, cmtType, "", nil); err != nil {
 				send(200, nil, err)
 				return
 			}
@@ -796,7 +796,7 @@ func Comment(ctx *middleware.Context) {
 	if len(content) > 0 || (ctx.Req.MultipartForm != nil && len(ctx.Req.MultipartForm.File["attachments"]) > 0) {
 		switch ctx.Params(":action") {
 		case "new":
-			if comment, err = models.CreateComment(ctx.User.Id, ctx.Repo.Repository.Id, issue.Id, 0, 0, models.COMMENT_TYPE_COMMENT, content, nil); err != nil {
+			if comment, err = models.CreateComment(ctx.User.Id, ctx.Repo.Repository.Id, issue.Id, models.COMMENT_TYPE_COMMENT, content, nil); err != nil {
 				send(500, nil, err)
 				return
 			}
@@ -1131,10 +1131,6 @@ func IssueGetAttachment(ctx *middleware.Context) {
 // todo : move to Issue() function
 func Issues2(ctx *middleware.Context) {
 	ctx.HTML(200, "repo/issue2/list")
-}
-
-func PullRequest2(ctx *middleware.Context) {
-	ctx.HTML(200, "repo/pr2/list")
 }
 
 func Labels2(ctx *middleware.Context) {

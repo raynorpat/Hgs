@@ -5,39 +5,11 @@
 package repo
 
 import (
-	"io"
-	"mime"
-	"path"
-
-	"github.com/gogits/gogs/modules/base"
-	"github.com/gogits/gogs/modules/git"
 	"github.com/gogits/gogs/modules/hgbridge"
 	"github.com/gogits/gogs/modules/middleware"
+	"mime"
+	"path"
 )
-
-func ServeBlob(ctx *middleware.Context, blob *git.Blob) error {
-	dataRc, err := blob.Data()
-	if err != nil {
-		return err
-	}
-
-	buf := make([]byte, 1024)
-	n, _ := dataRc.Read(buf)
-	if n > 0 {
-		buf = buf[:n]
-	}
-
-	_, isTextFile := base.IsTextFile(buf)
-	_, isImageFile := base.IsImageFile(buf)
-	ctx.Resp.Header().Set("Content-Type", "text/plain")
-	if !isTextFile && !isImageFile {
-		ctx.Resp.Header().Set("Content-Disposition", "attachment; filename="+path.Base(ctx.Repo.TreeName))
-		ctx.Resp.Header().Set("Content-Transfer-Encoding", "binary")
-	}
-	ctx.Resp.Write(buf)
-	_, err = io.Copy(ctx.Resp, dataRc)
-	return err
-}
 
 func SingleDownload(ctx *middleware.Context) {
 	found := false

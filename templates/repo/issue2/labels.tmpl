@@ -5,7 +5,6 @@
     <div class="issue-main container repo-wide-wrapper">
         <ul id="issue-list-nav" class="menu menu-line">
             <li><a href="#">Issue</a></li>
-            <li><a href="#">Pull Request</a></li>
             <li class="current"><a href="#">Labels</a></li>
             <li><a href="#">Milestones</a></li>
             <li class="right" id="label-new"><a href="#"><button id="label-new-btn" class="btn btn-green text-bold">New Label</button></a></li>
@@ -65,7 +64,7 @@
     <li class="item">
         <form id="label-delete-form" action="#">
             <input type="hidden" name="id" value="id"/>
-            <span><strong class="text-red">Are you sure?</strong> Deleting a label will remove it from all issues and pull requests.</span>
+            <span><strong class="text-red">Are you sure?</strong> Deleting a label will remove it from all issues.</span>
             <button class="btn btn-gray right" type="button" id="label-del-cancel-btn">Cancel</button>
             <button class="btn btn-red right" id="label-del-btn">Delete</button>
         </form>

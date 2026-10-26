@@ -6,7 +6,6 @@ package base
 
 import (
 	"container/list"
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"runtime"
@@ -157,24 +156,13 @@ var TemplateFuncs template.FuncMap = map[string]interface{}{
 	"DiffLineTypeToStr": DiffLineTypeToStr,
 	"ShortSha":          ShortSha,
 	"Md5":               EncodeMd5,
-	"ActionContent2Commits": ActionContent2Commits,
-	"Oauth2Icon":            Oauth2Icon,
-	"Oauth2Name":            Oauth2Name,
-	"ToUtf8":                ToUtf8,
+	"Oauth2Icon":        Oauth2Icon,
+	"Oauth2Name":        Oauth2Name,
+	"ToUtf8":            ToUtf8,
 	"EscapePound": func(str string) string {
 		return strings.Replace(str, "#", "%23", -1)
 	},
 	"RenderCommitMessage": RenderCommitMessage,
-}
-
-type Actioner interface {
-	GetOpType() int
-	GetActUserName() string
-	GetActEmail() string
-	GetRepoUserName() string
-	GetRepoName() string
-	GetBranch() string
-	GetContent() string
 }
 
 // ActionIcon accepts a int that represents action operation type
@@ -183,8 +171,6 @@ func ActionIcon(opType int) string {
 	switch opType {
 	case 1, 8: // Create, transfer repository.
 		return "repo"
-	case 5, 9: // Commit repository.
-		return "git-commit"
 	case 6: // Create issue.
 		return "issue-opened"
 	case 10: // Comment issue.
@@ -192,27 +178,6 @@ func ActionIcon(opType int) string {
 	default:
 		return "invalid type"
 	}
-}
-
-type PushCommit struct {
-	Sha1        string
-	Message     string
-	AuthorEmail string
-	AuthorName  string
-}
-
-type PushCommits struct {
-	Len        int
-	Commits    []*PushCommit
-	CompareUrl string
-}
-
-func ActionContent2Commits(act Actioner) *PushCommits {
-	var push *PushCommits
-	if err := json.Unmarshal([]byte(act.GetContent()), &push); err != nil {
-		return nil
-	}
-	return push
 }
 
 func DiffTypeToStr(diffType int) string {

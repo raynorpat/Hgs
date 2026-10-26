@@ -858,34 +858,28 @@ func DeleteMilestone(m *Milestone) (err error) {
 type CommentType int
 
 const (
-	// Plain comment, can be associated with a commit (CommitId > 0) and a line (Line > 0)
+	// Plain issue comment.
 	COMMENT_TYPE_COMMENT CommentType = iota
 	COMMENT_TYPE_REOPEN
 	COMMENT_TYPE_CLOSE
 
 	// References.
 	COMMENT_TYPE_ISSUE
-	// Reference from some commit (not part of a pull request)
-	COMMENT_TYPE_COMMIT
-	// Reference from some pull request
-	COMMENT_TYPE_PULL
 )
 
-// Comment represents a comment in commit and issue page.
+// Comment represents an issue comment.
 type Comment struct {
 	Id       int64
 	Type     CommentType
 	PosterId int64
 	Poster   *User `xorm:"-"`
 	IssueId  int64
-	CommitId int64
-	Line     int64
 	Content  string    `xorm:"TEXT"`
 	Created  time.Time `xorm:"CREATED"`
 }
 
-// CreateComment creates comment of issue or commit.
-func CreateComment(userId, repoId, issueId, commitId, line int64, cmtType CommentType, content string, attachments []int64) (*Comment, error) {
+// CreateComment creates an issue comment.
+func CreateComment(userId, repoId, issueId int64, cmtType CommentType, content string, attachments []int64) (*Comment, error) {
 	sess := x.NewSession()
 	defer sess.Close()
 	if err := sess.Begin(); err != nil {
@@ -893,7 +887,7 @@ func CreateComment(userId, repoId, issueId, commitId, line int64, cmtType Commen
 	}
 
 	comment := &Comment{PosterId: userId, Type: cmtType, IssueId: issueId,
-		CommitId: commitId, Line: line, Content: content}
+		Content: content}
 
 	if _, err := sess.Insert(comment); err != nil {
 		sess.Rollback()

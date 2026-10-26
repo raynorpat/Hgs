@@ -116,10 +116,6 @@ type AdminOperation int
 const (
 	CLEAN_UNBIND_OAUTH AdminOperation = iota + 1
 	CLEAN_INACTIVATE_USER
-	CLEAN_REPO_ARCHIVES
-	GIT_GC_REPOS
-	SYNC_SSH_AUTHORIZED_KEY
-	SYNC_REPOSITORY_UPDATE_HOOK
 )
 
 func Dashboard(ctx *middleware.Context) {
@@ -140,15 +136,7 @@ func Dashboard(ctx *middleware.Context) {
 		case CLEAN_INACTIVATE_USER:
 			success = ctx.Tr("admin.dashboard.delete_inactivate_accounts_success")
 			err = models.DeleteInactivateUsers()
-		case CLEAN_REPO_ARCHIVES:
-			success = ctx.Tr("admin.dashboard.delete_repo_archives_success")
-			err = models.DeleteRepositoryArchives()
-		case GIT_GC_REPOS:
-			success = ctx.Tr("admin.dashboard.git_gc_repos_success")
-			err = models.GitGcRepos()
-		case SYNC_REPOSITORY_UPDATE_HOOK:
-			success = ctx.Tr("admin.dashboard.resync_all_update_hooks_success")
-			err = models.RewriteRepositoryUpdateHook()
+
 		}
 
 		if err != nil {
@@ -181,12 +169,10 @@ func Config(ctx *middleware.Context) {
 	ctx.Data["RepoRootPath"] = setting.RepoRootPath
 	ctx.Data["StaticRootPath"] = setting.StaticRootPath
 	ctx.Data["LogRootPath"] = setting.LogRootPath
-	ctx.Data["ScriptType"] = setting.ScriptType
 	ctx.Data["ReverseProxyAuthUser"] = setting.ReverseProxyAuthUser
 
 	ctx.Data["Service"] = setting.Service
 	ctx.Data["DbCfg"] = models.DbCfg
-	ctx.Data["Webhook"] = setting.Webhook
 
 	ctx.Data["MailerEnabled"] = false
 	if setting.MailService != nil {

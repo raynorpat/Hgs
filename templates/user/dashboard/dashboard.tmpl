@@ -13,14 +13,12 @@
                 {{if not .ContextUser.IsOrganization}}
                 <li class="js-tab-nav" data-tab-target="#dashboard-my-org"><a href="#">{{.i18n.Tr "organization"}}</a></li>
                 {{end}}
-                <li class="js-tab-nav last" data-tab-target="#dashboard-my-mirror"><a href="#">{{.i18n.Tr "mirror"}}</a></li>
                 <li class="drop right">
                     <button class="btn btn-green text-bold" id="dashboard-new-repo">
                         <i class="octicon octicon-plus"></i>
                     </button>
                     <ul class="menu menu-vertical drop-down" id="dashboard-new-repo-menu">
                         <li><a href="{{AppSubUrl}}/repo/create"><i class="octicon octicon-repo-create"></i>{{.i18n.Tr "new_repo"}}</a></li>
-                        <li><a href="{{AppSubUrl}}/repo/migrate"><i class="octicon octicon-repo-clone"></i>{{.i18n.Tr "new_migrate"}}</a></li>
                         <li><a href="{{AppSubUrl}}/org/create"><i class="octicon octicon-organization"></i>{{.i18n.Tr "new_org"}}</a></li>
                     </ul>
                 </li>
@@ -37,7 +35,7 @@
                         {{range .Repos}}
                         <li {{if .IsPrivate}}class="private"{{end}}>
                             <a href="{{AppSubUrl}}/{{$.ContextUser.Name}}/{{.Name}}">
-                                <i class="octicon octicon-{{if .IsPrivate}}lock{{else if .IsFork}}repo-forked{{else if .IsMirror}}repo-clone{{else}}repo{{end}}"></i>
+                                <i class="octicon octicon-{{if .IsPrivate}}lock{{else}}repo{{end}}"></i>
                                 <span class="repo-name">
                                     <strong class="repo">{{.Name}}</strong>
                                 </span>
@@ -60,7 +58,7 @@
                         {{range .CollaborativeRepos}}
                         <li {{if .IsPrivate}}class="private"{{end}}>
                             <a href="{{.Owner.Name}}/{{.Name}}">
-                                <i class="octicon octicon-{{if .IsPrivate}}lock{{else if .IsFork}}repo-forked{{else if .IsMirror}}repo-clone{{else}}repo{{end}}"></i>
+                                <i class="octicon octicon-{{if .IsPrivate}}lock{{else}}repo{{end}}"></i>
                                 <span class="repo-name">
                                     <span class="repo-name-prefix">{{.Owner.Name}} / </span>
                                     <strong class="repo">{{.Name}}</strong>
@@ -101,30 +99,7 @@
                 </div>
             </div>
             {{end}}
-            <div class="panel" id="dashboard-my-mirror">
-                <div class="panel-header">
-                    <h4 class="text-bold">{{.i18n.Tr "home.my_mirrors"}}
-                        <span class="repo-count label label-gray label-radius">{{.MirrorCount}}</span>
-                    </h4>
-                </div>
-                <div class="panel-body">
-                    <ul class="list-no-style">
-                        {{range .Mirrors}}
-                        <li {{if .IsPrivate}}class="private"{{end}}>
-                            <a href="{{AppSubUrl}}/{{$.ContextUser.Name}}/{{.Name}}">
-                                <i class="octicon octicon-repo-clone"></i>
-                                <span class="repo-name">
-                                    <strong class="repo">{{.Name}}</strong>
-                                </span>
-                                <span class="right repo-star">
-                                    <i class="octicon octicon-sync"></i>{{.Interval}}H
-                                </span>
-                            </a>
-                        </li>
-                        {{end}}
-                    </ul>
-                </div>
-            </div>
+
         </div>
     </div>
 </div>

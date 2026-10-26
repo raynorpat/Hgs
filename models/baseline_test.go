@@ -21,7 +21,7 @@ func TestFreshDatabasePreservesUsersAndIssues(t *testing.T) {
 	if err := NewLabel(label); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := CreateComment(user.Id, repo.Id, issue.Id, 0, 0, COMMENT_TYPE_COMMENT, "me too", nil); err != nil {
+	if _, err := CreateComment(user.Id, repo.Id, issue.Id, COMMENT_TYPE_COMMENT, "me too", nil); err != nil {
 		t.Fatal(err)
 	}
 

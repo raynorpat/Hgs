@@ -7,7 +7,6 @@ package log
 import (
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -15,8 +14,7 @@ import (
 )
 
 var (
-	loggers   []*Logger
-	GitLogger *Logger
+	loggers []*Logger
 )
 
 func NewLogger(bufLen int64, mode, config string) {
@@ -35,12 +33,6 @@ func NewLogger(bufLen int64, mode, config string) {
 	if err := logger.SetLogger(mode, config); err != nil {
 		Fatal(1, "Fail to set logger(%s): %v", mode, err)
 	}
-}
-
-func NewGitLogger(logPath string) {
-	os.MkdirAll(path.Dir(logPath), os.ModePerm)
-	GitLogger = newLogger(0)
-	GitLogger.SetLogger("file", fmt.Sprintf(`{"level":0,"filename":"%s","rotate":false}`, logPath))
 }
 
 func Trace(format string, v ...interface{}) {

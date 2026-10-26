@@ -36,12 +36,12 @@ import (
 	"github.com/gogits/gogs/modules/auth/apiv1"
 	"github.com/gogits/gogs/modules/avatar"
 	"github.com/gogits/gogs/modules/base"
-	"github.com/gogits/gogs/modules/git"
 	"github.com/gogits/gogs/modules/hg"
 	"github.com/gogits/gogs/modules/hosting"
 	"github.com/gogits/gogs/modules/log"
 	"github.com/gogits/gogs/modules/middleware"
 	"github.com/gogits/gogs/modules/setting"
+	"github.com/gogits/gogs/modules/version"
 	"github.com/gogits/gogs/routers"
 	"github.com/gogits/gogs/routers/admin"
 	"github.com/gogits/gogs/routers/api/v1"
@@ -91,8 +91,8 @@ func checkVersion() {
 		{"gopkg.in/ini.v1", ini.Version, "1.2.0"},
 	}
 	for _, c := range checkers {
-		ver := strings.Join(strings.Split(c.Version(), ".")[:3], ".")
-		if git.MustParseVersion(ver).LessThan(git.MustParseVersion(c.Expected)) {
+		ver := c.Version()
+		if !version.AtLeast(ver, c.Expected) {
 			log.Fatal(4, "Package '%s' version is too old(%s -> %s), did you forget to update?", c.ImportPath, ver, c.Expected)
 		}
 	}
@@ -281,7 +281,6 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 		Get(routers.Install).
 		Post(bindIgnErr(auth.InstallForm{}), routers.InstallPost)
 	m.Group("", func() {
-		m.Get("/pulls", user.Pulls)
 		m.Get("/issues", user.Issues)
 	}, reqSignIn)
 
@@ -430,13 +429,6 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 			m.Group("/settings", func() {
 				m.Get("", org.Settings)
 				m.Post("", bindIgnErr(auth.UpdateOrgSettingForm{}), org.SettingsPost)
-				m.Get("/hooks", org.SettingsHooks)
-				m.Get("/hooks/new", repo.WebHooksNew)
-				m.Post("/hooks/gogs/new", bindIgnErr(auth.NewWebhookForm{}), repo.WebHooksNewPost)
-				m.Post("/hooks/slack/new", bindIgnErr(auth.NewSlackHookForm{}), repo.SlackHooksNewPost)
-				m.Get("/hooks/:id", repo.WebHooksEdit)
-				m.Post("/hooks/gogs/:id", bindIgnErr(auth.NewWebhookForm{}), repo.WebHooksEditPost)
-				m.Post("/hooks/slack/:id", bindIgnErr(auth.NewSlackHookForm{}), repo.SlackHooksEditPost)
 				m.Route("/delete", "GET,POST", org.SettingsDelete)
 			})
 

@@ -456,10 +456,6 @@ function initRepoCreate() {
         }
     });
 
-    $('#auth-button').click(function (e) {
-        $('#repo-migrate-auth').slideToggle('fast');
-        e.preventDefault();
-    })
     console.log('initRepoCreate');
 }
 
@@ -498,36 +494,6 @@ function initRepo() {
     });
 }
 
-// when user changes hook type, hide/show proper divs
-function initHookTypeChange() {
-    // web hook type change
-    $('select#hook-type').on("change", function () {
-        hookTypes = ['Gogs', 'Slack'];
-
-        var curHook = $(this).val();
-        hookTypes.forEach(function (hookType) {
-            if (curHook === hookType) {
-                $('div#' + hookType.toLowerCase()).toggleShow();
-            }
-            else {
-                $('div#' + hookType.toLowerCase()).toggleHide();
-            }
-        });
-    });
-}
-
-function initRepoRelease() {
-    $('#release-new-target-branch-list li').click(function() {
-        if (!$(this).hasClass('checked')) {
-            $('#repo-branch-current').text($(this).text());
-            $('#tag-target').val($(this).text());
-
-            $(this).parent().find('.checked').removeClass('checked');
-            $(this).addClass('checked');
-        }
-    })
-}
-
 function initRepoSetting() {
     // Options.
     // Confirmation of changing repository name.
@@ -554,7 +520,6 @@ function initRepoSetting() {
         $setting_form.submit();
     });
 
-    initHookTypeChange();
 
     // Transfer repository.
     $('#transfer-repo-btn').magnificPopup({
@@ -634,7 +599,6 @@ function initOrgSetting() {
         $('#delete-org-form').submit();
     });
 
-    initHookTypeChange();
 }
 
 function initInvite() {
@@ -854,15 +818,12 @@ $(document).ready(function () {
     if ($('#user-profile-setting').length) {
         initUserSetting();
     }
-    if ($('#repo-create-form').length || $('#repo-migrate-form').length) {
+    if ($('#repo-create-form').length) {
         initRepoCreate();
     }
     if ($('#repo-header').length) {
         initTimeSwitch();
         initRepo();
-    }
-    if ($('#release').length) {
-        initRepoRelease();
     }
     if ($('#repo-setting').length) {
         initRepoSetting();

@@ -218,9 +218,8 @@ func RepoRef(action string) macaron.Handler {
 			node, err = ctx.Repo.HgRunner.Landing(ctx.Repo.HgContext, ctx.Repo.HgPath)
 		}
 		if errors.Is(err, hg.ErrEmptyRepository) {
-			ctx.Data["IsBareRepo"] = true
 			ctx.Repo.FinishRead()
-			ctx.HTML(200, "repo/bare")
+			ctx.HTML(200, "repo/empty")
 			return
 		}
 		if err != nil {

@@ -38,8 +38,6 @@
                                     <dd>{{.StaticRootPath}}</dd>
                                     <dt>{{.i18n.Tr "admin.config.log_file_root_path"}}</dt>
                                     <dd>{{.LogRootPath}}</dd>
-                                    <dt>{{.i18n.Tr "admin.config.script_type"}}</dt>
-                                    <dd>{{.ScriptType}}</dd>
                                     <dt>{{.i18n.Tr "admin.config.reverse_auth_user"}}</dt>
                                     <dd>{{.ReverseProxyAuthUser}}</dd>
                                 </dl>
@@ -91,22 +89,6 @@
                                     <dd>{{.Service.ActiveCodeLives}} {{.i18n.Tr "tool.raw_minutes"}}</dd>
                                     <dt>{{.i18n.Tr "admin.config.reset_password_code_lives"}}</dt>
                                     <dd>{{.Service.ResetPwdCodeLives}} {{.i18n.Tr "tool.raw_minutes"}}</dd>
-                                </dl>
-                            </div>
-                        </div>
-                        <br>
-                        <div class="panel panel-radius">
-                            <div class="panel-header">
-                                <strong>{{.i18n.Tr "admin.config.webhook_config"}}</strong>
-                            </div>
-                            <div class="panel-body">
-                                <dl class="dl-horizontal admin-dl-horizontal">
-                                    <dt>{{.i18n.Tr "admin.config.task_interval"}}</dt>
-                                    <dd>{{.Webhook.TaskInterval}} {{.i18n.Tr "tool.raw_minutes"}}</dd>
-                                    <dt>{{.i18n.Tr "admin.config.deliver_timeout"}}</dt>
-                                    <dd>{{.Webhook.DeliverTimeout}} {{.i18n.Tr "tool.raw_seconds"}}</dd>
-                                    <dt>{{.i18n.Tr "admin.config.skip_tls_verify"}}</dt>
-                                    <dd><i class="fa fa{{if .Webhook.SkipTLSVerify}}-check{{end}}-square-o"></i></dd>
                                 </dl>
                             </div>
                         </div>

@@ -370,6 +370,13 @@ func TestIssueWorkflowSurvivesMercurialCutover(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "keep issues") {
 		t.Fatal("transferred issue", w.Code, w.Body.String())
 	}
+	for _, path := range []string{"/gogs/", "/gogs/bob?tab=activity"} {
+		w = target.do(t, "GET", path, nil)
+		body := w.Body.String()
+		if w.Code != 200 || !strings.Contains(body, `transferred repository <code>alice/renamed</code> to <a href="/gogs/bob/renamed"`) || strings.Contains(body, "/gogs//gogs/") {
+			t.Fatal("retained transfer activity link", path, w.Code, body)
+		}
+	}
 	for _, p := range []string{"/gogs/bob", "/gogs/user/settings", "/gogs/user/settings/ssh"} {
 		w = target.do(t, "GET", p, nil)
 		if w.Code != 200 {

@@ -22,7 +22,6 @@ import (
 	"github.com/gogits/gogs/models"
 	"github.com/gogits/gogs/modules/auth"
 	"github.com/gogits/gogs/modules/base"
-	"github.com/gogits/gogs/modules/git"
 	"github.com/gogits/gogs/modules/hg"
 	"github.com/gogits/gogs/modules/log"
 	"github.com/gogits/gogs/modules/setting"
@@ -41,33 +40,22 @@ type Context struct {
 	IsBasicAuth bool
 
 	Repo struct {
-		HgContext    context.Context
-		HgRunner     *hg.Runner
-		HgPath       string
-		Node         hg.NodeID
-		Changeset    hg.Changeset
-		FinishRead   func()
-		IsOwner      bool
-		IsTrueOwner  bool
-		IsWatching   bool
-		IsBranch     bool
-		IsTag        bool
-		IsCommit     bool
-		IsAdmin      bool // Current user is admin level.
-		HasAccess    bool
-		Repository   *models.Repository
-		Owner        *models.User
-		Commit       *git.Commit
-		Tag          *git.Tag
-		GitRepo      *git.Repository
-		BranchName   string
-		TagName      string
-		TreeName     string
-		CommitId     string
-		RepoLink     string
-		CloneLink    models.CloneLink
-		CommitsCount int
-		Mirror       *models.Mirror
+		HgContext   context.Context
+		HgRunner    *hg.Runner
+		HgPath      string
+		Node        hg.NodeID
+		Changeset   hg.Changeset
+		FinishRead  func()
+		IsOwner     bool
+		IsTrueOwner bool
+		IsWatching  bool
+		IsAdmin     bool // Current user is admin level.
+		HasAccess   bool
+		Repository  *models.Repository
+		Owner       *models.User
+		TreeName    string
+		RepoLink    string
+		CloneLink   models.CloneLink
 	}
 
 	Org struct {

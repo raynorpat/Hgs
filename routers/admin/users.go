@@ -191,7 +191,6 @@ func EditUserPost(ctx *middleware.Context, form auth.AdminEditUserForm) {
 	u.AvatarEmail = form.Avatar
 	u.IsActive = form.Active
 	u.IsAdmin = form.Admin
-	u.AllowGitHook = form.AllowGitHook
 
 	ctx.Data["User"] = u
 

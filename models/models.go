@@ -51,8 +51,8 @@ func init() {
 		new(User), new(PublicKey), new(Follow), new(Oauth2), new(AccessToken),
 		new(Repository), new(Watch), new(Star), new(Action), new(Access),
 		new(Issue), new(Comment), new(Attachment), new(IssueUser), new(Label), new(Milestone),
-		new(Mirror), new(Release), new(LoginSource), new(Webhook),
-		new(UpdateTask), new(HookTask), new(Team), new(OrgUser), new(TeamUser),
+		new(LoginSource),
+		new(Team), new(OrgUser), new(TeamUser),
 		new(Notice), new(EmailAddress), new(HostingFormat))
 }
 
@@ -112,8 +112,7 @@ func SetEngine() (err error) {
 }
 
 func setEngine(e *xorm.Engine) error {
-	// WARNING: for serv command, MUST remove the output to os.stdout,
-	// so use log file to instead print to stdout.
+	// Keep database diagnostics in the configured log directory.
 	logPath := path.Join(setting.LogRootPath, "xorm.log")
 	os.MkdirAll(path.Dir(logPath), os.ModePerm)
 
@@ -179,9 +178,9 @@ type Statistic struct {
 		User, Org, PublicKey,
 		Repo, Watch, Star, Action, Access,
 		Issue, Comment, Oauth, Follow,
-		Mirror, Release, LoginSource, Webhook,
-		Milestone, Label, HookTask,
-		Team, UpdateTask, Attachment int64
+		LoginSource,
+		Milestone, Label,
+		Team, Attachment int64
 	}
 }
 
@@ -198,15 +197,10 @@ func GetStatistic() (stats Statistic) {
 	stats.Counter.Comment, _ = x.Count(new(Comment))
 	stats.Counter.Oauth, _ = x.Count(new(Oauth2))
 	stats.Counter.Follow, _ = x.Count(new(Follow))
-	stats.Counter.Mirror, _ = x.Count(new(Mirror))
-	stats.Counter.Release, _ = x.Count(new(Release))
 	stats.Counter.LoginSource, _ = x.Count(new(LoginSource))
-	stats.Counter.Webhook, _ = x.Count(new(Webhook))
 	stats.Counter.Milestone, _ = x.Count(new(Milestone))
 	stats.Counter.Label, _ = x.Count(new(Label))
-	stats.Counter.HookTask, _ = x.Count(new(HookTask))
 	stats.Counter.Team, _ = x.Count(new(Team))
-	stats.Counter.UpdateTask, _ = x.Count(new(UpdateTask))
 	stats.Counter.Attachment, _ = x.Count(new(Attachment))
 	return
 }

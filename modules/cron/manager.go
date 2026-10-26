@@ -4,23 +4,7 @@
 
 package cron
 
-import (
-	"fmt"
-
-	"github.com/gogits/gogs/models"
-	"github.com/gogits/gogs/modules/setting"
-)
-
 var c = New()
-
-func NewCronContext() {
-	c.AddFunc("Update mirrors", "@every 1h", models.MirrorUpdate)
-	c.AddFunc("Deliver hooks", fmt.Sprintf("@every %dm", setting.Webhook.TaskInterval), models.DeliverHooks)
-	if setting.Git.Fsck.Enable {
-		c.AddFunc("Repository health check", fmt.Sprintf("@every %dh", setting.Git.Fsck.Interval), models.GitFsck)
-	}
-	c.Start()
-}
 
 func ListEntries() []*Entry {
 	return c.Entries()
