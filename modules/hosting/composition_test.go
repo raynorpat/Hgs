@@ -69,6 +69,15 @@ func fakeHostingHg(args []string) int {
 				http.Error(w, "credential leak", 500)
 				return
 			}
+			if r.URL.Query().Get("cmd") == "getbundle" {
+				chunk := make([]byte, 32<<10)
+				for i := 0; i < 8192; i++ {
+					if _, err := w.Write(chunk); err != nil {
+						return
+					}
+				}
+				return
+			}
 			fmt.Fprint(w, "lookup\n")
 		}))
 	default:
@@ -165,7 +174,7 @@ func TestHostingPrivateRepositoryDoesNotLeak(t *testing.T) {
 }
 func TestHostingReadyIDStorageAndCredentials(t *testing.T) {
 	s, user, repo := fixture(t)
-	target, g, err := s.resolve(context.Background(), hgbridge.Principal{UserID: user.Id}, "alice", "project")
+	target, g, err := s.resolve(context.Background(), passwordPrincipal(t, user), "alice", "project")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +193,7 @@ func TestHostingReadyIDStorageAndCredentials(t *testing.T) {
 	if err := models.UpdateRepository(repo); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err = s.resolve(context.Background(), hgbridge.Principal{UserID: user.Id}, "alice", "project"); err == nil {
+	if _, _, err = s.resolve(context.Background(), passwordPrincipal(t, user), "alice", "project"); err == nil {
 		t.Fatal("deleting repository resolved")
 	}
 }
@@ -221,8 +230,9 @@ func TestHostingMonitorAnonymousAndRevocation(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("monitor did not enforce changed visibility within bound")
 	}
+	principal := passwordPrincipal(t, user)
 	writerCanceled := make(chan struct{})
-	writerRelease, err := s.Register(hgbridge.Grant{Principal: hgbridge.Principal{UserID: user.Id}, RepoID: repo.Id, CanWrite: true}, func() {
+	writerRelease, err := s.Register(hgbridge.Grant{Principal: principal, RepoID: repo.Id, CanWrite: true}, func() {
 		select {
 		case <-writerCanceled:
 		default:
@@ -237,7 +247,7 @@ func TestHostingMonitorAnonymousAndRevocation(t *testing.T) {
 	if err := models.UpdateUser(user); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.authorize(context.Background(), hgbridge.Grant{Principal: hgbridge.Principal{UserID: user.Id}, RepoID: repo.Id, CanWrite: true}); err == nil {
+	if err := s.authorize(context.Background(), hgbridge.Grant{Principal: principal, RepoID: repo.Id, CanWrite: true}); err == nil {
 		t.Fatal("stale writer hook allowed")
 	}
 	select {
@@ -295,7 +305,7 @@ func TestHostingMonitorKeyTokenMetadataAndOriginalGrant(t *testing.T) {
 	}
 	release()
 	// Metadata changes cancel even when the owner keeps effective access.
-	grant.Principal.TokenID = 0
+	grant.Principal = passwordPrincipal(t, alice)
 	release = add(grant)
 	repo.IsPrivate = false
 	if err := models.UpdateRepository(repo); err != nil {
@@ -312,7 +322,7 @@ func TestHostingMonitorKeyTokenMetadataAndOriginalGrant(t *testing.T) {
 	if err := models.CreateUser(bob); err != nil {
 		t.Fatal(err)
 	}
-	reader := hgbridge.Grant{Principal: hgbridge.Principal{UserID: bob.Id}, RepoID: repo.Id}
+	reader := hgbridge.Grant{Principal: passwordPrincipal(t, bob), RepoID: repo.Id}
 	release = add(reader)
 	if err := models.AddAccess(&models.Access{UserId: bob.Id, RepoId: repo.Id, Mode: models.WRITABLE}); err != nil {
 		t.Fatal(err)
@@ -327,7 +337,7 @@ func TestHostingMonitorKeyTokenMetadataAndOriginalGrant(t *testing.T) {
 	default:
 	}
 	release()
-	grant = hgbridge.Grant{Principal: hgbridge.Principal{UserID: bob.Id}, RepoID: repo.Id, CanWrite: true}
+	grant = hgbridge.Grant{Principal: passwordPrincipal(t, bob), RepoID: repo.Id, CanWrite: true}
 	release = add(grant)
 	if err := models.DeleteAccess(&models.Access{UserId: bob.Id, RepoId: repo.Id}); err != nil {
 		t.Fatal(err)
@@ -377,7 +387,7 @@ func TestHostingMonitorKeyAndOwnershipChanges(t *testing.T) {
 		t.Fatal("revoked key retained session")
 	}
 	release()
-	grant.Principal.KeyID = 0
+	grant.Principal = passwordPrincipal(t, alice)
 	canceled, cancel = context.WithCancel(context.Background())
 	release, err = s.Register(grant, cancel)
 	if err != nil {
@@ -398,4 +408,13 @@ func TestHostingMonitorKeyAndOwnershipChanges(t *testing.T) {
 	default:
 		t.Fatal("ownership change retained session")
 	}
+}
+
+func passwordPrincipal(t *testing.T, user *models.User) hgbridge.Principal {
+	t.Helper()
+	identity, err := models.AuthenticateRepositoryHTTPSIdentity(user.Name, "password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return hgbridge.Principal{UserID: identity.UserID, TokenID: identity.TokenID, PasswordVersion: identity.PasswordVersion}
 }

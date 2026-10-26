@@ -29,6 +29,9 @@ var ErrDenied = errors.New("hgbridge: write not authorized")
 // anonymous; a zero KeyID or TokenID means that credential is not used.
 type Principal struct {
 	UserID, KeyID, TokenID int64
+	// PasswordVersion binds password authentication to the successful local row.
+	// Key/token identities leave it empty; it is never a plaintext credential.
+	PasswordVersion string
 }
 
 // Grant is what a session was authorized for when it started.

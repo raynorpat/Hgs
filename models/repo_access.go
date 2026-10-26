@@ -5,7 +5,10 @@
 package models
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 
 	"github.com/gogits/gogs/modules/setting"
 )
@@ -87,36 +90,89 @@ func enabledAccount(userID int64) (*User, error) {
 	return u, nil
 }
 
-// AuthenticateRepositoryHTTPS checks a username/password pair, or an access
-// token given as the username, and returns the account and the token ID
-// (0 for password authentication).
-func AuthenticateRepositoryHTTPS(username, password string) (userID, tokenID int64, err error) {
-	if len(username) == 0 {
-		return 0, 0, ErrInvalidCredential
-	}
+// RepositoryHTTPSIdentity carries the credential which actually authenticated.
+// PasswordVersion is an opaque, non-secret local credential revision; it is
+// computed from the same user row whose password/provider check succeeded.
+type RepositoryHTTPSIdentity struct {
+	UserID, TokenID int64
+	PasswordVersion string
+}
 
-	if len(password) > 0 {
+func repositoryPasswordVersion(u *User) string {
+	loginType := u.LoginType
+	if loginType == NOTYPE {
+		loginType = PLAIN
+	}
+	h := sha256.New()
+	fmt.Fprintf(h, "gogs-repository-password-v1\x00%s\x00%s\x00%d\x00%d\x00%s\x00%s\x00%s", u.Passwd, u.Salt, loginType, u.LoginSource, u.LoginName, u.LowerName, u.Email)
+	return hex.EncodeToString(h.Sum(nil))
+}
+func repositoryPasswordIdentity(u *User) (RepositoryHTTPSIdentity, error) {
+	if u.Id <= 0 || !u.IsActive || u.IsOrganization() {
+		return RepositoryHTTPSIdentity{}, ErrInvalidCredential
+	}
+	// Do not fetch a newer row here: a reset racing this result must never
+	// turn a successful old-password check into the new password's grant.
+	return RepositoryHTTPSIdentity{UserID: u.Id, PasswordVersion: repositoryPasswordVersion(u)}, nil
+}
+
+// AuthenticateRepositoryHTTPSIdentity returns the identity/version belonging
+// to this successful authentication. Existing provider authentication still
+// runs on every new request; external-only provider resets have no local revision.
+func AuthenticateRepositoryHTTPSIdentity(username, password string) (RepositoryHTTPSIdentity, error) {
+	if username == "" {
+		return RepositoryHTTPSIdentity{}, ErrInvalidCredential
+	}
+	if password != "" {
 		u, err := UserSignIn(username, password)
 		if err == nil {
-			if _, err = enabledAccount(u.Id); err != nil {
-				return 0, 0, err
+			identity, err := repositoryPasswordIdentity(u)
+			if err != nil {
+				return RepositoryHTTPSIdentity{}, err
 			}
-			return u.Id, 0, nil
-		} else if err != ErrUserNotExist {
-			return 0, 0, err
+			// Preserve the enabled-account recheck after a potentially slow provider
+			// authentication, but never use this later row to replace the snapshot.
+			if _, err = enabledAccount(u.Id); err != nil {
+				return RepositoryHTTPSIdentity{}, err
+			}
+			return identity, nil
+		} else if !errors.Is(err, ErrUserNotExist) {
+			return RepositoryHTTPSIdentity{}, err
 		}
 	}
-
-	t, err := GetAccessTokenBySha(username)
-	if err == ErrAccessTokenNotExist {
-		return 0, 0, ErrInvalidCredential
+	token, err := GetAccessTokenBySha(username)
+	if errors.Is(err, ErrAccessTokenNotExist) {
+		return RepositoryHTTPSIdentity{}, ErrInvalidCredential
 	} else if err != nil {
-		return 0, 0, err
+		return RepositoryHTTPSIdentity{}, err
 	}
-	if _, err = enabledAccount(t.Uid); err != nil {
-		return 0, 0, err
+	if _, err = enabledAccount(token.Uid); err != nil {
+		return RepositoryHTTPSIdentity{}, err
 	}
-	return t.Uid, t.Id, nil
+	return RepositoryHTTPSIdentity{UserID: token.Uid, TokenID: token.Id}, nil
+}
+
+// AuthenticateRepositoryHTTPS preserves the legacy account/token-only API.
+// Transport sessions must use AuthenticateRepositoryHTTPSIdentity instead.
+func AuthenticateRepositoryHTTPS(username, password string) (userID, tokenID int64, err error) {
+	identity, err := AuthenticateRepositoryHTTPSIdentity(username, password)
+	return identity.UserID, identity.TokenID, err
+}
+
+// ValidateRepositoryPasswordVersion refuses a missing or changed local
+// credential revision without retaining or reusing a plaintext password.
+func ValidateRepositoryPasswordVersion(userID int64, version string) error {
+	if version == "" {
+		return ErrInvalidCredential
+	}
+	u, err := enabledAccount(userID)
+	if err != nil {
+		return err
+	}
+	if repositoryPasswordVersion(u) != version {
+		return ErrInvalidCredential
+	}
+	return nil
 }
 
 // ValidateRepositoryCredential checks that the account is still enabled and

@@ -255,6 +255,34 @@ func (b *HTTPBridge) Serve(ctx context.Context, w http.ResponseWriter, r *http.R
 			w.Header().Set(k, v)
 		}
 	}
+	// Worker revocation must also interrupt a downstream socket Write/Flush.
+	// This is deliberately independent of the HTTP request context. Stop and
+	// join it before normal worker cleanup cancels anything, so a completed
+	// response cannot leave a deadline on the next keepalive request.
+	aborted := make(chan struct{})
+	stopDeadlines := make(chan struct{})
+	stopAbort := context.AfterFunc(workerCtx, func() {
+		defer close(aborted)
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			// net/http may close a failed TLS writer, whose close_notify path
+			// briefly replaces the deadline. Keep the canceled response expired
+			// until its Write/Flush has actually unwound.
+			http.NewResponseController(w).SetWriteDeadline(time.Now())
+			select {
+			case <-stopDeadlines:
+				return
+			case <-ticker.C:
+			}
+		}
+	})
+	defer func() {
+		if !stopAbort() {
+			close(stopDeadlines)
+			<-aborted
+		}
+	}()
 	w.WriteHeader(resp.StatusCode)
 	if err = copyFlushing(w, resp.Body, wk.touch); err != nil {
 		log.Error(4, "hgbridge: %s response for repository %d ended early: %v", cmd, target.RepoID, err)

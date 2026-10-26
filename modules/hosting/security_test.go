@@ -6,8 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/gogits/gogs/modules/hgbridge"
 )
 
 func TestHostingUntrustedForwardingStartsNoWorker(t *testing.T) {
@@ -40,7 +38,7 @@ func TestHostingUntrustedForwardingStartsNoWorker(t *testing.T) {
 func TestHostingShutdownJoinsAndStopsAdmissions(t *testing.T) {
 	s, alice, repo := fixture(t)
 	stopped, cancel := context.WithCancel(context.Background())
-	release, err := s.Register(hgbridge.Grant{Principal: hgbridge.Principal{UserID: alice.Id}, RepoID: repo.Id}, cancel)
+	release, err := s.RegisterBrowserRead(alice.Id, repo.Id, cancel)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +56,7 @@ func TestHostingShutdownJoinsAndStopsAdmissions(t *testing.T) {
 	if err := <-done; err == nil {
 		t.Fatal("shutdown deadline not reported")
 	}
-	if _, err = s.Register(hgbridge.Grant{Principal: hgbridge.Principal{UserID: alice.Id}, RepoID: repo.Id}, func() {}); err == nil {
+	if _, err = s.RegisterBrowserRead(alice.Id, repo.Id, func() {}); err == nil {
 		t.Fatal("admission after shutdown")
 	}
 }
