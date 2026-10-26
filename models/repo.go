@@ -712,6 +712,17 @@ func TransferOwnership(u *User, newOwner string, repo *Repository) error {
 		return ErrRepoAlreadyExist
 	}
 
+	// Read the owner team before the transaction: SQLite would block these
+	// reads behind the transaction's own writes.
+	var t *Team
+	if newUser.IsOrganization() {
+		if t, err = newUser.GetOwnerTeam(); err != nil {
+			return err
+		} else if err = t.GetMembers(); err != nil {
+			return err
+		}
+	}
+
 	sess := x.NewSession()
 	defer sess.Close()
 	if err = sess.Begin(); err != nil {
@@ -742,9 +753,13 @@ func TransferOwnership(u *User, newOwner string, repo *Repository) error {
 
 	// Update repository.
 	repo.OwnerId = newUser.Id
-	if _, err := sess.Id(repo.Id).Where("state = ?", RepositoryReady).Update(repo); err != nil {
+	if n, err := sess.Id(repo.Id).Where("state = ?", RepositoryReady).Update(repo); err != nil {
 		sess.Rollback()
 		return err
+	} else if n != 1 {
+		// Deleted or being deleted since the caller loaded it.
+		sess.Rollback()
+		return ErrRepoNotExist
 	}
 
 	// Update user repository number.
@@ -770,15 +785,6 @@ func TransferOwnership(u *User, newOwner string, repo *Repository) error {
 		}
 
 		// Give access to all members in owner team.
-		t, err := newUser.GetOwnerTeam()
-		if err != nil {
-			sess.Rollback()
-			return err
-		}
-		if err = t.GetMembers(); err != nil {
-			sess.Rollback()
-			return err
-		}
 		for _, u := range t.Members {
 			access.Id = 0
 			access.UserId = u.Id

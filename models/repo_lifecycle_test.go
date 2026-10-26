@@ -666,3 +666,78 @@ func TestFreshInstallRequired(t *testing.T) {
 		t.Fatalf("database with data: %v", err)
 	}
 }
+
+func TestRepositoryDeleteConcurrentTransfer(t *testing.T) {
+	newTestDatabase(t)
+	root := newLifecycleRoot(t)
+	r := newFakeHgRunner(t)
+	ctx := context.Background()
+	alice := newAccessTestUser(t, "alice", true)
+	carol := newAccessTestUser(t, "carol", true)
+	org, err := CreateOrganization(&User{Name: "acme", Email: "acme@example.com", Type: ORGANIZATION, IsActive: true}, carol)
+	if err != nil {
+		t.Fatal(err)
+	}
+	numRepos := func(u *User) int {
+		got, err := GetUserById(u.Id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got.NumRepos
+	}
+
+	// A transfer loaded before the tombstone must not commit after it.
+	repo := createTestHgRepo(t, r, root, alice, "demo")
+	stale, err := GetRepositoryById(repo.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale.Owner = alice
+	if err = DeleteHgRepository(ctx, root, repo.Id, func(context.Context, int64) error { return errors.New("busy") }); err == nil {
+		t.Fatal("drain failure ignored")
+	}
+	if err = TransferOwnership(alice, carol.Name, stale); err != ErrRepoNotExist {
+		t.Fatalf("transfer of a deleting repository: %v", err)
+	}
+	if numRepos(alice) != 1 || numRepos(carol) != 0 {
+		t.Fatalf("num_repos alice %d carol %d after refused transfer", numRepos(alice), numRepos(carol))
+	}
+	if err = DeleteHgRepository(ctx, root, repo.Id, func(context.Context, int64) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if numRepos(alice) != 0 {
+		t.Fatalf("num_repos alice %d after delete, want 0", numRepos(alice))
+	}
+
+	// A transfer committing between the deletion's load and its tombstone
+	// is what the deletion then cleans up.
+	repo = createTestHgRepo(t, r, root, alice, "moving")
+	lifecycleTestHook = func(stage string) {
+		if stage != "loaded" {
+			return
+		}
+		lifecycleTestHook = nil
+		cur, err := GetRepositoryById(repo.Id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cur.Owner = alice
+		if err = TransferOwnership(alice, org.Name, cur); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { lifecycleTestHook = nil })
+	if err = DeleteHgRepository(ctx, root, repo.Id, func(context.Context, int64) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if numRepos(alice) != 0 || numRepos(org) != 0 {
+		t.Fatalf("num_repos alice %d acme %d, want 0 and 0", numRepos(alice), numRepos(org))
+	}
+	team, err := org.GetOwnerTeam()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if team.NumRepos != 0 || strings.Contains(team.RepoIds, fmt.Sprintf("$%d|", repo.Id)) {
+		t.Fatalf("owner team still lists the deleted repository: %d %q", team.NumRepos, team.RepoIds)
+	}
+}

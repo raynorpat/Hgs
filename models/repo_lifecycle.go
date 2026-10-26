@@ -386,6 +386,7 @@ func DeleteHgRepository(ctx context.Context, root string, repoID int64, drain Dr
 	} else if !has {
 		return ErrRepoNotExist
 	}
+	lifecycleStage("loaded")
 	switch repo.State {
 	case RepositoryReady:
 		if err := setRepositoryState(x, repoID, RepositoryReady, RepositoryDeleting); err != nil {
@@ -402,10 +403,18 @@ func DeleteHgRepository(ctx context.Context, root string, repoID int64, drain Dr
 		return fmt.Errorf("drain repository %d: %v", repoID, err)
 	}
 	lifecycleStage("drained")
-	return finishDeletion(root, repo)
+	return finishDeletion(root, repoID)
 }
 
-func finishDeletion(root string, repo *Repository) error {
+func finishDeletion(root string, repoID int64) error {
+	// Re-read after the tombstone: a transfer may have committed after the
+	// caller loaded the row, and none can commit once it is deleting.
+	repo := new(Repository)
+	if has, err := x.Id(repoID).Get(repo); err != nil {
+		return err
+	} else if !has || repo.State != RepositoryDeleting {
+		return fmt.Errorf("repository %d is no longer being deleted", repoID)
+	}
 	if err := removeOwnedStorage(root, repo); err != nil {
 		return err
 	}
@@ -438,7 +447,7 @@ func ReconcileHgRepositories(ctx context.Context, root string) error {
 				errs = append(errs, fmt.Errorf("discard unfinished repository %d: %v", repo.Id, err))
 			}
 		case RepositoryDeleting:
-			if err := finishDeletion(root, repo); err != nil {
+			if err := finishDeletion(root, repo.Id); err != nil {
 				errs = append(errs, fmt.Errorf("finish deleting repository %d: %v", repo.Id, err))
 			}
 		case RepositoryReady:
