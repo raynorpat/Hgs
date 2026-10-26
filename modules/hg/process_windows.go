@@ -118,21 +118,39 @@ func (t *processTree) wait(cmd *exec.Cmd) error {
 
 var procWideCharToMultiByte = windows.NewLazySystemDLL("kernel32.dll").NewProc("WideCharToMultiByte")
 
+// ansiBytes encodes s in the ANSI code page, refusing characters it would
+// replace or approximate.
+func ansiBytes(s string) ([]byte, error) {
+	const cpACP, wcNoBestFitChars = 0, 0x400
+	u, err := windows.UTF16FromString(s)
+	if err != nil {
+		return nil, err
+	}
+	if u = u[:len(u)-1]; len(u) == 0 {
+		return []byte{}, nil
+	}
+	var usedDefault int32
+	n, _, _ := procWideCharToMultiByte.Call(cpACP, wcNoBestFitChars, uintptr(unsafe.Pointer(&u[0])), uintptr(len(u)),
+		0, 0, 0, uintptr(unsafe.Pointer(&usedDefault)))
+	if n == 0 || usedDefault != 0 {
+		return nil, fmt.Errorf("hg: %q is not representable in Windows code page %d", s, windows.GetACP())
+	}
+	b := make([]byte, n)
+	m, _, callErr := procWideCharToMultiByte.Call(cpACP, wcNoBestFitChars, uintptr(unsafe.Pointer(&u[0])), uintptr(len(u)),
+		uintptr(unsafe.Pointer(&b[0])), n, 0, 0)
+	if m != n {
+		return nil, fmt.Errorf("hg: encode %q in Windows code page %d: %v", s, windows.GetACP(), callErr)
+	}
+	return b, nil
+}
+
 // CheckPath rejects paths outside the ANSI code page: Mercurial on Windows
 // encodes file names with it, and would otherwise fail or mangle them.
 func CheckPath(p string) error {
-	const cpUTF8, wcNoBestFitChars = 65001, 0x400
-	if windows.GetACP() == cpUTF8 {
+	if windows.GetACP() == 65001 {
 		return nil
 	}
-	u, err := windows.UTF16FromString(p)
-	if err != nil {
-		return err
-	}
-	var usedDefault int32
-	n, _, _ := procWideCharToMultiByte.Call(0, wcNoBestFitChars, uintptr(unsafe.Pointer(&u[0])), uintptr(len(u)),
-		0, 0, 0, uintptr(unsafe.Pointer(&usedDefault)))
-	if n == 0 || usedDefault != 0 {
+	if _, err := ansiBytes(p); err != nil {
 		return fmt.Errorf("hg: path %q is not representable in Windows code page %d, which Mercurial uses for file names", p, windows.GetACP())
 	}
 	return nil
@@ -151,23 +169,8 @@ func localEncoding() string {
 // which the runner sets to the ANSI code page. Mercurial decodes hook
 // commands from that encoding before passing them to cmd.exe.
 func LocalBytes(s string) ([]byte, error) {
-	const cpACP, wcNoBestFitChars = 0, 0x400
 	if windows.GetACP() == 65001 || s == "" {
 		return []byte(s), nil
 	}
-	u, err := windows.UTF16FromString(s)
-	if err != nil {
-		return nil, err
-	}
-	u = u[:len(u)-1]
-	var usedDefault int32
-	n, _, _ := procWideCharToMultiByte.Call(cpACP, wcNoBestFitChars, uintptr(unsafe.Pointer(&u[0])), uintptr(len(u)),
-		0, 0, 0, uintptr(unsafe.Pointer(&usedDefault)))
-	if n == 0 || usedDefault != 0 {
-		return nil, fmt.Errorf("hg: %q is not representable in Windows code page %d", s, windows.GetACP())
-	}
-	b := make([]byte, n)
-	procWideCharToMultiByte.Call(cpACP, wcNoBestFitChars, uintptr(unsafe.Pointer(&u[0])), uintptr(len(u)),
-		uintptr(unsafe.Pointer(&b[0])), n, 0, 0)
-	return b, nil
+	return ansiBytes(s)
 }
