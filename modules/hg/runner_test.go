@@ -66,6 +66,25 @@ func fakeHg(args []string) int {
 		return 3
 	case "cat":
 		io.Copy(os.Stdout, os.Stdin)
+	case "flood":
+		// The grandchild, sharing both pipes, starts flooding first; its marker
+		// file proves it ran before the child floods too.
+		marker := filepath.Join(filepath.Dir(os.Getenv("HGRCPATH")), "grandchild-started")
+		gc := exec.Command(os.Args[0], "flood-grandchild", args[1])
+		gc.Stdout, gc.Stderr = os.Stdout, os.Stderr
+		if err := gc.Start(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		for _, err := os.Stat(marker); err != nil; _, err = os.Stat(marker) {
+			time.Sleep(10 * time.Millisecond)
+		}
+		flood(args[1])
+	case "flood-grandchild":
+		if err := os.WriteFile(filepath.Join(filepath.Dir(os.Getenv("HGRCPATH")), "grandchild-started"), nil, 0600); err != nil {
+			return 1
+		}
+		flood(args[1])
 	case "sleep":
 		time.Sleep(time.Minute)
 	case "tree":
@@ -99,6 +118,21 @@ func fakeHg(args []string) int {
 		return 255
 	}
 	return 0
+}
+
+// flood writes to stdout and/or stderr ("out", "err", "both") until killed.
+func flood(which string) {
+	junk := bytes.Repeat([]byte("x"), 4096)
+	for _, f := range []*os.File{os.Stdout, os.Stderr} {
+		if which == "both" || (which == "out") == (f == os.Stdout) {
+			go func() {
+				for {
+					f.Write(junk)
+				}
+			}()
+		}
+	}
+	time.Sleep(time.Minute)
 }
 
 func exitCode(err error) int {

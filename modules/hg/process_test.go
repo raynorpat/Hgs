@@ -9,6 +9,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -150,6 +152,52 @@ func TestProcessLimitQueueTimeout(t *testing.T) {
 	next, err := r.Start(context.Background(), "", []string{"cat"}, nil)
 	if err != nil {
 		t.Fatalf("slot not released after stop: %v", err)
+	}
+	next.Stop(context.Background())
+}
+
+func TestCancelReapsBlockedWriters(t *testing.T) {
+	// Start: the caller never reads, so child and grandchild block on full pipes.
+	r := newTestRunner(t, Config{MaxProcesses: 1})
+	r.queueTimeout = 2 * time.Second
+	marker := filepath.Join(filepath.Dir(r.cfg.ConfigPath), "grandchild-started")
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	c, err := r.Start(ctx, "", []string{"flood", "both"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err, childAlive, grandchildAlive := waitGone(c, c.Stdout)
+	if !errors.Is(err, context.DeadlineExceeded) || childAlive || grandchildAlive {
+		t.Fatalf("cancellation of blocked writers leaked process or lost deadline: %v", err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("grandchild never ran: %v", err)
+	}
+	c.Stop(context.Background())
+
+	// Run: stderr is drained internally while stdout stays under its bound.
+	os.Remove(marker)
+	ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	ran := make(chan error, 1)
+	go func() { ran <- r.Run(ctx, "", []string{"flood", "err"}, nil, nil) }()
+	select {
+	case err = <-ran:
+	case <-time.After(15 * time.Second):
+		t.Fatal("Run hung after its deadline")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Run of blocked writers: %v", err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("grandchild never ran: %v", err)
+	}
+
+	// The single slot is free again.
+	next, err := r.Start(context.Background(), "", []string{"cat"}, nil)
+	if err != nil {
+		t.Fatalf("slot not released: %v", err)
 	}
 	next.Stop(context.Background())
 }
