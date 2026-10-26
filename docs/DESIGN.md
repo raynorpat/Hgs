@@ -205,6 +205,36 @@ PR controls must reflect actual permission and comparison state. “Open,” “
 - Use short, subtle transitions only where they help track a state change; honor reduced-motion preferences. No essential meaning depends on animation.
 - Ensure disabled controls have an understandable reason nearby. Unauthorized data/actions may be omitted; do not expose private details in tooltips or hidden markup.
 
+## Remaining shared UI coverage
+
+### Repository Watch and Star
+
+Keep both existing actions in the repository header beside Clone and Fork. Watch/Unwatch controls existing subscriptions; Star/Unstar is a separate bookmark-like preference. Show their independent selected states and authorized counts with accessible text labels. Preserve existing notification behavior; this does not introduce PR email delivery. Use CSRF-protected POST actions, show failures without changing the displayed state, and prevent duplicate submissions. Anonymous users receive a sign-in path rather than a mutation control.
+
+### Help, footer, and language
+
+The utility-rail Help link opens a local /help page using the shared shell. Provide concise Hgs guidance for repository navigation, configured HTTPS/SSH clone methods, issues, and pull requests. Link to official Mercurial documentation where needed; do not send users to obsolete Gogs or Git help. Show only supported capabilities and public configuration information. Respect AppSubUrl and anonymous/sign-in policy.
+
+Keep language selection in the shared footer, reachable on desktop and mobile. Changing language preserves safe route/query context, with a safe fallback when necessary. The footer carries Hgs product identity, instance/version information already exposed by policy, and existing legal attribution. Preserve operator-selected instance names and destinations; remove obsolete hard-coded Gogs marketing links.
+
+### Existing email presentation
+
+Include all existing activation, email-confirmation, registration-success, password-reset, collaborator and mention emails in the branding pass. Use Hgs/default instance identity, a readable compact HTML layout, and the beaker identity mark with equivalent text when images are blocked. Preserve existing subjects' purpose, recipient rules, token/link generation and expiration, mail triggers, and legal notices. Use absolute AppUrl-based asset/action URLs, escaped content and inline email-compatible styling. Keep instructions and action links usable without images. Add no new mail delivery events or PR notifications.
+
+### Draft recovery after login expiry
+
+Scope: issue and PR titles/descriptions, comment/review text, and valid non-secret metadata in those editors. Do not store passwords, authentication codes, API/SSH secrets, file contents or attachment binaries. File inputs must be reselected; any already-uploaded attachment must still pass its normal authorization check.
+
+The user approved a cookie-held random draft ID with temporary server-side draft content, because cookie capacity is too small for normal issue/PR bodies ([MDN cookie limits](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Cookies)). The cookie contains no text or credential. Use an opaque browser draft-collection ID and a separate unpredictable per-editor capability kept only in the current document's memory. Bind records to the account, repository, canonical editor target, and page instance. Never use URL matching alone to restore work; never put the page capability in a URL, localStorage, sessionStorage or history.
+
+While signed in, autosave after one second of idle typing and at least every five seconds during continuous typing. Show Saving, Saved temporarily, or Save failed accurately; an unsaved latest edit must remain in the open editor. Allow each body the existing 64 KiB limit and titles 255 characters. Records expire after 30 minutes without a successful save; show the recovery window on session expiry. Limit each account to 10 live editor drafts, with a clear recovery-unavailable message rather than silently evicting another open page.
+
+On session expiry, keep the editor and its current text visible and block submission. Offer Sign in in a separate tab/window through the existing supported login flow, then a Check sign-in action or focus-triggered session check. Never navigate the editor to login. After the same account logs in, obtain fresh CSRF state, recheck current permissions and target validity, and recover only this page's draft. Newer unsaved text still present in the editor wins over older server snapshots. Restore inputs only; never automatically submit a comment, change metadata or merge. If a different account signs in or access is revoked, clear the previous account's editor/recovery state and show a non-sensitive explanation.
+
+Leaving, reloading, or closing the editor discards recovery. A new visit, duplicate tab, or browser Back/Forward restoration cannot recover it. Same-document Write/Preview changes and local anchors are not leaving. Invalidate the page capability immediately and issue best-effort deletion on pagehide; on a bfcache return, clear stale editor fields before interaction and initialize a fresh page instance. Successful submission or explicit cancellation also clears recovery. Unload delivery is not guaranteed, so server TTL cleanup removes unreachable leftovers; those leftovers must not be recoverable without the original live capability. One tab's discard must not delete another tab's draft.
+
+Use host-only, HttpOnly, SameSite=Lax cookies scoped to the draft API under AppSubUrl, Secure on HTTPS, with a 30-minute lifetime refreshed on successful saves. Authenticated save/load require CSRF and current authorization. A narrowly scoped disposal capability may delete its own record after login expires, but may never read or modify draft contents. Cookie IDs alone confer no read access. Apply request size limits and cleanup on account/repository deletion; never log draft text or capabilities.
+
 ## Implementation and verification
 
 Implement shared Go template partials, semantic CSS variables, and small scoped JavaScript modules. Ship local assets; no frontend runtime service or new SPA framework is required. Migrate supported pages to the common components before retiring their unused Bootstrap/custom-LESS assets. Preserve needed specialized behavior rather than loading both legacy global scripts on every page.
@@ -243,4 +273,4 @@ The requested composition is the recognizable Go Gopher in a white laboratory co
 
 Credit the source and adaptation: **Go Gopher by Renee French, CC BY 4.0. Lab-coat and beaker adaptation.** Link [the original Go Gopher attribution](https://go.dev/blog/gopher) and [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Preserve existing Gogs legal notices separately from the Hgs product identity.
 
-Implementation plan Task 16 now includes the approved landing page and replacement of the main landing PNG with public/img/hgs-mascot.png, using the approved local artwork and attribution. Phase out Gogs product labels in favor of Hgs or Mercurial service while retaining legal notices and internal identifiers. Favicon and navigation-icon variants remain outside this artwork approval. The prototype is a visual reference, not a replacement for the real template and authorization checks.
+Implementation plan Task 16 now includes the approved landing page and replacement of the main landing PNG with public/img/hgs-mascot.png, using the approved local artwork and attribution. Phase out Gogs product labels in favor of Hgs or Mercurial service while retaining legal notices and internal identifiers. Use the beaker held by the approved Gopher as the favicon and navigation identity mark; this small-asset adaptation is now in scope. Preserve its pouring lip, graduation marks and blue liquid, simplifying only details that cannot survive small sizes. Use one master mark for both placements, with a light/inverse rendering for white and blue surfaces. Verify favicon sizes 16px and 32px plus navigation sizes 24px and 32px; retain the full mascot for the landing hero and credit the adaptation. The prototype is a visual reference, not a replacement for the real template and authorization checks.

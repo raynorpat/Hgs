@@ -107,7 +107,7 @@ Create opens a menu with Create repository, linking to the real shared form. Off
 
 ### Page coverage and components
 
-Migrate workspace dashboard/list views; repository source/file/history/diff/branches, issues/comments/labels/milestones, create/fork/settings/collaborators; organization/team/member/settings pages; account profile/settings/security; and all existing Admin pages. Authentication, installer, and error pages use the same tokens/forms/alerts with a reduced layout appropriate to anonymous access. Mail templates are not part of the visual refactor.
+Migrate workspace dashboard/list views; repository source/file/history/diff/branches, issues/comments/labels/milestones, create/fork/settings/collaborators; organization/team/member/settings pages; account profile/settings/security; and all existing Admin pages. Authentication, installer, and error pages use the same tokens/forms/alerts with a reduced layout appropriate to anonymous access. Existing mail templates are included for Hgs branding and readability, preserving delivery behavior, action links, token lifetimes and legal attribution. New PR mail remains excluded.
 
 Issues coverage explicitly includes the global cross-repository Issues list, repository issue lists and existing filters/pagination, creation forms, issue detail/discussion, attachments, label management, and milestone pages. Reuse the shared page header, list/table, badges, Markdown editor, metadata controls, alerts, and discussion components. Preserve existing assignment, labeling, milestone, edit/comment, close/reopen, attachment permissions, and notification behavior. Global rows identify their repository; counts and filters exclude inaccessible data. Repository Issues stays immediately below Pull requests. No legacy Bootstrap issue-page shell remains at completion. This is a presentation refactor of existing issue workflows, not a new issue state machine or Kanban board.
 
@@ -249,7 +249,17 @@ After the shared application UI work, implement the approved Hgs landing page an
 
 Landing-page Explore links and any repository preview show public repositories only. Omit them entirely when app.ini blocks anonymous browsing; the current policy is [service] REQUIRE_SIGNIN_VIEW = true. Enforce public-only queries/counts/pagination and direct-route access on the server. Signed-in workspace Explore retains its accessible-repositories behavior. Preserve conditional registration, supported social sign-in, and existing authentication policy.
 
-Replace the main landing logo reference with a local Hgs asset based on the approved PNG, retaining the Go Gopher credit to Renee French and CC BY 4.0 attribution. Favicon/navigation-icon variants are not included. [The design system](../../DESIGN.md#follow-on-landing-page-and-mercurial-identity) defines the composition, assets and public discovery rule; implementation plan Task 16 delivers this phase. Approval does not waive transport or backend acceptance gates.
+Replace the main landing logo reference with a local Hgs asset based on the approved PNG, retaining the Go Gopher credit to Renee French and CC BY 4.0 attribution. Use the same beaker held by the approved Gopher as the favicon and navigation identity mark, with only small-size simplification and inverse contrast variants. [The design system](../../DESIGN.md#follow-on-landing-page-and-mercurial-identity) defines the composition, assets and public discovery rule; implementation plan Task 16 delivers this phase. Approval does not waive transport or backend acceptance gates.
+
+## Approved completion details
+
+Retain both Watch and Star in repository headers, preserving their distinct subscription/preference behavior and authorized counts. Convert their mutations to CSRF-protected POSTs and retain existing email behavior. Help opens a local shared-layout /help page with supported Mercurial workflows. Keep language selection in the shared footer, preserve operator-selected identity/links and legal notices, and replace obsolete Gogs/Git marketing/help destinations.
+
+The existing mail-template families join the visual/branding scope; no new notifications are introduced. The full Gopher remains the landing mascot; its beaker supplies the favicon and navigation mark.
+
+For issue/PR editors, recover unsaved work after session expiry only while the original page is still open. The user approved a cookie ID with temporary server-side draft storage. Bind recovery to the same account, authorized editor target and an unpredictable in-memory page capability; login in another tab preserves the editor. Navigation, reload, close, cancellation or successful submission discards recovery. A new visit or history restoration cannot resurrect it. Never auto-submit after recovery or overwrite newer in-page edits with an older saved version. Exclude credentials and attachment binaries.
+
+The [design system](../../DESIGN.md#draft-recovery-after-login-expiry) specifies timing, limits, cookie attributes, failure feedback and cleanup. Its 30-minute inactivity TTL removes unreachable records when unload cleanup cannot be delivered; it is not a cross-navigation draft history. Implement and test these details in Tasks 17–18 after the existing core/landing work. This scope addition does not change ownership or status of the Mercurial prerequisites.
 
 ## Technical references
 
