@@ -1,7 +1,1 @@
-<div id="repo-sidebar" class="right grid-1-6"><ul class="menu menu-vertical" id="repo-sidebar-nav">
- <li><a class="radius" href="{{.RepoLink}}">{{.i18n.Tr "repo.hg_source"}}</a></li>
- <li><a class="radius" href="{{.RepoLink}}/issues">{{.i18n.Tr "repo.issues"}} <span class="num right label label-blue">{{.Repository.NumOpenIssues}}</span></a></li>
- <li><a class="radius" href="{{.RepoLink}}/commits">{{.i18n.Tr "repo.commits"}}</a></li>
- <li><a class="radius" href="{{.RepoLink}}/branches">{{.i18n.Tr "repo.hg_references"}}</a></li>
- {{if .IsRepositoryTrueOwner}}<li><a class="radius" href="{{.RepoLink}}/settings">{{.i18n.Tr "repo.settings"}}</a></li>{{end}}
-</ul></div>
+{{/* Shared context navigation is owned by shared/start. Retained for downstream template compatibility. */}}

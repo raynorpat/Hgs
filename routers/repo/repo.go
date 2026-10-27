@@ -14,6 +14,7 @@ import (
 	"github.com/gogits/gogs/modules/log"
 	"github.com/gogits/gogs/modules/middleware"
 	"github.com/gogits/gogs/modules/setting"
+	"github.com/gogits/gogs/modules/ui"
 )
 
 const (
@@ -36,6 +37,7 @@ func checkContextUser(ctx *middleware.Context, uid int64) (*models.User, error) 
 
 func Create(ctx *middleware.Context) {
 	ctx.Data["Title"] = ctx.Tr("new_repo")
+	ui.BuildShell(ctx, ui.Workspace, "repositories")
 
 	ctxUser, err := checkContextUser(ctx, ctx.QueryInt64("org"))
 	if err != nil {
@@ -55,6 +57,7 @@ func Create(ctx *middleware.Context) {
 
 func CreatePost(ctx *middleware.Context, form auth.CreateRepoForm, provider hosting.Provider) {
 	ctx.Data["Title"] = ctx.Tr("new_repo")
+	ui.BuildShell(ctx, ui.Workspace, "repositories")
 
 	ctxUser := ctx.User
 	// Not equal means current user is an organization.
@@ -116,6 +119,10 @@ func CreatePost(ctx *middleware.Context, form auth.CreateRepoForm, provider host
 }
 
 func Action(ctx *middleware.Context) {
+	if ctx.Req.Method != "POST" {
+		ctx.Error(405)
+		return
+	}
 	var err error
 	switch ctx.Params(":action") {
 	case "watch":
@@ -135,14 +142,15 @@ func Action(ctx *middleware.Context) {
 		ctx.Repo.Repository.Description = ctx.Query("desc")
 		ctx.Repo.Repository.Website = ctx.Query("site")
 		err = models.UpdateRepository(ctx.Repo.Repository)
+	default:
+		ctx.Error(404)
+		return
 	}
 
 	if err != nil {
 		log.Error(4, "Action(%s): %v", ctx.Params(":action"), err)
-		ctx.JSON(200, map[string]interface{}{
-			"ok":  false,
-			"err": err.Error(),
-		})
+		ctx.Flash.Error(ctx.Tr("ui.action_failed"))
+		ctx.Redirect(ctx.Repo.RepoLink)
 		return
 	}
 	ctx.Redirect(ctx.Repo.RepoLink)

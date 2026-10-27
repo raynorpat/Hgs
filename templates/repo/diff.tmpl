@@ -1,10 +1,15 @@
-{{template "ng/base/head" .}}
-{{template "ng/base/header" .}}
-<div id="repo-wrapper">{{template "repo/header" .}}<div class="container clear">
- <div class="panel panel-radius"><div class="panel-header"><strong>{{.Changeset.User}}</strong> · {{ShortSha .Node}} · {{TimeSince .Changeset.Date .Lang}} <a href="{{.SourceURL}}">{{.i18n.Tr "repo.hg_source"}}</a></div>
- <div class="panel-content"><p>{{.Changeset.Message}}</p>
- {{range $i,$parent := .Parents}}<p>{{$.i18n.Tr "repo.hg_parent"}} {{$i}}: <a href="{{$.RepoLink}}/commit/{{$parent}}">{{$parent}}</a> <a href="{{$.RepoLink}}/commit/{{$.Node}}?parent={{$i}}">{{$.i18n.Tr "repo.hg_compare_parent"}}</a>{{if eq $i $.SelectedParent}} ✓{{end}}</p>{{end}}
- {{if .DiffTruncated}}<p>{{.i18n.Tr "repo.hg_diff_truncated"}}</p>{{end}}{{if .DiffBinary}}<p>{{.i18n.Tr "repo.hg_diff_binary"}}</p>{{end}}
- <pre class="diff">{{.Patch}}</pre></div></div>
- </div></div>
-{{template "ng/base/footer" .}}
+{{template "shared/start" .}}{{template "repo/header" .}}<section class="hg-panel">
+<header class="hg-panel-heading hg-page-header">
+<div>
+<strong>{{.Changeset.User}}</strong> · <code>{{ShortSha .Node}}</code> · <span class="hg-meta">{{TimeSince .Changeset.Date .Lang}}</span>
+</div>
+<a class="hg-button" href="{{.SourceURL}}">{{.i18n.Tr "repo.hg_source"}}</a>
+</header>
+<p>{{.Changeset.Message}}</p>
+<nav aria-label="{{.i18n.Tr "repo.hg_parent"}}">{{range $i,$parent := .Parents}}<p>{{$.i18n.Tr "repo.hg_parent"}} {{$i}}: <a href="{{$.RepoLink}}/commit/{{$parent}}">
+<code>{{ShortSha (printf "%s" $parent)}}</code>
+</a> <a class="hg-button" href="{{$.RepoLink}}/commit/{{$.Node}}?parent={{$i}}"{{if eq $i $.SelectedParent}} aria-current="true"{{end}}>{{$.i18n.Tr "repo.hg_compare_parent"}}</a>
+</p>{{end}}</nav>{{if .DiffTruncated}}<p class="hg-alert hg-alert-info">{{.i18n.Tr "repo.hg_diff_truncated"}}</p>{{end}}{{if .DiffBinary}}<p class="hg-alert hg-alert-info">{{.i18n.Tr "repo.hg_diff_binary"}}</p>{{end}}<div class="hg-scroll" tabindex="0" role="region" aria-label="{{.i18n.Tr "ui.diff"}}">
+<pre class="hg-diff" data-diff data-node="{{.Node}}">{{.Patch}}</pre>
+</div>
+</section>{{template "shared/end" .}}

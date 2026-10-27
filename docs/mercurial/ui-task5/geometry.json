@@ -1,0 +1,92 @@
+{
+  "fixture": "127.0.0.1:43129/code; synthetic disposable SQLite accounts and native Mercurial stores",
+  "desktop": {
+    "viewport": 1440,
+    "rail": 56,
+    "context": 208,
+    "page_scroll_width": 1440
+  },
+  "narrow": {
+    "viewport": 390,
+    "client_width": 375,
+    "page_scroll_width": 375,
+    "history_region_client": 287,
+    "history_region_scroll": 440
+  },
+  "source": {
+    "numbered_lines": 3,
+    "highlight_keyword_tokens": 1,
+    "script_elements": 0
+  },
+  "merge": {
+    "parent_choices": 2,
+    "first_parent_patch_lines": 7,
+    "second_parent_patch_lines": 8
+  },
+  "screenshots": {
+    "binary-narrow.png": [
+      375,
+      812
+    ],
+    "empty-readme-narrow.png": [
+      375,
+      812
+    ],
+    "empty-repository-desktop.png": [
+      1440,
+      1000
+    ],
+    "history-narrow.png": [
+      375,
+      812
+    ],
+    "large-file-narrow.png": [
+      375,
+      812
+    ],
+    "merge-diff-desktop.png": [
+      1440,
+      1000
+    ],
+    "merge-diff-narrow.png": [
+      375,
+      812
+    ],
+    "private-reader-desktop.png": [
+      1440,
+      1000
+    ],
+    "private-reader-narrow.png": [
+      375,
+      812
+    ],
+    "revisions-desktop.png": [
+      1440,
+      1000
+    ],
+    "settings-owner-desktop.png": [
+      1440,
+      1000
+    ],
+    "source-clone-desktop.png": [
+      1440,
+      1000
+    ],
+    "source-drawer-narrow.png": [
+      390,
+      844
+    ],
+    "source-file-desktop.png": [
+      1440,
+      1000
+    ],
+    "source-file-narrow.png": [
+      375,
+      812
+    ],
+    "workspace-desktop.png": [
+      1440,
+      1000
+    ]
+  }
+}

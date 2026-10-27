@@ -1,24 +1,8 @@
-{{template "ng/base/head" .}}
-{{template "ng/base/header" .}}
-<div id="repo-wrapper">
- {{template "repo/header" .}}
- <div id="repo-content" class="clear container">
-  <div id="repo-main" class="left grid-5-6">
-   <p id="repo-desc">{{.Repository.DescriptionHtml}} <a href="{{.Repository.Website}}">{{.Repository.Website}}</a></p>
-   <ul id="repo-file-nav" class="clear menu menu-line">
-    <li id="repo-branch-switch" class="down drop">
-     <button class="btn btn-gray btn-medium btn-radius" aria-haspopup="true">{{.Changeset.Branch}} · {{ShortSha .Node}}</button>
-     <div class="drop-down panel"><p class="panel-header">{{.i18n.Tr "repo.hg_references"}}</p>
-      <ul class="menu menu-vertical switching-list">{{range .References}}
-       <li><a href="{{.URL}}">{{.Kind}}: {{.Name}} · {{ShortSha .Node}}{{if .Closed}} ({{$.i18n.Tr "repo.hg_closed"}}){{end}}</a></li>
-      {{end}}</ul>
-     </div>
-    </li>
-    <li id="repo-bread" class="breads"><a class="title bread" href="{{.SourceURL}}">{{.Repository.Name}}</a>{{range .Breadcrumbs}} / <a class="bread" href="{{.URL}}">{{.Name}}</a>{{end}}</li>
-   </ul>
-   {{if .IsFile}}{{template "repo/view_file" .}}{{else}}{{template "repo/view_list" .}}{{end}}
-  </div>
-  {{template "repo/sidebar" .}}
- </div>
+{{template "shared/start" .}}
+{{template "repo/header" .}}
+<p class="hg-description">{{.Repository.DescriptionHtml}}{{if .Repository.Website}} <a href="{{.Repository.Website}}">{{.Repository.Website}}</a>{{end}}</p>
+<div class="hg-source-navigation">{{template "shared/revision_selector" .}}<nav class="hg-breadcrumb" aria-label="{{.i18n.Tr "ui.path"}}">
+<a href="{{.SourceURL}}">{{.Repository.Name}}</a>{{range .Breadcrumbs}} / <a href="{{.URL}}">{{.Name}}</a>{{end}}</nav>
 </div>
-{{template "ng/base/footer" .}}
+{{if .IsFile}}{{template "repo/view_file" .}}{{else}}{{template "repo/view_list" .}}{{end}}
+{{template "shared/end" .}}

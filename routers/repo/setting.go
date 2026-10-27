@@ -18,6 +18,7 @@ import (
 	"github.com/gogits/gogs/modules/mailer"
 	"github.com/gogits/gogs/modules/middleware"
 	"github.com/gogits/gogs/modules/setting"
+	"github.com/gogits/gogs/modules/ui"
 )
 
 const (
@@ -28,15 +29,27 @@ const (
 func Settings(ctx *middleware.Context) {
 	ctx.Data["Title"] = ctx.Tr("repo.settings")
 	ctx.Data["PageIsSettingsOptions"] = true
+	ui.BuildShell(ctx, ui.Repository, "settings")
+	ctx.Data["UIRepoName"] = ctx.Repo.Repository.Name
+	ctx.Data["UIRepoDescription"] = ctx.Repo.Repository.Description
+	ctx.Data["UIRepoWebsite"] = ctx.Repo.Repository.Website
+	ctx.Data["UIRepoPrivate"] = ctx.Repo.Repository.IsPrivate
 	ctx.HTML(200, SETTINGS_OPTIONS)
 }
 
 func SettingsPost(ctx *middleware.Context, form auth.RepoSettingForm, provider hosting.Provider) {
 	ctx.Data["Title"] = ctx.Tr("repo.settings")
 	ctx.Data["PageIsSettingsOptions"] = true
+	ui.BuildShell(ctx, ui.Repository, "settings")
+	ctx.Data["UIRepoName"] = ctx.Repo.Repository.Name
+	ctx.Data["UIRepoDescription"] = ctx.Repo.Repository.Description
+	ctx.Data["UIRepoWebsite"] = ctx.Repo.Repository.Website
+	ctx.Data["UIRepoPrivate"] = ctx.Repo.Repository.IsPrivate
 
 	switch ctx.Query("action") {
 	case "update":
+		ctx.Data["UIRepoName"], ctx.Data["UIRepoDescription"] = form.RepoName, form.Description
+		ctx.Data["UIRepoWebsite"], ctx.Data["UIRepoPrivate"] = form.Website, form.Private
 		if ctx.HasError() {
 			ctx.HTML(200, SETTINGS_OPTIONS)
 			return
@@ -151,10 +164,11 @@ func SettingsPost(ctx *middleware.Context, form auth.RepoSettingForm, provider h
 func SettingsCollaboration(ctx *middleware.Context) {
 	ctx.Data["Title"] = ctx.Tr("repo.settings")
 	ctx.Data["PageIsSettingsCollaboration"] = true
+	ui.BuildShell(ctx, ui.Repository, "settings")
 
 	repoId := ctx.Repo.Repository.Id
 
-	if ctx.Req.Method == "POST" {
+	if ctx.Req.Method == "POST" && ctx.Query("remove") == "" {
 		name := strings.ToLower(ctx.Query("collaborator"))
 		if len(name) == 0 || ctx.Repo.Owner.LowerName == name {
 			ctx.Redirect(setting.AppSubUrl + ctx.Req.URL.Path)
@@ -207,7 +221,10 @@ func SettingsCollaboration(ctx *middleware.Context) {
 	}
 
 	// Delete collaborator.
-	remove := strings.ToLower(ctx.Query("remove"))
+	remove := ""
+	if ctx.Req.Method == "POST" {
+		remove = strings.ToLower(ctx.Query("remove"))
+	}
 	if len(remove) > 0 && remove != ctx.Repo.Owner.LowerName {
 		needDelete := true
 		if ctx.User.IsOrganization() {

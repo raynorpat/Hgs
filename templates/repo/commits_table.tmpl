@@ -1,6 +1,25 @@
-<div id="commits-list"><div class="panel panel-radius">
- <div class="panel-header"><h4>{{.i18n.Tr "repo.commits"}} {{.HistoryPath}}</h4></div>
- <table class="panel-body table commit-list table-striped"><thead><tr><th>{{.i18n.Tr "repo.commits.author"}}</th><th>{{.i18n.Tr "repo.hg_changeset"}}</th><th>{{.i18n.Tr "repo.commits.message"}}</th><th>{{.i18n.Tr "repo.commits.date"}}</th></tr></thead>
- <tbody>{{range .Commits}}<tr><td class="author">{{.User}}</td><td class="sha"><a href="{{$.RepoLink}}/commit/{{.Node}}">{{ShortSha (printf "%s" .Node)}}</a></td><td class="message">{{.Message}}</td><td>{{TimeSince .Date $.Lang}}</td></tr>{{end}}</tbody></table>
- </div>{{if .NextHistoryURL}}<a class="btn btn-medium btn-gray btn-radius" href="{{.NextHistoryURL}}" rel="nofollow">{{.i18n.Tr "repo.commits.older"}}</a>{{end}}
-</div>
+<section>
+<h2>{{.i18n.Tr "ui.changesets"}}{{if .HistoryPath}} · {{.HistoryPath}}{{end}}</h2>{{if .Commits}}<div class="hg-scroll" tabindex="0" role="region" aria-label="{{.i18n.Tr "ui.changesets"}}">
+<table class="hg-table">
+<thead>
+<tr>
+<th>{{.i18n.Tr "repo.commits.author"}}</th>
+<th>{{.i18n.Tr "repo.hg_changeset"}}</th>
+<th>{{.i18n.Tr "repo.commits.message"}}</th>
+<th>{{.i18n.Tr "repo.commits.date"}}</th>
+</tr>
+</thead>
+<tbody>{{range .Commits}}<tr data-node="{{.Node}}">
+<td>{{.User}}</td>
+<td>
+<a href="{{$.RepoLink}}/commit/{{.Node}}">
+<code>{{ShortSha (printf "%s" .Node)}}</code>
+</a>
+</td>
+<td>{{.Message}}</td>
+<td class="hg-meta">{{TimeSince .Date $.Lang}}</td>
+</tr>{{end}}</tbody>
+</table>
+</div>{{else}}<p class="hg-empty">{{.i18n.Tr "ui.no_changesets"}}</p>{{end}}{{if .NextHistoryURL}}<nav class="hg-pagination" aria-label="{{.i18n.Tr "ui.changesets"}}">
+<a href="{{.NextHistoryURL}}" rel="next nofollow">{{.i18n.Tr "repo.commits.older"}}</a>
+</nav>{{end}}</section>

@@ -1,3 +1,14 @@
+{{if .Shell}}
+{{range .Feeds}}<article class="hg-feed">
+<img width="28" height="28" src="{{.ActAvatar}}" alt="">
+<div>
+<p>
+<a href="{{AppSubUrl}}/{{.GetActUserName}}">{{.GetActUserName}}</a> {{if eq .GetOpType 1}}{{$.i18n.Tr "ui.activity_created_repository"}}{{else if eq .GetOpType 6}}{{$.i18n.Tr "ui.activity_opened_issue"}}{{else if eq .GetOpType 8}}{{$.i18n.Tr "ui.activity_transferred_repository"}} <code>{{.GetContent}}</code> {{$.i18n.Tr "ui.activity_to"}}{{else if eq .GetOpType 10}}{{$.i18n.Tr "ui.activity_commented_issue"}}{{end}} <a href="{{.GetRepoLink}}">{{.GetRepoUserName}} / {{.GetRepoName}}</a>
+</p>{{if or (eq .GetOpType 6) (eq .GetOpType 10)}}<p>
+<a href="{{.GetRepoLink}}/issues/{{index .GetIssueInfos 0}}">#{{index .GetIssueInfos 0}}</a> {{index .GetIssueInfos 1}}</p>{{end}}<p class="hg-meta">{{TimeSince .GetCreate $.Lang}}</p>
+</div>
+</article>{{else}}<p class="hg-empty">{{.i18n.Tr "ui.no_activity"}}</p>{{end}}
+{{else}}
 {{range .Feeds}}
 <div class="news clear">
     <div class="avatar left">
@@ -25,6 +36,7 @@
         {{end}}
         <p class="news-time text-italic">{{TimeSince .GetCreate $.i18n.Lang}}</p>
     </div>
-    <i class="mega-octicon octicon-{{ActionIcon .GetOpType}} right"></i>
+    <i class="mega-octicon octicon-{{ActionIcon .GetOpType}} right">
+</i>
 </div>
-{{end}}
+{{end}}{{end}}

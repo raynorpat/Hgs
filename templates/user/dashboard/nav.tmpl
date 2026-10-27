@@ -1,46 +1,11 @@
-<div id="dashboard-header">
-    <ul class="menu menu-line container">
-        <li id="dashboard-selection-menu" class="down drop">
-            <a href="#" class="text-bold radius">
-                <img class="avatar-30" src="{{.ContextUser.AvatarLink}}" alt="user-avatar" />
-                {{.ContextUser.Name}}
-            </a>
-            <div class="drop-down panel panel-radius">
-                <p class="panel-header"><strong>{{.i18n.Tr "home.switch_dashboard_context"}}</strong></p>
-                <ul class="menu menu-vertical switching-list" id="dashboard-switch-menu">
-                    <li class="org {{if eq .ContextUser.Id .SignedUser.Id}}checked{{end}}">
-                        <a href="{{AppSubUrl}}/">
-                            <i class="octicon octicon-check"></i>
-                            <img class="avatar-24" src="{{.SignedUser.AvatarLink}}" alt="user-avatar" />
-                            {{.SignedUser.Name}}
-                        </a>
-                    </li>
-                    {{range .Orgs}}
-                    <li class="org {{if eq $.ContextUser.Id .Id}}checked{{end}}">
-                        <a href="{{.DashboardLink}}">
-                            <i class="octicon octicon-check"></i>
-                            <img class="avatar-24" src="{{.AvatarLink}}" alt="user-avatar" />
-                            {{.Name}}
-                        </a>
-                    </li>
-                    {{end}}
-                    <!-- <li>
-                        <a href="{{AppSubUrl}}/user/settings/orgs"><i class="octicon octicon-organization"></i>{{.i18n.Tr "manage_org"}}</a>
-                    </li> -->
-                    <li>
-                        <a href="{{AppSubUrl}}/org/create"><i class="octicon octicon-plus"></i>{{.i18n.Tr "new_org"}}</a>
-                    </li>
-                </ul>
-            </div>
-        </li>
-        {{if not .ContextUser.IsOrganization}}
-        <li class="right">
-            <a {{if $.PageIsIssues}}class="current"{{end}} href="{{.ContextUser.DashboardLink}}issues"><i class="octicon octicon-issue-opened"></i>{{.i18n.Tr "issues"}}</a>
-        </li>
-        {{end}}
-
-        <li class="right">
-            <a {{if $.PageIsNews}}class="current"{{end}} href="{{.ContextUser.DashboardLink}}"><i class="octicon octicon-rss"></i>{{.i18n.Tr "news_feed"}}</a>
-        </li>
-    </ul>
+<div class="hg-page-header">
+<h1>{{.i18n.Tr "ui.workspace_context"}}</h1>
+<details class="hg-workspace-switch">
+<summary class="hg-button">
+<img width="28" height="28" src="{{.ContextUser.AvatarLink}}" alt=""> {{.ContextUser.Name}}</summary>
+<div>
+<p>{{.i18n.Tr "home.switch_dashboard_context"}}</p>
+<a href="{{AppSubUrl}}/">{{.SignedUser.Name}}</a>{{range .Orgs}}<a href="{{.DashboardLink}}">{{.Name}}</a>{{end}}<a href="{{AppSubUrl}}/org/create">{{.i18n.Tr "new_org"}}</a>
+</div>
+</details>
 </div>

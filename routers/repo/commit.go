@@ -8,6 +8,7 @@ import (
 	"github.com/gogits/gogs/modules/base"
 	"github.com/gogits/gogs/modules/hg"
 	"github.com/gogits/gogs/modules/middleware"
+	"github.com/gogits/gogs/modules/ui"
 )
 
 const (
@@ -16,6 +17,7 @@ const (
 )
 
 func Commits(ctx *middleware.Context) {
+	ui.BuildShell(ctx, ui.Repository, "changesets")
 	q := hg.HistoryQuery{BeforeRevision: -1}
 	values, err := url.ParseQuery(ctx.Req.URL.RawQuery)
 	if err != nil {
@@ -73,6 +75,7 @@ func Commits(ctx *middleware.Context) {
 	ctx.HTML(200, COMMITS)
 }
 func Diff(ctx *middleware.Context) {
+	ui.BuildShell(ctx, ui.Repository, "changesets")
 	parent := 0
 	q, err := url.ParseQuery(ctx.Req.URL.RawQuery)
 	if err != nil {

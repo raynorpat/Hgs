@@ -1,7 +1,24 @@
-{{template "ng/base/head" .}}
-{{template "ng/base/header" .}}
-<div id="repo-wrapper">{{template "repo/header" .}}<div class="container clear"><div class="panel panel-radius">
- <div class="panel-header"><strong>{{.i18n.Tr "repo.hg_references"}}</strong></div>
- <table class="panel-body table">{{range .References}}<tr><td>{{.Kind}}</td><td><a href="{{.SelectionURL}}">{{.Name}}</a></td><td><a href="{{.URL}}">{{ShortSha .Node}}</a></td><td>{{if .Closed}}{{$.i18n.Tr "repo.hg_closed"}}{{end}}</td></tr>{{end}}</table>
- </div></div></div>
-{{template "ng/base/footer" .}}
+{{template "shared/start" .}}{{template "repo/header" .}}<h2>{{.i18n.Tr "repo.hg_references"}}</h2>{{if .References}}<div class="hg-scroll" tabindex="0" role="region" aria-label="{{.i18n.Tr "repo.hg_references"}}">
+<table class="hg-table">
+<thead>
+<tr>
+<th>{{.i18n.Tr "ui.type"}}</th>
+<th>{{.i18n.Tr "ui.name"}}</th>
+<th>{{.i18n.Tr "repo.hg_changeset"}}</th>
+<th>{{.i18n.Tr "ui.state"}}</th>
+</tr>
+</thead>
+<tbody>{{range .References}}<tr data-revision-kind="{{.Kind}}" data-node="{{.Node}}">
+<td>{{$.i18n.Tr (printf "ui.reference_%s" .Kind)}}</td>
+<td>
+<a href="{{.SelectionURL}}">{{.Name}}</a>
+</td>
+<td>
+<a href="{{.URL}}">
+<code>{{ShortSha .Node}}</code>
+</a>
+</td>
+<td>{{if .Closed}}{{$.i18n.Tr "repo.hg_closed"}}{{end}}</td>
+</tr>{{end}}</tbody>
+</table>
+</div>{{else}}<p class="hg-empty">{{.i18n.Tr "ui.no_references"}}</p>{{end}}{{template "shared/end" .}}

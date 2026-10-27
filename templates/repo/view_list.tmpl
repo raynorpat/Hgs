@@ -1,8 +1,31 @@
-<table id="repo-files-table" class="table-border table-block table-radius">
- <thead><tr><th colspan="2"><strong>{{.Changeset.User}}</strong> · <a href="{{.RepoLink}}/commit/{{.Node}}">{{ShortSha .Node}}</a> {{.Changeset.Message}} <span class="age right">{{TimeSince .Changeset.Date .Lang}}</span></th></tr></thead>
- <tbody>
- {{if .ParentURL}}<tr class="has-parent"><td class="icon"></td><td class="name"><a href="{{.ParentURL}}">..</a></td></tr>{{end}}
- {{range .Files}}<tr><td class="icon"><span class="octicon octicon-file-{{if .Directory}}directory{{else}}text{{end}}"></span></td><td class="name"><a href="{{.URL}}" class="text-truncate">{{.Name}}</a>{{if .Symlink}} ↗{{end}}{{if .Executable}} *{{end}}</td></tr>{{end}}
- </tbody>
+<section class="hg-panel">
+<div class="hg-panel-heading">
+<strong>{{.Changeset.User}}</strong> · <a href="{{.RepoLink}}/commit/{{.Node}}">
+<code>{{ShortSha .Node}}</code>
+</a> {{.Changeset.Message}} <span class="hg-meta">{{TimeSince .Changeset.Date .Lang}}</span>
+</div>
+<div class="hg-scroll">
+<table class="hg-table hg-file-table">
+<thead>
+<tr>
+<th>{{.i18n.Tr "ui.name"}}</th>
+<th>{{.i18n.Tr "ui.type"}}</th>
+</tr>
+</thead>
+<tbody>
+
+{{if .ParentURL}}<tr>
+<td colspan="2">
+<a href="{{.ParentURL}}">..</a>
+</td>
+</tr>{{end}}{{range .Files}}<tr data-node="{{$.Node}}" data-path-url="{{.URL}}">
+<td>
+<a href="{{.URL}}" data-source-url="{{.URL}}">{{.Name}}</a>
+</td>
+<td class="hg-meta">{{if .Directory}}{{$.i18n.Tr "ui.directory"}}{{else if .Symlink}}{{$.i18n.Tr "repo.hg_symlink"}}{{else}}{{$.i18n.Tr "ui.file"}}{{end}}{{if .Executable}} · {{$.i18n.Tr "ui.executable"}}{{end}}</td>
+</tr>{{end}}</tbody>
 </table>
+</div>
+</section>
+
 {{if .ReadmeExist}}{{template "repo/view_file" .}}{{end}}

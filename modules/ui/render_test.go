@@ -326,3 +326,15 @@ func TestSharedShellConfiguredInstanceIdentity(t *testing.T) {
 		}
 	}
 }
+
+func TestSharedShellExploreLanguageContext(t *testing.T) {
+	old := setting.AppSubUrl
+	defer func() { setting.AppSubUrl = old }()
+	for _, sub := range []string{"", "/code"} {
+		shellFixture(t, sub, Workspace, &models.User{Name: "alice"}, false, false, false, "Explore", func(ctx *middleware.Context) {
+			ctx.Req.URL.Path = "/explore"
+			ctx.Req.URL.RawQuery = "q=hg&visibility=private&scope=mine&owner_id=2&page_size=10&page=2&token=secret"
+			ctx.Data["UILanguageExpected"] = sub + "/explore?owner_id=2&page=2&page_size=10&q=hg&scope=mine&visibility=private"
+		})
+	}
+}

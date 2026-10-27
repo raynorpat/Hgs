@@ -1,48 +1,32 @@
-{{with .Repository}}
-<div id="repo-header" class="clear">
-    <div class="container clear">
-        <h1 id="repo-header-name" class="left public">
-            <i class="mega-octicon octicon-{{if .IsPrivate}}lock{{else}}repo{{end}}"></i>
-            <a class="author" href="{{AppSubUrl}}/{{.Owner.Name}}">{{.Owner.Name}}</a>
-            <span class="divider">/</span>
-            <a class="repo text-bold" href="{{$.RepoLink}}">{{.Name}}</a>
-        </h1>
-        <ul id="repo-header-meta" class="right menu menu-line">
-            <li><details id="repo-header-download" class="drop">
-                <summary id="repo-header-download-btn">
-                    <span class="btn btn-black text-bold btn-radius">
-                        <i class="octicon octicon-cloud-download"></i> {{$.i18n.Tr "repo.hg_clone"}}
-                    </span>
-                </summary>
-                <div id="repo-header-download-drop" class="drop-down">
-                    <div id="repo-clone" class="clear">
-                        {{if not $.DisableSSH}}
-                        <button class="btn btn-blue left btn-left-radius" id="repo-clone-ssh" data-link="{{$.CloneLink.SSH}}">SSH</button>
-                        {{end}}
-                        <button class="btn {{if $.DisableSSH}}btn-blue{{else}}btn-gray{{end}} left" id="repo-clone-https" data-link="{{$.CloneLink.HTTPS}}">HTTPS</button>
-                        <input id="repo-clone-url" class="ipt ipt-disabled left" value="{{if $.DisableSSH}}{{$.CloneLink.HTTPS}}{{else}}{{$.CloneLink.SSH}}{{end}}" onclick="this.select();" readonly />
-                        <button id="repo-clone-copy" class="btn btn-black left btn-right-radius" data-copy-val="val" data-copy-from="#repo-clone-url" original-title="{{$.i18n.Tr "repo.click_to_copy"}}" data-original-title="{{$.i18n.Tr "repo.click_to_copy"}}" data-after-title="{{$.i18n.Tr "repo.copied"}}">{{$.i18n.Tr "repo.copy_link"}}</button>
-
-                    </div>
-                </div>
-            </details></li>
-            <li id="repo-header-watch">
-                <a id="repo-header-watch-btn" href="{{$.RepoLink}}/action/{{if $.IsWatchingRepo}}un{{end}}watch">
-                    <button class="btn btn-gray text-bold btn-radius">
-                        <i class="octicon octicon-eye-watch"></i>{{if $.IsWatchingRepo}}{{$.i18n.Tr "repo.unwatch"}}{{else}}{{$.i18n.Tr "repo.watch"}}{{end}}<span class="num">{{.NumWatches}}</span>
-                    </button>
-                </a>
-            </li>
-            <li id="repo-header-star">
-                <a id="repo-header-star-btn" href="{{$.RepoLink}}/action/{{if $.IsStaringRepo}}un{{end}}star">
-                    <button class="btn btn-gray text-bold btn-radius">
-                        <i class="octicon octicon-star"></i>{{if $.IsStaringRepo}}{{$.i18n.Tr "repo.unstar"}}{{else}}{{$.i18n.Tr "repo.star"}}{{end}}
-                        <span class="num">{{.NumStars}}</span>
-                    </button>
-                </a>
-            </li>
-
-        </ul>
-    </div>
+<header class="hg-page-header hg-repository-header">
+<div>
+<p class="hg-breadcrumb">
+<a href="{{AppSubUrl}}/{{.Owner.Name}}">{{.Owner.Name}}</a> /</p>
+<h1>
+<a href="{{.RepoLink}}">{{.Repository.Name}}</a>
+</h1>{{if .Repository.IsPrivate}}<span class="hg-badge">{{.i18n.Tr "ui.private"}}</span>{{end}}</div>
+<div class="hg-actions" data-repository-controls>
+<details class="hg-clone">
+<summary class="hg-button hg-button-primary">{{.i18n.Tr "repo.hg_clone"}}</summary>
+<div class="hg-clone-panel">
+<label for="hg-clone-url">{{.i18n.Tr "ui.clone_command"}}</label>
+<div class="hg-actions">{{if not .DisableSSH}}<button class="hg-button" type="button" data-clone-protocol data-clone-url="{{.CloneLink.SSH}}" aria-pressed="false">SSH</button>{{end}}<button class="hg-button" type="button" data-clone-protocol data-clone-url="{{.CloneLink.HTTPS}}" aria-pressed="true">HTTPS</button>
 </div>
-{{end}}
+<input id="hg-clone-url" data-clone-value readonly value="hg clone {{.CloneLink.HTTPS}}">
+<button class="hg-button" type="button" data-clone-copy data-copied="{{.i18n.Tr "repo.copied"}}" data-copy-failed="{{.i18n.Tr "ui.copy_failed"}}">{{.i18n.Tr "repo.copy_link"}}</button>
+<p role="status" data-clone-status>
+</p>
+</div>
+</details>
+{{if .IsSigned}}<form method="post" action="{{.RepoLink}}/action/{{if .IsWatchingRepo}}un{{end}}watch" data-prevent-duplicate>{{.CsrfTokenHtml}}<button type="submit" class="hg-button" aria-pressed="{{if .IsWatchingRepo}}true{{else}}false{{end}}">{{if .IsWatchingRepo}}{{.i18n.Tr "repo.unwatch"}}{{else}}{{.i18n.Tr "repo.watch"}}{{end}} <span>{{.Repository.NumWatches}}</span>
+</button>
+</form>
+<form method="post" action="{{.RepoLink}}/action/{{if .IsStaringRepo}}un{{end}}star" data-prevent-duplicate>{{.CsrfTokenHtml}}<button type="submit" class="hg-button" aria-pressed="{{if .IsStaringRepo}}true{{else}}false{{end}}">{{if .IsStaringRepo}}{{.i18n.Tr "repo.unstar"}}{{else}}{{.i18n.Tr "repo.star"}}{{end}} <span>{{.Repository.NumStars}}</span>
+</button>
+</form>{{else}}<a class="hg-button" href="{{AppSubUrl}}/user/login">{{.i18n.Tr "ui.sign_in"}} · {{.i18n.Tr "repo.watch"}} / {{.i18n.Tr "repo.star"}}</a>{{end}}
+</div>
+</header>
+<script defer src="{{AppSubUrl}}/js/app/prettify.js">
+</script>
+<script defer src="{{AppSubUrl}}/js/app/repository.js">
+</script>

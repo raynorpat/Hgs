@@ -1,9 +1,4 @@
-{{template "base/head" .}}
-{{template "base/navbar" .}}
-<div class="container" id="body">
-	<ul>
-	{{range .Repos}}
-	{{end}}
-	</ul>
-</div>
-{{template "base/footer" .}}
+{{template "shared/start" .}}<h1>{{.i18n.Tr "ui.repositories"}}</h1>
+<ul class="hg-repository-results">{{range .Repos}}<li>
+<a href="{{AppSubUrl}}/{{.Owner.Name}}/{{.Name}}">{{.Owner.Name}} / {{.Name}}</a>
+</li>{{else}}<li class="hg-empty">{{.i18n.Tr "ui.no_repositories"}}</li>{{end}}</ul>{{template "shared/end" .}}

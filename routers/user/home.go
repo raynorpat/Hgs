@@ -16,6 +16,7 @@ import (
 	"github.com/gogits/gogs/modules/base"
 	"github.com/gogits/gogs/modules/log"
 	"github.com/gogits/gogs/modules/middleware"
+	"github.com/gogits/gogs/modules/ui"
 )
 
 const (
@@ -29,6 +30,7 @@ func Dashboard(ctx *middleware.Context) {
 	ctx.Data["Title"] = ctx.Tr("dashboard")
 	ctx.Data["PageIsDashboard"] = true
 	ctx.Data["PageIsNews"] = true
+	ui.BuildShell(ctx, ui.Workspace, "overview")
 
 	var ctxUser *models.User
 	// Check context type.
@@ -53,6 +55,18 @@ func Dashboard(ctx *middleware.Context) {
 			ctx.Handle(500, "GetCollaborativeRepos", err)
 			return
 		}
+		readable := collaborates[:0]
+		for _, r := range collaborates {
+			access, err := models.RepositoryAccessFor(ctx.User.Id, r.Id)
+			if err != nil {
+				ctx.Handle(500, "Repository access", err)
+				return
+			}
+			if access.Read {
+				readable = append(readable, r)
+			}
+		}
+		collaborates = readable
 		ctx.Data["CollaborateCount"] = len(collaborates)
 		ctx.Data["CollaborativeRepos"] = collaborates
 	}
@@ -69,7 +83,18 @@ func Dashboard(ctx *middleware.Context) {
 		ctx.Handle(500, "GetRepositories", err)
 		return
 	}
-	ctx.Data["Repos"] = repos
+	readable := repos[:0]
+	for _, r := range repos {
+		access, err := models.RepositoryAccessFor(ctx.User.Id, r.Id)
+		if err != nil {
+			ctx.Handle(500, "Repository access", err)
+			return
+		}
+		if access.Read {
+			readable = append(readable, r)
+		}
+	}
+	ctx.Data["Repos"] = readable
 
 	// Get feeds.
 	actions, err := models.GetFeeds(ctxUser.Id, 0, false)
@@ -81,12 +106,24 @@ func Dashboard(ctx *middleware.Context) {
 	// Check access of private repositories.
 	feeds := make([]*models.Action, 0, len(actions))
 	for _, act := range actions {
-		if act.IsPrivate {
-			if has, _ := models.HasAccess(ctx.User.Id, act.RepoId,
-				models.READABLE); !has {
-				continue
-			}
+		// Historical privacy flags cannot authorize current repository activity.
+		access, err := models.RepositoryAccessFor(ctx.User.Id, act.RepoId)
+		if err != nil {
+			ctx.Handle(500, "Activity repository access", err)
+			return
 		}
+		if !access.Read {
+			continue
+		}
+		switch act.OpType {
+		case models.CREATE_REPO, models.CREATE_ISSUE, models.TRANSFER_REPO, models.COMMENT_ISSUE:
+		default:
+			continue
+		}
+		if (act.OpType == models.CREATE_ISSUE || act.OpType == models.COMMENT_ISSUE) && len(act.GetIssueInfos()) < 2 {
+			continue
+		}
+
 		// FIXME: cache results?
 		u, err := models.GetUserByName(act.ActUserName)
 		if err != nil {

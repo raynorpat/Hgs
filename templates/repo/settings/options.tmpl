@@ -1,127 +1,61 @@
-{{template "ng/base/head" .}}
-{{template "ng/base/header" .}}
-<div id="repo-wrapper">
-    {{template "repo/header" .}}
-	<div id="setting-wrapper" class="main-wrapper">
-	    <div id="repo-setting" class="container clear">
-	        {{template "repo/settings/nav" .}}
-	        <div class="grid-4-5 left">
-	            <div class="setting-content">
-	                {{template "ng/base/alert" .}}
-	                <div id="setting-content">
-	                    <div class="panel panel-radius">
-	                        <div class="panel-header">
-	                        	<strong>{{.i18n.Tr "repo.settings.basic_settings"}}</strong>
-	                        </div>
-	                        <form class="form form-align panel-body" id="repo-setting-form" action="{{.RepoLink}}/settings" method="post">
-	                            {{.CsrfTokenHtml}}
-                    			<input type="hidden" name="action" value="update">
-	                            <div class="field">
-	                                <label class="req" for="repo_name">{{.i18n.Tr "repo.repo_name"}}</label>
-	                                <input class="ipt ipt-large ipt-radius {{if .Err_RepoName}}ipt-error{{end}}" id="repo_name" name="repo_name" value="{{.Repository.Name}}" data-repo-name="{{.Repository.Name}}" required />
-	                            </div>
-	                            <div class="white-popup-block mfp-hide" id="change-reponame-modal">
-	                                <h1 class="text-red">{{.i18n.Tr "repo.settings.change_reponame"}}</h1>
-	                                <p>{{.i18n.Tr "repo.settings.change_reponame_desc"}}</p>
-	                                <br>
-	                                <button class="btn btn-red btn-large btn-radius" id="change-reponame-submit">{{.i18n.Tr "settings.continue"}}</button>
-	                                <button class="btn btn-large btn-radius popup-modal-dismiss">{{.i18n.Tr "settings.cancel"}}</button>
-	                            </div>
-					            <div class="field clear">
-					                <label class="left" for="desc">{{.i18n.Tr "repo.repo_desc"}}</label>
-					                <textarea class="ipt ipt-large ipt-radius {{if .Err_Description}}ipt-error{{end}}" id="desc" name="desc">{{.Repository.Description}}</textarea>
-					            </div>
-	                            <div class="field">
-	                                <label for="website">{{.i18n.Tr "repo.settings.site"}}</label>
-	                                <input class="ipt ipt-large ipt-radius {{if .Err_Website}}ipt-error{{end}}" id="website" name="site" type="url" value="{{.Repository.Website}}" />
-	                            </div>
-	                            <hr>	
-	                            <br>
-                            <div class="field">
-					                <label for="visibility">{{.i18n.Tr "repo.visibility"}}</label>
-					                <input class="ipt-chk" id="visibility" name="private" type="checkbox" {{if .Repository.IsPrivate}}checked{{end}} />
-					                <span>{{.i18n.Tr "repo.visiblity_helper" | Str2html}}</span>
-					            </div>
-                            <div class="field">
-	                                <span class="form-label"></span>
-	                                <button class="btn btn-green btn-large btn-radius" id="change-reponame-btn" href="#change-reponame-modal">{{.i18n.Tr "repo.settings.update_settings"}}</button>
-	                            </div>
-	                        </form>
-	                    </div>
-	                </div>
-	            </div>
-	            <br>
-	            <div class="setting-content">
-	                <div id="setting-content">
-	                    <div id="user-profile-setting-content" class="panel panel-warning panel-radius">
-	                        <div class="panel-header">
-	                        	<strong>{{.i18n.Tr "repo.settings.danger_zone"}}</strong>
-	                        </div>
-	                        <div class="panel-body">
-	                        	<div class="repo-setting-zone">
-	                        	    <button class="btn btn-gray btn-large btn-radius right" id="transfer-repo-btn" href="#transfer-repo-modal">{{.i18n.Tr "repo.settings.transfer"}}</button>
-	                        	    <dt>{{.i18n.Tr "repo.settings.transfer"}}</dt>
-	                        	    <dl>{{.i18n.Tr "repo.settings.transfer_desc"}}</dl>
-				                    <div class="white-popup-block mfp-hide" id="transfer-repo-modal">
-				                        <h1 class="text-red">{{.i18n.Tr "repo.settings.transfer"}}</h1>
-				                        {{.i18n.Tr "repo.settings.transfer_notices" | Str2html}}
-				                        <br>
-									    <form class="form-align form panel container panel-radius" id="transfer-repo-form" action="{{.RepoLink}}/settings" method="post">
-									        {{.CsrfTokenHtml}}
-	                    					<input type="hidden" name="action" value="transfer">
-									        <div class="panel-content">
-					                            <div class="field">
-					                                <label class="req" for="repo_name">{{.i18n.Tr "repo.repo_name"}}</label>
-					                                <input class="ipt ipt-large ipt-radius" id="repo_name" name="repo_name" required />
-					                            </div>
-					                            <div class="field">
-									                <label class="req" for="new_owner_name">{{.i18n.Tr "repo.settings.transfer_owner"}}</label>
-									                <input class="ipt ipt-large ipt-radius" id="new_owner_name" name="new_owner_name" required/>
-					                            </div>
-					                            <div class="field">
-									                <label class="req" for="password">{{.i18n.Tr "password"}}</label>
-									                <input class="ipt ipt-large ipt-radius" id="password" name="password" type="password" required/>
-					                            </div>
-									        </div>
-									    </form>
-				                        <br>
-								        <button class="btn btn-large btn-red btn-radius" id="transfer-repo-submit">{{.i18n.Tr "repo.settings.make_transfer"}}</button>
-				                        <button class="btn btn-large btn-radius popup-modal-dismiss">{{.i18n.Tr "settings.cancel"}}</button>
-				                    </div>
-	                        	</div>
-	                        	<hr>
-	                        	<div class="repo-setting-zone">
-	                        	    <button class="btn btn-gray btn-large btn-radius pull-right" id="delete-repo-btn" href="#delete-repo-modal">{{.i18n.Tr "repo.settings.delete"}}</button>
-	                        	    <dt>{{.i18n.Tr "repo.settings.delete"}}</dt>
-	                        	    <dl>{{.i18n.Tr "repo.settings.delete_desc"}}</dl>
-				                    <div class="white-popup-block mfp-hide" id="delete-repo-modal">
-				                        <h1 class="text-red">{{.i18n.Tr "repo.settings.delete"}}</h1>
-				                        <br>
-									    <form class="form-align form panel container panel-radius" id="delete-repo-form" action="{{.RepoLink}}/settings" method="post">
-									        {{.CsrfTokenHtml}}
-	                    					<input type="hidden" name="action" value="delete">
-									        <div class="panel-content">
-					                            <div class="field">
-					                                <label class="req" for="repo_name">{{.i18n.Tr "repo.repo_name"}}</label>
-					                                <input class="ipt ipt-large ipt-radius" id="repo_name" name="repo_name" required />
-					                            </div>
-					                            <div class="field">
-									                <label class="req" for="password">{{.i18n.Tr "password"}}</label>
-									                <input class="ipt ipt-large ipt-radius" id="password" name="password" type="password" required/>
-					                            </div>
-									        </div>
-									    </form>
-				                        <br>
-								        <button class="btn btn-large btn-red btn-radius" id="delete-repo-submit">{{.i18n.Tr "repo.settings.confirm_delete"}}</button>
-				                        <button class="btn btn-large btn-radius popup-modal-dismiss">{{.i18n.Tr "settings.cancel"}}</button>
-				                    </div>
-	                        	</div>
-	                        </div>
-	                    </div>
-	                </div>
-	            </div>
-	        </div>
-	    </div>
-    </div>
+{{template "shared/start" .}}{{template "repo/header" .}}{{template "repo/settings/nav" .}}<section class="hg-settings">
+<h2>{{.i18n.Tr "repo.settings.basic_settings"}}</h2>
+<form class="hg-form" action="{{.RepoLink}}/settings" method="post" data-prevent-duplicate data-rename-form data-original-name="{{.Repository.Name}}" data-confirm-message="{{.i18n.Tr "repo.settings.change_reponame_desc"}}">{{.CsrfTokenHtml}}<input type="hidden" name="action" value="update">
+<div class="hg-field">
+<label for="repo_name">{{.i18n.Tr "repo.repo_name"}}</label>
+<input id="repo_name" name="repo_name" value="{{.UIRepoName}}" required{{if .Err_RepoName}} aria-invalid="true"{{end}}>
 </div>
-{{template "ng/base/footer" .}}
+<div class="hg-field">
+<label for="desc">{{.i18n.Tr "repo.repo_desc"}}</label>
+<textarea id="desc" name="desc"{{if .Err_Description}} aria-invalid="true"{{end}}>{{.UIRepoDescription}}</textarea>
+</div>
+<div class="hg-field">
+<label for="website">{{.i18n.Tr "repo.settings.site"}}</label>
+<input id="website" name="site" type="url" value="{{.UIRepoWebsite}}"{{if .Err_Website}} aria-invalid="true"{{end}}>
+</div>
+<div class="hg-field">
+<label for="visibility">
+<input id="visibility" type="checkbox" name="private"{{if .UIRepoPrivate}} checked{{end}}> {{.i18n.Tr "ui.private"}}</label>
+<p class="hg-meta">{{.i18n.Tr "repo.visiblity_helper" | Str2html}}</p>
+</div>
+<button class="hg-button hg-button-primary" type="submit">{{.i18n.Tr "repo.settings.update_settings"}}</button>
+</form>
+<section class="hg-danger-zone">
+<h2>{{.i18n.Tr "repo.settings.danger_zone"}}</h2>
+<details>
+<summary class="hg-button hg-button-danger">{{.i18n.Tr "repo.settings.transfer"}}</summary>
+<p>{{.i18n.Tr "repo.settings.transfer_desc"}}</p>
+<div>{{.i18n.Tr "repo.settings.transfer_notices" | Str2html}}</div>
+<form class="hg-form" action="{{.RepoLink}}/settings" method="post" data-prevent-duplicate data-confirm-message="{{.i18n.Tr "repo.settings.transfer_desc"}}">{{.CsrfTokenHtml}}<input type="hidden" name="action" value="transfer">
+<div class="hg-field">
+<label for="transfer-name">{{.i18n.Tr "repo.repo_name"}}</label>
+<input id="transfer-name" name="repo_name" required>
+</div>
+<div class="hg-field">
+<label for="new-owner">{{.i18n.Tr "repo.settings.transfer_owner"}}</label>
+<input id="new-owner" name="new_owner_name" required>
+</div>
+<div class="hg-field">
+<label for="transfer-password">{{.i18n.Tr "password"}}</label>
+<input id="transfer-password" name="password" type="password" autocomplete="current-password" required>
+</div>
+<button type="submit" class="hg-button hg-button-danger">{{.i18n.Tr "repo.settings.make_transfer"}}</button>
+</form>
+</details>
+<details>
+<summary class="hg-button hg-button-danger">{{.i18n.Tr "repo.settings.delete"}}</summary>
+<p>{{.i18n.Tr "repo.settings.delete_desc"}}</p>
+<form class="hg-form" action="{{.RepoLink}}/settings" method="post" data-prevent-duplicate data-confirm-message="{{.i18n.Tr "repo.settings.delete_desc"}}">{{.CsrfTokenHtml}}<input type="hidden" name="action" value="delete">
+<div class="hg-field">
+<label for="delete-name">{{.i18n.Tr "repo.repo_name"}}</label>
+<input id="delete-name" name="repo_name" required>
+</div>
+<div class="hg-field">
+<label for="delete-password">{{.i18n.Tr "password"}}</label>
+<input id="delete-password" name="password" type="password" autocomplete="current-password" required>
+</div>
+<button type="submit" class="hg-button hg-button-danger">{{.i18n.Tr "repo.settings.confirm_delete"}}</button>
+</form>
+</details>
+</section>
+</section>{{template "shared/end" .}}

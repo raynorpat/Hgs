@@ -1,106 +1,25 @@
-{{template "ng/base/head" .}}
-{{template "ng/base/header" .}}
-{{template "user/dashboard/nav" .}}
-<div id="dashboard-wrapper">
-    <div id="dashboard" class="container">
-        {{template "ng/base/alert" .}}
-        <div id="dashboard-news" class="left grid-2-3">
-            {{template "user/dashboard/feeds" .}}
-        </div>
-        <div class="right grid-1-3" id="dashboard-sidebar">
-            <ul id="dashboard-sidebar-menu" class="menu menu-line">
-                <li class="js-tab-nav js-tab-nav-show first" data-tab-target="#dashboard-my-repo"><a href="#">{{.i18n.Tr "repository"}}</a></li>
-                {{if not .ContextUser.IsOrganization}}
-                <li class="js-tab-nav" data-tab-target="#dashboard-my-org"><a href="#">{{.i18n.Tr "organization"}}</a></li>
-                {{end}}
-                <li class="drop right">
-                    <button class="btn btn-green text-bold" id="dashboard-new-repo">
-                        <i class="octicon octicon-plus"></i>
-                    </button>
-                    <ul class="menu menu-vertical drop-down" id="dashboard-new-repo-menu">
-                        <li><a href="{{AppSubUrl}}/repo/create"><i class="octicon octicon-repo-create"></i>{{.i18n.Tr "new_repo"}}</a></li>
-                        <li><a href="{{AppSubUrl}}/org/create"><i class="octicon octicon-organization"></i>{{.i18n.Tr "new_org"}}</a></li>
-                    </ul>
-                </li>
-            </ul>
-            <div class="panel" id="dashboard-my-repo">
-                <div class="panel-header">
-                    <h4 class="left">{{.i18n.Tr "home.my_repos"}}
-                        <span class="repo-count label label-gray label-radius">{{.ContextUser.NumRepos}}</span>
-                    </h4>
-                    &nbsp;
-                </div>
-                <div class="panel-body">
-                    <ul class="list-no-style">
-                        {{range .Repos}}
-                        <li {{if .IsPrivate}}class="private"{{end}}>
-                            <a href="{{AppSubUrl}}/{{$.ContextUser.Name}}/{{.Name}}">
-                                <i class="octicon octicon-{{if .IsPrivate}}lock{{else}}repo{{end}}"></i>
-                                <span class="repo-name">
-                                    <strong class="repo">{{.Name}}</strong>
-                                </span>
-                                <span class="right repo-star">
-                                    <i class="octicon octicon-star"></i>{{.NumStars}}
-                                </span>
-                            </a>
-                        </li>
-                        {{end}}
-                    </ul>
-                </div>
-                {{if not .ContextUser.IsOrganization}}
-                <div class="panel-header repo-contrib-header">
-                    <h4 class="text-bold">{{.i18n.Tr "home.collaborative_repos"}}
-                        <span class="repo-count label label-gray label-radius">{{.CollaborateCount}}</span>
-                    </h4>
-                </div>
-                <div class="panel-body">
-                    <ul class="list-no-style">
-                        {{range .CollaborativeRepos}}
-                        <li {{if .IsPrivate}}class="private"{{end}}>
-                            <a href="{{.Owner.Name}}/{{.Name}}">
-                                <i class="octicon octicon-{{if .IsPrivate}}lock{{else}}repo{{end}}"></i>
-                                <span class="repo-name">
-                                    <span class="repo-name-prefix">{{.Owner.Name}} / </span>
-                                    <strong class="repo">{{.Name}}</strong>
-                                </span>
-                                <span class="right repo-star">
-                                    <i class="octicon octicon-star"></i>{{.NumStars}}
-                                </span>
-                            </a>
-                        </li>
-                        {{end}}
-                    </ul>
-                </div>
-                {{end}}
-            </div>
-            {{if not .ContextUser.IsOrganization}}
-            <div class="panel" id="dashboard-my-org">
-                <div class="panel-header">
-                    <h4 class="text-bold">{{.i18n.Tr "home.my_orgs"}}
-                        <span class="repo-count label label-gray label-radius">{{.ContextUser.GetOrganizationCount}}</span>
-                    </h4>
-                </div>
-                <div class="panel-body">
-                    <ul class="list-no-style">
-                        {{range .ContextUser.Orgs}}
-                        <li>
-                            <a href="{{AppSubUrl}}/{{.Name}}">
-                                <i class="octicon octicon-organization"></i>
-                                <span class="repo-name">
-                                    <strong class="repo">{{.Name}}</strong>
-                                </span>
-                                <span class="right repo-star">
-                                    <i class="octicon octicon-repo"></i>{{.NumRepos}}
-                                </span>
-                            </a>
-                        </li>
-                        {{end}}
-                    </ul>
-                </div>
-            </div>
-            {{end}}
-
-        </div>
-    </div>
+{{template "shared/start" .}}{{template "user/dashboard/nav" .}}<div class="hg-workspace-grid">
+<section>
+<h2>{{.i18n.Tr "news_feed"}}</h2>{{template "user/dashboard/feeds" .}}</section>
+<div>
+<section id="repositories">
+<div class="hg-page-header">
+<h2>{{.i18n.Tr "home.my_repos"}}</h2>
+<a class="hg-button hg-button-primary" href="{{AppSubUrl}}/repo/create{{if .ContextUser.IsOrganization}}?org={{.ContextUser.Id}}{{end}}">{{.i18n.Tr "new_repo"}}</a>
 </div>
-{{template "ng/base/footer" .}}
+<ul class="hg-repository-results">{{range .Repos}}<li>
+<a href="{{AppSubUrl}}/{{$.ContextUser.Name}}/{{.Name}}">
+<strong>{{.Name}}</strong>
+</a>{{if .IsPrivate}} <span class="hg-badge">{{$.i18n.Tr "ui.private"}}</span>{{end}}<p>{{.Description}}</p>
+</li>{{else}}<li class="hg-empty">{{.i18n.Tr "ui.no_owned_repositories"}}</li>{{end}}</ul>{{if not .ContextUser.IsOrganization}}<h2>{{.i18n.Tr "home.collaborative_repos"}}</h2>
+<ul class="hg-repository-results">{{range .CollaborativeRepos}}<li>
+<a href="{{AppSubUrl}}/{{.Owner.Name}}/{{.Name}}">{{.Owner.Name}} / <strong>{{.Name}}</strong>
+</a>{{if .IsPrivate}} <span class="hg-badge">{{$.i18n.Tr "ui.private"}}</span>{{end}}</li>{{else}}<li class="hg-empty">{{.i18n.Tr "ui.no_collaborative_repositories"}}</li>{{end}}</ul>{{end}}</section>
+<section id="organizations">
+<h2>{{.i18n.Tr "home.my_orgs"}}</h2>
+<ul class="hg-repository-results">{{range .Orgs}}<li>
+<a href="{{AppSubUrl}}/org/{{.Name}}">{{.Name}}</a>
+</li>{{else}}<li class="hg-empty">{{.i18n.Tr "ui.no_organizations"}}</li>{{end}}</ul>
+</section>
+</div>
+</div>{{template "shared/end" .}}

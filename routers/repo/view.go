@@ -8,9 +8,11 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Unknwon/macaron"
 	"github.com/gogits/gogs/modules/base"
 	"github.com/gogits/gogs/modules/hg"
 	"github.com/gogits/gogs/modules/middleware"
+	"github.com/gogits/gogs/modules/ui"
 )
 
 const HOME base.TplName = "repo/home"
@@ -32,11 +34,26 @@ func referenceRows(link string, refs []hg.Reference) []hgRefRow {
 	rows := make([]hgRefRow, 0, len(refs))
 	for _, r := range refs {
 		q := urlValues(r.Kind, r.Name)
-		rows = append(rows, hgRefRow{string(r.Kind), r.Name, string(r.Node), middleware.HgPathURL(link, "src", r.Node, ""), link + "?" + q, r.Closed})
+		sourceURL := middleware.HgPathURL(link, "src", r.Node, "")
+		selectionURL := link + "?" + q
+		// A branch may have several heads. Choosing the displayed row must choose
+		// that exact head; resolving its name again would silently pick another.
+		if r.Kind == hg.RefBranch {
+			selectionURL = sourceURL
+		}
+		rows = append(rows, hgRefRow{string(r.Kind), r.Name, string(r.Node), sourceURL, selectionURL, r.Closed})
 	}
 	return rows
 }
+
+// PrepareRepositoryUI runs before RepoRef so empty repositories use the same shell.
+// It only composes prepared authority; it never opens Mercurial history.
+func PrepareRepositoryUI(active string) macaron.Handler {
+	return func(ctx *middleware.Context) { ui.BuildShell(ctx, ui.Repository, active) }
+}
+
 func Home(ctx *middleware.Context) {
+	ui.BuildShell(ctx, ui.Repository, "source")
 	ctx.Data["Title"] = ctx.Repo.Repository.Name
 	ctx.Data["IsRepoToolbarSource"] = true
 	p := ctx.Repo.TreeName
