@@ -50,6 +50,8 @@ At roughly 800px, replace the expanded context navigation with a labeled menu tr
 | Repository | Back to workspace, repository identity, Source, Changesets, Branches, Pull requests, Issues, Settings |
 | Administration | Back to workspace, Overview, Users, Organizations, Repositories, Authentication, Configuration, Notices, Monitoring |
 
+The active navigation item fills `--color-nav-active`, sets its label in bold `--color-on-strong`, and shows a `--border-active` `--color-on-strong` bar on its left edge (11.1:1), so it is never distinguished by fill alone; hover shows the fill without the bar. Mark it with `aria-current="page"`.
+
 The workspace repository list emphasizes owned/collaborative repositories. Explore is the server-wide catalog of all repositories the viewer may read. Permission-dependent links follow the shared authorization service. Hidden controls are not an authorization mechanism.
 
 ## Color tokens
@@ -121,7 +123,7 @@ Long repository/issue titles wrap in primary content. Truncate only constrained 
 | --- | --- |
 | Spacing | `--space-1: 4px`, `--space-2: 8px`, `--space-3: 12px`, `--space-4: 16px`, `--space-5: 24px`, `--space-6: 32px`, `--space-7: 40px`, `--space-8: 48px` |
 | Radius | `--radius-control: 3px`, `--radius-panel: 4px`, `--radius-popout: 6px`, `--radius-round: 50%` |
-| Borders | `--border-divider: 1px` ordinary divider; `--border-selected: 2px` selected-tab indicator |
+| Borders | `--border-divider: 1px` ordinary divider; `--border-selected: 2px` selected-tab indicator; `--border-active: 3px` active-navigation indicator |
 | Popout shadow | `--shadow-popout: 0 8px 28px rgb(9 30 66 / 25%)` |
 | Focus | `--focus-width: 3px` outline with `--focus-offset: 2px`; inverse focus color on the rail and context navigation |
 | Sizes | `--control-height: 36px` buttons/inputs/selects; `--utility-target: 40px`, `--utility-target-coarse: 44px`; `--icon-size: 20px`, `--icon-size-inline: 16px` |
