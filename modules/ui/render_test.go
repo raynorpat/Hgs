@@ -44,7 +44,15 @@ func shellFixture(t *testing.T, sub string, kind ContextKind, user *models.User,
 		if _, ok := c.Data["Shell"]; !ok {
 			t.Fatal("missing Shell view data")
 		}
-		c.HTML(200, "shared/start")
+		start, err := c.HTMLString("shared/start", c.Data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		end, err := c.HTMLString("shared/end", c.Data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.Write([]byte(start + end))
 	})
 	r := httptest.NewRecorder()
 	m.ServeHTTP(r, httptest.NewRequest("GET", sub+"/?q=hg&page=2&token=private", nil))
@@ -283,6 +291,38 @@ func TestSharedShellAlerts(t *testing.T) {
 	for _, want := range []string{`role="alert"><strong>Error:</strong>`, `role="status"><strong>Success:</strong>`, `role="status"><strong>Information:</strong>`, `&lt;b&gt;Invalid input&lt;/b&gt;`} {
 		if !strings.Contains(html, want) {
 			t.Errorf("missing alert semantics: %s", want)
+		}
+	}
+}
+
+func TestSharedShellConfiguredInstanceIdentity(t *testing.T) {
+	oldName, oldSub := setting.AppName, setting.AppSubUrl
+	defer func() { setting.AppName = oldName; setting.AppSubUrl = oldSub }()
+	for _, name := range []string{"Research laboratory", `Research <img src=x onerror="alert(1)"> & development`} {
+		setting.AppName = name
+		escaped := template.HTMLEscapeString(name)
+		for _, kind := range []ContextKind{Workspace, Anonymous} {
+			for _, sub := range []string{"", "/code"} {
+				t.Run(string(kind)+sub+name, func(t *testing.T) {
+					_, html := shellFixture(t, sub, kind, &models.User{Name: "alice"}, false, false, false, "Overview")
+					if !strings.Contains(html, "<title>Overview · "+escaped+" · Hgs</title>") {
+						t.Error("browser title lost configured instance or product identity")
+					}
+					footer := html[strings.Index(html, "<footer"):]
+					if !strings.Contains(footer, escaped) || !strings.Contains(footer, "Hgs") || !strings.Contains(footer, "© 2015 GoGits") {
+						t.Error("footer lost configured instance, product identity or legal attribution")
+					}
+					if kind == Anonymous {
+						header := html[strings.Index(html, "<header"):strings.Index(html, "</header>")]
+						if !strings.Contains(header, escaped) || !strings.Contains(header, "Hgs") {
+							t.Error("reduced header lost configured instance or product identity")
+						}
+					}
+					if strings.Contains(html, "<img src=x") {
+						t.Error("configured instance name injected markup")
+					}
+				})
+			}
 		}
 	}
 }

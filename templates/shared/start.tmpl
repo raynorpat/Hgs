@@ -1,7 +1,7 @@
 {{template "shared/head" .}}
 <body class="hg-app{{if eq .Shell.Kind "anonymous"}} hg-reduced{{end}}" data-hg-shell>
 <a class="hg-skip" href="#hg-main">{{.i18n.Tr "ui.skip_content"}}</a>
-{{if eq .Shell.Kind "anonymous"}}<header class="hg-public-header"><a href="{{.Shell.SubURL}}/" class="hg-brand"><svg class="hg-icon" aria-hidden="true"><use href="{{.Shell.SubURL}}/img/ui-icons.svg#beaker"/></svg> Hgs</a><span>{{.i18n.Tr "ui.mercurial_service"}}</span></header>{{else}}
+{{if eq .Shell.Kind "anonymous"}}<header class="hg-public-header"><a href="{{.Shell.SubURL}}/" class="hg-brand"><svg class="hg-icon" aria-hidden="true"><use href="{{.Shell.SubURL}}/img/ui-icons.svg#beaker"/></svg> Hgs{{if and (AppName) (ne (AppName) "Hgs")}} · {{AppName}}{{end}}</a><span>{{.i18n.Tr "ui.mercurial_service"}}</span></header>{{else}}
 {{template "shared/rail" .}}
 <button class="hg-menu hg-button" type="button" data-drawer="hg-context" aria-haspopup="dialog" aria-controls="hg-context" aria-expanded="false">{{.i18n.Tr "ui.menu"}}</button>
 <div class="hg-backdrop" data-drawer-backdrop hidden></div>
