@@ -563,3 +563,33 @@ func localTagTombstones(source string, candidates map[string]NodeID) (map[string
 	}
 	return result, nil
 }
+
+// ValidateReviewSnapshot validates the immutable marker and pins without a
+// native log/diff command. It conveys no live repository access or merge grant.
+// The caller owns the allocation and must prevent concurrent removal/mutation.
+func ValidateReviewSnapshot(s ReviewSnapshot) error {
+	_, err := loadReviewMetadata(s)
+	if err != nil {
+		return err
+	}
+	if err := reviewPath(filepath.Join(s.Path, ".hg")); err != nil {
+		return err
+	}
+	// Raw cat uses repository-aware execution, so only the application-written
+	// private configuration is accepted (no copied hooks or extension config).
+	for _, name := range []string{"hgrc", "hgrc-not-shared"} {
+		path := filepath.Join(s.Path, ".hg", name)
+		fi, err := os.Lstat(path)
+		if name == "hgrc-not-shared" && os.IsNotExist(err) {
+			continue
+		}
+		if err != nil || !fi.Mode().IsRegular() || fi.Size() > 1024 {
+			return ErrUnsafeCheckout
+		}
+		content, err := os.ReadFile(path)
+		if err != nil || string(content) != "# Private Gogs review artifact.\n" {
+			return ErrUnsafeCheckout
+		}
+	}
+	return nil
+}

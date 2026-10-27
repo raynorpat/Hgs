@@ -106,10 +106,12 @@ var (
 
 	// Mercurial settings.
 	Mercurial struct {
-		Executable     string
-		ConfigPath     string
-		MaxProcesses   int
-		SessionTimeout time.Duration
+		Executable             string
+		ReviewArtifactRoot     string
+		ReviewOperationTimeout time.Duration
+		ConfigPath             string
+		MaxProcesses           int
+		SessionTimeout         time.Duration
 	}
 
 	// I18n settings.
@@ -323,6 +325,11 @@ func NewConfigContext() {
 	}
 	Mercurial.MaxProcesses = sec.Key("MAX_PROCESSES").MustInt(8)
 	Mercurial.SessionTimeout = time.Duration(sec.Key("SESSION_TIMEOUT").MustInt(30)) * time.Minute
+	Mercurial.ReviewArtifactRoot = sec.Key("REVIEW_ARTIFACT_ROOT").MustString(filepath.Join(workDir, "data", "pull-comparisons"))
+	if !filepath.IsAbs(Mercurial.ReviewArtifactRoot) {
+		Mercurial.ReviewArtifactRoot = filepath.Join(workDir, Mercurial.ReviewArtifactRoot)
+	}
+	Mercurial.ReviewOperationTimeout = time.Duration(sec.Key("REVIEW_OPERATION_TIMEOUT").MustInt(30)) * time.Minute
 
 	Langs = Cfg.Section("i18n").Key("LANGS").Strings(",")
 	Names = Cfg.Section("i18n").Key("NAMES").Strings(",")

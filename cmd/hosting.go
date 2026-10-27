@@ -5,10 +5,12 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/gogits/gogs/modules/collaboration"
 	"github.com/gogits/gogs/modules/hg"
 	"github.com/gogits/gogs/modules/hosting"
 	"github.com/gogits/gogs/modules/middleware"
@@ -44,12 +46,19 @@ func (h *hostingHolder) Initialize() error {
 			h.err = errors.New("hosting: server shutting down")
 			return
 		}
-		cfg := hosting.Config{Mercurial: hg.Config{Executable: setting.Mercurial.Executable, ConfigPath: setting.Mercurial.ConfigPath, MaxProcesses: setting.Mercurial.MaxProcesses, SessionTimeout: setting.Mercurial.SessionTimeout}, RepositoryRoot: setting.RepoRootPath, HostKeyPath: setting.SSHHostKeyPath, PublicURL: setting.AppUrl, AppSubURL: setting.AppSubUrl, SSHAddress: setting.SSHAddress, SSHAdvertisedHost: setting.SSHAdvertisedHost, SSHAdvertisedPort: setting.SSHPort, TrustedProxyCIDRs: setting.TrustedProxyCIDRs}
+		cfg := hosting.Config{Mercurial: hg.Config{Executable: setting.Mercurial.Executable, ConfigPath: setting.Mercurial.ConfigPath, MaxProcesses: setting.Mercurial.MaxProcesses, SessionTimeout: setting.Mercurial.SessionTimeout}, RepositoryRoot: setting.RepoRootPath, ReviewArtifactRoot: setting.Mercurial.ReviewArtifactRoot, ReviewOperationTimeout: setting.Mercurial.ReviewOperationTimeout, HostKeyPath: setting.SSHHostKeyPath, PublicURL: setting.AppUrl, AppSubURL: setting.AppSubUrl, SSHAddress: setting.SSHAddress, SSHAdvertisedHost: setting.SSHAdvertisedHost, SSHAdvertisedPort: setting.SSHPort, TrustedProxyCIDRs: setting.TrustedProxyCIDRs}
 		if setting.DisableSSH {
 			cfg.SSHAddress = ""
 		}
 		service, err := hosting.New(context.Background(), cfg)
 		if err != nil {
+			h.err = err
+			return
+		}
+		if err := collaboration.ReconcileComparisons(context.Background(), service, filepath.Join(setting.StaticRootPath, "public"), setting.AvatarUploadPath); err != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			service.Shutdown(ctx)
 			h.err = err
 			return
 		}

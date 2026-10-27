@@ -97,3 +97,26 @@ func TestHostingDispatchWithHGSubURL(t *testing.T) {
 		t.Fatal("hg app sub-URL entered browser middleware")
 	}
 }
+
+func TestHostingComparisonRootFailureBeforePublication(t *testing.T) {
+	a := newViewApp(t)
+	if err := a.holder.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// A new initialization must not expose a transport when comparison storage
+	// overlaps published repositories. Existing disposable stores stay intact.
+	setting.Mercurial.ReviewArtifactRoot = filepath.Join(setting.RepoRootPath, "comparisons")
+	holder := &hostingHolder{errors: make(chan error, 1)}
+	if err := holder.Initialize(); err == nil {
+		t.Fatal("unsafe comparison root accepted")
+	}
+	if holder.Service() != nil || holder.sshListener != nil {
+		t.Fatal("service/listener published before recovery")
+	}
+	if err := holder.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(setting.RepoRootPath); err != nil {
+		t.Fatal(err)
+	}
+}

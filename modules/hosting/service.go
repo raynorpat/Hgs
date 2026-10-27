@@ -28,6 +28,8 @@ import (
 type Provider interface{ Service() *Service }
 
 type Config struct {
+	ReviewArtifactRoot                                                               string
+	ReviewOperationTimeout                                                           time.Duration
 	Mercurial                                                                        hg.Config
 	RepositoryRoot, HostKeyPath, PublicURL, AppSubURL, SSHAddress, SSHAdvertisedHost string
 	SSHAdvertisedPort                                                                int
@@ -93,6 +95,9 @@ func (s *Service) configure(cfg Config) error {
 			return fmt.Errorf("hosting: invalid proxy CIDR: %w", err)
 		}
 		s.proxies = append(s.proxies, network)
+	}
+	if cfg.ReviewOperationTimeout < 0 {
+		return errors.New("hosting: invalid review operation timeout")
 	}
 	s.cfg = cfg
 	return nil
@@ -204,9 +209,16 @@ func New(ctx context.Context, cfg Config) (s *Service, err error) {
 	return s, nil
 }
 
-func (s *Service) Runner() *hg.Runner     { return s.runner }
-func (s *Service) RepositoryRoot() string { return s.cfg.RepositoryRoot }
-func (s *Service) AppSubURL() string      { return s.cfg.AppSubURL }
+func (s *Service) Runner() *hg.Runner         { return s.runner }
+func (s *Service) RepositoryRoot() string     { return s.cfg.RepositoryRoot }
+func (s *Service) ReviewArtifactRoot() string { return s.cfg.ReviewArtifactRoot }
+func (s *Service) ReviewOperationTimeout() time.Duration {
+	if s.cfg.ReviewOperationTimeout > 0 {
+		return s.cfg.ReviewOperationTimeout
+	}
+	return hg.DefaultSessionTimeout
+}
+func (s *Service) AppSubURL() string { return s.cfg.AppSubURL }
 
 // HTTP serves already-normalized repository transport paths; routers/hg owns external URL parsing.
 func (s *Service) HTTP() http.Handler {

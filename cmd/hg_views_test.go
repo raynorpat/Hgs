@@ -79,6 +79,7 @@ func newViewAppPrefix(t *testing.T, executable, subURL string) *viewApp {
 	}
 	setting.Mercurial.Executable = executable
 	setting.Mercurial.ConfigPath = filepath.Join(root, "config", "hgrc")
+	setting.Mercurial.ReviewArtifactRoot = filepath.Join(root, "comparisons")
 	setting.Mercurial.MaxProcesses = 2
 	setting.Mercurial.SessionTimeout = time.Minute
 	setting.RepoRootPath = filepath.Join(root, "repos")

@@ -56,6 +56,7 @@ func TestHostingNativeComposition(t *testing.T) {
 	setting.Service.RequireSignInView = false
 	setting.Mercurial.Executable = hgExe
 	setting.Mercurial.ConfigPath = filepath.Join(root, "config", "hgrc")
+	setting.Mercurial.ReviewArtifactRoot = filepath.Join(root, "comparisons")
 	setting.Mercurial.MaxProcesses = 2
 	setting.Mercurial.SessionTimeout = time.Minute
 	setting.RepoRootPath = filepath.Join(root, "repos")

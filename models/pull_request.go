@@ -37,16 +37,16 @@ var (
 // repository ID; selections are serialized hg.ReviewSelection data, not revsets.
 // CurrentComparisonID == 0 honestly denotes an unprepared comparison.
 type PullRequest struct {
-	ID                  int64  `xorm:"pk autoincr 'id'"`
-	TargetRepoID        int64  `xorm:"unique(pull_target_number) 'target_repo_id'"`
-	SourceRepoID        int64  `xorm:"index 'source_repo_id'"`
-	Number              int64  `xorm:"unique(pull_target_number)"`
-	AuthorID            int64  `xorm:"index 'author_id'"`
-	Title               string `xorm:"VARCHAR(255)"`
-	Body                string `xorm:"MEDIUMTEXT"`
-	SourceSelection     string `xorm:"TEXT"`
-	TargetSelection     string `xorm:"TEXT"`
-	CurrentComparisonID int64
+	ID                  int64     `xorm:"pk autoincr 'id'"`
+	TargetRepoID        int64     `xorm:"unique(pull_target_number) 'target_repo_id'"`
+	SourceRepoID        int64     `xorm:"index 'source_repo_id'"`
+	Number              int64     `xorm:"unique(pull_target_number)"`
+	AuthorID            int64     `xorm:"index 'author_id'"`
+	Title               string    `xorm:"VARCHAR(255)"`
+	Body                string    `xorm:"MEDIUMTEXT"`
+	SourceSelection     string    `xorm:"TEXT"`
+	TargetSelection     string    `xorm:"TEXT"`
+	CurrentComparisonID int64     `xorm:"'current_comparison_id'"`
 	State               PullState `xorm:"VARCHAR(16) index"`
 	Created             time.Time `xorm:"created"`
 	Updated             time.Time `xorm:"updated"`

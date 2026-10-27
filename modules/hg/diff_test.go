@@ -19,6 +19,7 @@ func TestDiffBoundsBinaryAndLongLines(t *testing.T) {
 		{"many lines", bytes.Repeat([]byte("x\n"), MaxDiffLines+1), true, false},
 		{"exact bytes", bytes.Repeat([]byte("x"), MaxDiffBytes), false, false},
 		{"exact lines", bytes.Repeat([]byte("x\n"), MaxDiffLines), false, false},
+		{"line limit then partial line", append(bytes.Repeat([]byte("x\n"), MaxDiffLines), []byte("tail")...), true, false},
 		{"binary-like content", []byte("+Binary file x has changed\n"), false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
