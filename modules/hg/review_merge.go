@@ -24,7 +24,8 @@ func (r *Runner) reviewManifest(ctx context.Context, path string, node NodeID) (
 }
 
 // Deliberately conservative: symlinks and subrepositories remain browsable but
-// require local integration. No repository-controlled nested update is attempted.
+// require local integration when a two-parent merge materializes files.
+// Store-only modes do not inspect checkout representations or update subrepos.
 func reviewCheckoutEntries(entries []ManifestEntry) error {
 	seen := map[string]string{}
 	for _, entry := range entries {
@@ -110,16 +111,28 @@ func (r *Runner) PrepareReviewMerge(ctx context.Context, s ReviewSnapshot, outpu
 	if metadata.TargetSelection.Ref.Kind == RefBookmark {
 		result.Bookmark = metadata.TargetSelection.Ref.Name
 	}
-	var checkoutEntries []ManifestEntry
-	for _, node := range []NodeID{s.Source, s.Target, s.Base} {
-		entries, err := r.reviewManifest(ctx, s.Path, node)
-		if err != nil {
+	switch {
+	case s.Base == s.Source:
+		result.Mode = "already_integrated"
+		result.Result = s.Target
+	case s.Base == s.Target && source.Branch == target.Branch:
+		result.Mode = "fast_forward"
+		result.Result = s.Source
+	default:
+		result.Mode = "two_parent"
+	}
+	if result.Mode == "two_parent" {
+		var checkoutEntries []ManifestEntry
+		for _, node := range []NodeID{s.Source, s.Target, s.Base} {
+			entries, err := r.reviewManifest(ctx, s.Path, node)
+			if err != nil {
+				return result, err
+			}
+			checkoutEntries = append(checkoutEntries, entries...)
+		}
+		if err = reviewCheckoutEntries(checkoutEntries); err != nil {
 			return result, err
 		}
-		checkoutEntries = append(checkoutEntries, entries...)
-	}
-	if err = reviewCheckoutEntries(checkoutEntries); err != nil {
-		return result, err
 	}
 	result.Path, err = newReviewArtifact(output, s.Path)
 	if err != nil {
@@ -137,14 +150,7 @@ func (r *Runner) PrepareReviewMerge(ctx context.Context, s ReviewSnapshot, outpu
 	if err = r.reviewRun(ctx, result.Path, []string{"pull", "-r", string(s.Source), "--", s.Path}, nil); err != nil {
 		return result, err
 	}
-	switch {
-	case s.Base == s.Source:
-		result.Mode = "already_integrated"
-		result.Result = s.Target
-	case s.Base == s.Target && source.Branch == target.Branch:
-		result.Mode = "fast_forward"
-		result.Result = s.Source
-	default:
+	if result.Mode == "two_parent" {
 		// Only this branch materializes files; neither live store is updated.
 		if err = r.reviewRun(ctx, result.Path, []string{"update", "--clean", "-r", string(s.Target)}, nil); err != nil {
 			return result, err
@@ -176,7 +182,6 @@ func (r *Runner) PrepareReviewMerge(ctx context.Context, s ReviewSnapshot, outpu
 		if len(cs.Parents) != 2 || cs.Parents[0] != s.Target || cs.Parents[1] != s.Source || cs.Branch != target.Branch {
 			return result, fmt.Errorf("hg: native merge violated ordered parents or destination branch")
 		}
-		result.Mode = "two_parent"
 	}
 	// Publication is a separate guarded operation. This artifact carries the
 	// selected bookmark identity but never moves a bookmark in a public store.

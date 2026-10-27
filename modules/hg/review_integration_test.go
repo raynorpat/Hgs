@@ -257,6 +257,7 @@ func TestReviewCheckoutNeverExecutesContent(t *testing.T) {
 	for _, kind := range []string{"config", "subrepo", "symlink_and_case_collision"} {
 		t.Run(kind, func(t *testing.T) {
 			f := newReviewFixture(t)
+			f.divergentReviewTarget()
 			if kind == "subrepo" {
 				f.write(".hgsub", "nested = https://127.0.0.1:1/forbidden\n")
 				f.hg(f.work, "add", ".hgsub")
@@ -283,7 +284,10 @@ func TestReviewCheckoutNeverExecutesContent(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			s := f.snapshot("source", "base")
+			s := f.snapshot("source", "target")
+			if s.Base == s.Source || s.Base == s.Target {
+				t.Fatal("refusal fixture must require a two-parent merge")
+			}
 			_, err := f.r.PrepareReviewMerge(f.ctx, s, filepath.Join(f.root, "prepared"), "Actor", "Merge")
 			if kind != "config" && !errors.Is(err, ErrUnsafeCheckout) {
 				t.Fatalf("unsafe checkout: %v", err)
@@ -441,6 +445,7 @@ func TestReviewCheckoutRejectsCaseCollisionAcrossEndpoints(t *testing.T) {
 		t.Skip("requires a native case-insensitive host")
 	}
 	f := newReviewFixture(t)
+	f.divergentReviewTarget()
 	patch := "# HG changeset patch\n# User fixture\n# Date 0 0\ncase-only change\n\ndiff --git a/a b/a\ndeleted file mode 100644\n--- a/a\n+++ /dev/null\n@@ -1,1 +0,0 @@\n-base\ndiff --git a/A b/A\nnew file mode 100644\n--- /dev/null\n+++ b/A\n@@ -0,0 +1,1 @@\n+source\n"
 	patchPath := filepath.Join(f.root, "case.patch")
 	if err := os.WriteFile(patchPath, []byte(patch), 0600); err != nil {
@@ -448,7 +453,10 @@ func TestReviewCheckoutRejectsCaseCollisionAcrossEndpoints(t *testing.T) {
 	}
 	f.hg(f.work, "import", "--bypass", patchPath)
 	f.nodes["source"] = NodeID(f.hg(f.work, "log", "-r", "tip", "-T", "{node}"))
-	s := f.snapshot("source", "base")
+	s := f.snapshot("source", "target")
+	if s.Base == s.Source || s.Base == s.Target {
+		t.Fatal("refusal fixture must require a two-parent merge")
+	}
 	if _, err := f.r.PrepareReviewMerge(f.ctx, s, filepath.Join(f.root, "prepared"), "Actor", "Merge"); !errors.Is(err, ErrUnsafeCheckout) {
 		t.Fatalf("cross-endpoint path collision accepted: %v", err)
 	}
@@ -459,10 +467,14 @@ func TestReviewNoOutboundSubrepositoryRequest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { requests.Add(1); w.WriteHeader(500) }))
 	defer server.Close()
 	f := newReviewFixture(t)
+	f.divergentReviewTarget()
 	f.write(".hgsub", "nested = "+server.URL+"/repository\n")
 	f.hg(f.work, "add", ".hgsub")
 	f.commit("source")
-	s := f.snapshot("source", "base")
+	s := f.snapshot("source", "target")
+	if s.Base == s.Source || s.Base == s.Target {
+		t.Fatal("refusal fixture must require a two-parent merge")
+	}
 	if _, err := f.r.PrepareReviewMerge(f.ctx, s, filepath.Join(f.root, "prepared"), "Actor", "Merge"); !errors.Is(err, ErrUnsafeCheckout) {
 		t.Fatalf("nested repository accepted: %v", err)
 	}
@@ -536,6 +548,7 @@ func TestReviewUnsupportedPathsRemainBrowsable(t *testing.T) {
 		t.Skip("native Windows/macOS materialization policy")
 	}
 	f := newReviewFixture(t)
+	f.divergentReviewTarget()
 	name := "漢字"
 	patch := "# HG changeset patch\n# User fixture\n# Date 0 0\nUnicode path\n\ndiff --git a/" + name + " b/" + name + "\nnew file mode 100644\n--- /dev/null\n+++ b/" + name + "\n@@ -0,0 +1,1 @@\n+stored content\n"
 	patchPath := filepath.Join(f.root, "unicode.patch")
@@ -544,7 +557,10 @@ func TestReviewUnsupportedPathsRemainBrowsable(t *testing.T) {
 	}
 	f.hg(f.work, "import", "--bypass", patchPath)
 	f.nodes["source"] = NodeID(f.hg(f.work, "log", "-r", "tip", "-T", "{node}"))
-	s := f.snapshot("source", "base")
+	s := f.snapshot("source", "target")
+	if s.Base == s.Source || s.Base == s.Target {
+		t.Fatal("refusal fixture must require a two-parent merge")
+	}
 	entries, err := f.r.Manifest(f.ctx, s.Path, s.Source)
 	if err != nil {
 		t.Fatalf("manifest browsing failed: %v", err)
@@ -565,4 +581,99 @@ func TestReviewUnsupportedPathsRemainBrowsable(t *testing.T) {
 	if _, err := os.Stat(output); !os.IsNotExist(err) {
 		t.Fatalf("checkout began before preflight: %v", err)
 	}
+}
+
+// Store-only operations must accept history which this host cannot check out.
+// Reusing the exact node neither invokes update/merge nor accesses subrepos.
+func TestReviewStoreOnlyModesDoNotMaterialize(t *testing.T) {
+	for _, mode := range []string{"fast_forward", "already_integrated"} {
+		t.Run(mode, func(t *testing.T) {
+			var requests atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { requests.Add(1); w.WriteHeader(500) }))
+			defer server.Close()
+			f := newReviewFixture(t)
+			patch := "# HG changeset patch\n# User fixture\n# Date 0 0\nstore-only unsafe checkout tree\n\n" +
+				"diff --git a/a b/a\ndeleted file mode 100644\n--- a/a\n+++ /dev/null\n@@ -1,1 +0,0 @@\n-base\n" +
+				"diff --git a/A b/A\nnew file mode 100644\n--- /dev/null\n+++ b/A\n@@ -0,0 +1,1 @@\n+case rename\n" +
+				"diff --git a/漢字 b/漢字\nnew file mode 100644\n--- /dev/null\n+++ b/漢字\n@@ -0,0 +1,1 @@\n+Unicode content\n" +
+				"diff --git a/link b/link\nnew file mode 120000\n--- /dev/null\n+++ b/link\n@@ -0,0 +1,1 @@\n+../outside\n\\ No newline at end of file\n" +
+				"diff --git a/.hgsub b/.hgsub\nnew file mode 100644\n--- /dev/null\n+++ b/.hgsub\n@@ -0,0 +1,1 @@\n+nested = " + server.URL + "/repository\n" +
+				"diff --git a/.hgsubstate b/.hgsubstate\nnew file mode 100644\n--- /dev/null\n+++ b/.hgsubstate\n@@ -0,0 +1,1 @@\n+0000000000000000000000000000000000000000 nested\n"
+			patchPath := filepath.Join(f.root, "store-only.patch")
+			if err := os.WriteFile(patchPath, []byte(patch), 0600); err != nil {
+				t.Fatal(err)
+			}
+			f.hg(f.work, "import", "--bypass", patchPath)
+			f.nodes["unsupported"] = NodeID(f.hg(f.work, "log", "-r", "tip", "-T", "{node}"))
+			sourcePath, targetPath := filepath.Join(f.root, "public-source"), filepath.Join(f.root, "public-target")
+			for _, path := range []string{sourcePath, targetPath} {
+				f.hg("", "clone", "--pull", "-U", "-r", string(f.nodes["unsupported"]), f.work, path)
+			}
+			sourceName, targetName := "unsupported", "base"
+			if mode == "already_integrated" {
+				sourceName, targetName = "base", "unsupported"
+			}
+			sourceBefore, targetBefore := reviewStore(t, sourcePath), reviewStore(t, targetPath)
+			snapshot, err := f.r.SnapshotReview(f.ctx, f.endpoint(sourcePath, sourceName), f.endpoint(targetPath, targetName), filepath.Join(f.root, "snapshot"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			entries, err := f.r.Manifest(f.ctx, snapshot.Path, f.nodes["unsupported"])
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := map[string]bool{}
+			for _, entry := range entries {
+				found[entry.Path] = true
+				if entry.Path == "link" && !entry.Symlink {
+					t.Fatal("fixture lost symlink kind")
+				}
+			}
+			for _, name := range []string{"A", "漢字", "link", ".hgsub", ".hgsubstate"} {
+				if !found[name] {
+					t.Fatalf("fixture missing %q", name)
+				}
+			}
+			prepared, err := f.r.PrepareReviewMerge(f.ctx, snapshot, filepath.Join(f.root, "prepared"), "Actor", "Merge PR #1")
+			if err != nil {
+				t.Fatalf("store-only %s incorrectly requires a checkout: %v", mode, err)
+			}
+			if prepared.Mode != mode || prepared.Result != f.nodes["unsupported"] || prepared.Source != snapshot.Source || prepared.Target != snapshot.Target {
+				t.Fatalf("wrong history-preserving result: %+v", prepared)
+			}
+			result, err := f.r.Changeset(f.ctx, prepared.Path, prepared.Result)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(result.Parents, []NodeID{f.nodes["base"]}) || result.Branch != "default" {
+				t.Fatalf("existing result rewritten: %+v", result)
+			}
+			files, err := os.ReadDir(prepared.Path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(files) != 1 || files[0].Name() != ".hg" {
+				t.Fatalf("prepared artifact has materialized files: %+v", files)
+			}
+			if parents := f.hg(prepared.Path, "parents", "-T", "{node}"); parents != "" {
+				t.Fatalf("prepared artifact has working parent %s", parents)
+			}
+			if !reflect.DeepEqual(sourceBefore, reviewStore(t, sourcePath)) || !reflect.DeepEqual(targetBefore, reviewStore(t, targetPath)) {
+				t.Fatal("store-only preparation changed public store bytes")
+			}
+			if got := requests.Load(); got != 0 {
+				t.Fatalf("store-only preparation made %d subrepository requests", got)
+			}
+		})
+	}
+}
+
+// Prepare a distinct destination head before adding unsupported source content,
+// so refusal fixtures exercise actual two-parent materialization rather than FF.
+func (f *reviewFixture) divergentReviewTarget() {
+	f.t.Helper()
+	f.write("target-only", "destination\n")
+	f.hg(f.work, "add", "target-only")
+	f.commit("target")
+	f.update("base")
 }
