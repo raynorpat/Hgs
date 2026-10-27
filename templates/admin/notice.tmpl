@@ -1,48 +1,50 @@
-{{template "ng/base/head" .}}
-{{template "ng/base/header" .}}
+{{template "shared/start" .}}
+<div class="hg-account-page">
+<h1>{{.Title}}</h1>
+
 <div id="admin-wrapper">
-    <div id="setting-wrapper" class="main-wrapper">
-        <div id="admin-setting" class="container clear">
-            {{template "admin/nav" .}}
-            <div class="grid-4-5 left">
+    <div id="setting-wrapper" class="">
+        <div id="admin-setting" class="">
+
+            <div class="">
                 <div class="setting-content">
-                    {{template "ng/base/alert" .}}
+
                     <div id="setting-content">
-                        <div class="panel panel-radius">
-                            <div class="panel-header">
+                        <div class="hg-panel">
+                            <div class="hg-panel-heading">
                                 <strong>{{.i18n.Tr "admin.notices.system_notice_list"}}</strong>
                             </div>
-                            <div class="panel-body admin-panel">
+                            <div class="hg-panel-body admin-panel">
                                 <div class="admin-table">
-					                <table class="table table-striped">
-					                    <thead>
-					                        <tr>
-					                            <th>Id</th>
-					                            <th>{{.i18n.Tr "admin.notices.type"}}</th>
-					                            <th>{{.i18n.Tr "admin.notices.desc"}}</th>
-					                            <th>{{.i18n.Tr "admin.users.created"}}</th>
-					                            <th>{{.i18n.Tr "admin.notices.op"}}</th>
-					                        </tr>
-					                    </thead>
-					                    <tbody>
-					                        {{range .Notices}}
-					                        <tr>
-					                            <td>{{.Id}}</td>
-					                            <td>{{$.i18n.Tr .TrStr}}</td>
-					                            <td class="grid-1-2"><span>{{.Description}}</span></td>
-					                            <td>{{.Created}}</td>
-					                            <td><a href="{{AppSubUrl}}/admin/notices/{{.Id}}/delete"><i class="fa fa-trash-o text-red"></i></a></td>
-					                        </tr>
-					                        {{end}}
-					                    </tbody>
-					                </table>
-					                {{if or .LastPageNum .NextPageNum}}
-					                <ul class="pagination">
-					                    {{if .LastPageNum}}<li><a class="btn btn-medium btn-gray btn-radius" href="{{AppSubUrl}}/admin/notices?p={{.LastPageNum}}">&laquo; {{.i18n.Tr "admin.prev"}}</a></li>{{end}}
-					                    {{if .NextPageNum}}<li><a class="btn btn-medium btn-gray btn-radius" href="{{AppSubUrl}}/admin/notices?p={{.NextPageNum}}">&raquo; {{.i18n.Tr "admin.next"}}</a></li>{{end}}
-					                </ul>
-					                {{end}}
-				                </div>
+                                    <div class="hg-table-scroll"><table class="hg-table table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Id</th>
+                                                <th>{{.i18n.Tr "admin.notices.type"}}</th>
+                                                <th>{{.i18n.Tr "admin.notices.desc"}}</th>
+                                                <th>{{.i18n.Tr "admin.users.created"}}</th>
+                                                <th>{{.i18n.Tr "admin.notices.op"}}</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {{range .Notices}}
+                                            <tr>
+                                                <td>{{.Id}}</td>
+                                                <td>{{$.i18n.Tr .TrStr}}</td>
+                                                <td class="grid-1-2"><span>{{.Description}}</span></td>
+                                                <td>{{.Created}}</td>
+                                                <td><form class="hg-inline-form" method="post" action="{{AppSubUrl}}/admin/notices/{{.Id}}/delete" data-confirm-message="{{$.i18n.Tr "ui.confirm_action"}}">{{$.CsrfTokenHtml}}<button type="submit" class="hg-button">{{$.i18n.Tr "settings.delete"}}</button></form></td>
+                                            </tr>
+                                            {{end}}
+                                        </tbody>
+                                    </table></div>
+                                    {{if or .LastPageNum .NextPageNum}}
+                                    <ul class="pagination">
+                                        {{if .LastPageNum}}<li><a class="hg-button " href="{{AppSubUrl}}/admin/notices?p={{.LastPageNum}}">&laquo; {{.i18n.Tr "admin.prev"}}</a></li>{{end}}
+                                        {{if .NextPageNum}}<li><a class="hg-button " href="{{AppSubUrl}}/admin/notices?p={{.NextPageNum}}">&raquo; {{.i18n.Tr "admin.next"}}</a></li>{{end}}
+                                    </ul>
+                                    {{end}}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -51,4 +53,5 @@
         </div>
     </div>
 </div>
-{{template "ng/base/footer" .}}
+</div>
+{{template "shared/end" .}}

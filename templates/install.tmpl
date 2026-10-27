@@ -1,18 +1,19 @@
-{{template "ng/base/head" .}}
-<div id="setting-wrapper" class="main-wrapper">
-    <div class="container clear">
+{{template "shared/start" .}}
+<div class="hg-account-page hg-install-page">
+<div id="setting-wrapper" class="">
+    <div class="">
         <div class="setting-content">
-            {{template "ng/base/alert" .}}
+
             <div id="setting-content">
-                <div class="panel panel-radius">
-                    <div class="panel-header">
-                        <strong>{{.i18n.Tr "install.title"}}</strong>
+                <div class="hg-panel">
+                    <div class="hg-panel-heading">
+                        <h1>{{.i18n.Tr "ui.install_hgs"}}</h1>
                     </div>
-                    <form class="form form-align panel-body" id="install-form" action="{{AppSubUrl}}/install" method="post">
+                    <form class="hg-form hg-panel-body" id="install-form" action="{{AppSubUrl}}/install" method="post" data-prevent-duplicate>
                         {{.CsrfTokenHtml}}
-                        <div class="text-center panel-desc">{{.i18n.Tr "install.requite_db_desc"}}</div>
-                        <div class="field">
-                            <label class="req">{{.i18n.Tr "install.db_type"}}</label>
+                        <h2 class="hg-install-section">{{.i18n.Tr "install.requite_db_desc"}}</h2>
+                        <div class="hg-field">
+                            <label class="req" for="install-database">{{.i18n.Tr "install.db_type"}}</label>
                             <select name="db_type" id="install-database" class="form-control">
                                 {{range .DbOptions}}
                                 <option value="{{.}}"{{if eq $.CurDbOption .}}selected{{end}}>{{.}}</option>
@@ -21,130 +22,120 @@
                         </div>
 
                         <div class="server-sql {{if eq .CurDbOption "SQLite3"}}hide{{end}}">
-                            <div class="field">
+                            <div class="hg-field">
                                 <label class="req" for="db_host">{{.i18n.Tr "install.host"}}</label>
-                                <input class="ipt ipt-large ipt-radius {{if .Err_DbHost}}ipt-error{{end}}" id="db_host" name="db_host" value="{{.db_host}}" />
+                                <input  id="db_host" name="db_host" value="{{.db_host}}"  {{if .Err_DbHost}}aria-invalid="true" aria-describedby="db_host-error"{{end}}>{{if .Err_DbHost}}<span class="hg-field-error" id="db_host-error">{{.Flash.ErrorMsg}}</span>{{end}}
                             </div>
-                            <div class="field">
+                            <div class="hg-field">
                                 <label class="req" for="db_user">{{.i18n.Tr "install.user"}}</label>
-                                <input class="ipt ipt-large ipt-radius {{if .Err_DbUser}}ipt-error{{end}}" id="db_user" name="db_user" value="{{.db_user}}" />
+                                <input  id="db_user" name="db_user" value="{{.db_user}}"  {{if .Err_DbUser}}aria-invalid="true" aria-describedby="db_user-error"{{end}}>{{if .Err_DbUser}}<span class="hg-field-error" id="db_user-error">{{.Flash.ErrorMsg}}</span>{{end}}
                             </div>
-                            <div class="field">
+                            <div class="hg-field">
                                 <label class="req" for="db_passwd">{{.i18n.Tr "install.password"}}</label>
-                                <input class="ipt ipt-large ipt-radius {{if .Err_DbPasswd}}ipt-error{{end}}" id="db_passwd" name="db_passwd" type="password" value="{{.db_passwd}}" />
+                                <input  id="db_passwd" name="db_passwd" type="password"  {{if .Err_DbPasswd}}aria-invalid="true" aria-describedby="db_passwd-error"{{end}}>{{if .Err_DbPasswd}}<span class="hg-field-error" id="db_passwd-error">{{.Flash.ErrorMsg}}</span>{{end}}
                             </div>
-                            <div class="field">
+                            <div class="hg-field">
                                 <label class="req" for="db_name">{{.i18n.Tr "install.db_name"}}</label>
-                                <input class="ipt ipt-large ipt-radius {{if .Err_DbName}}ipt-error{{end}}" id="db_name" name="db_name" value="{{.db_name}}" />
-                                <label></label>
-                                <span class="help">{{.i18n.Tr "install.db_helper"}}</span>
+                                <input  id="db_name" name="db_name" value="{{.db_name}}"  {{if .Err_DbName}}aria-invalid="true" aria-describedby="db_name-error"{{end}}>{{if .Err_DbName}}<span class="hg-field-error" id="db_name-error">{{.Flash.ErrorMsg}}</span>{{end}}
+                                <span class="hg-meta">{{.i18n.Tr "install.db_helper"}}</span>
                             </div>
                         </div>
 
-                        <div class="field pgsql-setting {{if not (eq .CurDbOption "PostgreSQL")}}hide{{end}}">
-                            <label class="req">{{.i18n.Tr "install.ssl_mode"}}</label>
-                            <select name="ssl_mode" class="form-control">
-                                <option value="disable">Disable</option>
-                                <option value="require">Require</option>
-                                <option value="verify-full">Verify Full</option>
+                        <div class="hg-field pgsql-setting {{if not (eq .CurDbOption "PostgreSQL")}}hide{{end}}">
+                            <label class="req" for="ssl-mode">{{.i18n.Tr "install.ssl_mode"}}</label>
+                            <select id="ssl-mode" name="ssl_mode" class="form-control">
+                                <option value="disable" {{if eq .ssl_mode "disable"}}selected{{end}}>Disable</option>
+                                <option value="require" {{if eq .ssl_mode "require"}}selected{{end}}>Require</option>
+                                <option value="verify-full" {{if eq .ssl_mode "verify-full"}}selected{{end}}>Verify Full</option>
                             </select>
                         </div>
 
-                        <div class="field sqlite-setting {{if not (eq .CurDbOption "SQLite3")}}hide{{end}}">
+                        <div class="hg-field sqlite-setting {{if not (eq .CurDbOption "SQLite3")}}hide{{end}}">
                             <label class="req" for="db_path">{{.i18n.Tr "install.path"}}</label>
-                            <input class="ipt ipt-large ipt-radius {{if .Err_DbPath}}ipt-error{{end}}" id="db_path" name="db_path" value="{{.db_path}}" />
-                            <label></label>
-                            <span class="help">{{.i18n.Tr "install.sqlite_helper"}}</span>
+                            <input  id="db_path" name="db_path" value="{{.db_path}}"  {{if .Err_DbPath}}aria-invalid="true" aria-describedby="db_path-error"{{end}}>{{if .Err_DbPath}}<span class="hg-field-error" id="db_path-error">{{.Flash.ErrorMsg}}</span>{{end}}
+                            <span class="hg-meta">{{.i18n.Tr "install.sqlite_helper"}}</span>
                         </div>
 
                         <hr>
 
-                        <div class="text-center panel-desc">{{.i18n.Tr "install.general_title"}}</div>
-                        <div class="field">
+                        <h2 class="hg-install-section">{{.i18n.Tr "install.general_title"}}</h2>
+                        <div class="hg-field">
                             <label class="req" for="repo_root_path">{{.i18n.Tr "install.repo_path"}}</label>
-                            <input class="ipt ipt-large ipt-radius {{if .Err_RepoRootPath}}ipt-error{{end}}" id="repo_root_path" name="repo_root_path" value="{{.repo_root_path}}" required />
-                            <label></label>
-                            <span class="help">{{.i18n.Tr "install.repo_path_helper"}}</span>
+                            <input  id="repo_root_path" name="repo_root_path" value="{{.repo_root_path}}" required  {{if .Err_RepoRootPath}}aria-invalid="true" aria-describedby="repo_root_path-error"{{end}}>{{if .Err_RepoRootPath}}<span class="hg-field-error" id="repo_root_path-error">{{.Flash.ErrorMsg}}</span>{{end}}
+                            <span class="hg-meta">{{.i18n.Tr "install.repo_path_helper"}}</span>
                         </div>
-                        <div class="field">
+                        <div class="hg-field">
                             <label class="req" for="run_user">{{.i18n.Tr "install.run_user"}}</label>
-                            <input class="ipt ipt-large ipt-radius {{if .Err_RunUser}}ipt-error{{end}}" id="run_user" name="run_user" value="{{.run_user}}" required />
-                            <label></label>
-                            <span class="help">{{.i18n.Tr "install.run_user_helper"}}</span>
+                            <input  id="run_user" name="run_user" value="{{.run_user}}" required  {{if .Err_RunUser}}aria-invalid="true" aria-describedby="run_user-error"{{end}}>{{if .Err_RunUser}}<span class="hg-field-error" id="run_user-error">{{.Flash.ErrorMsg}}</span>{{end}}
+                            <span class="hg-meta">{{.i18n.Tr "install.run_user_helper"}}</span>
                         </div>
-                        <div class="field">
+                        <div class="hg-field">
                             <label class="req" for="domain">{{.i18n.Tr "install.domain"}}</label>
-                            <input class="ipt ipt-large ipt-radius {{if .Err_Domain}}ipt-error{{end}}" id="domain" name="domain" value="{{.domain}}" required />
-                            <label></label>
-                            <span class="help">{{.i18n.Tr "install.domain_helper"}}</span>
+                            <input  id="domain" name="domain" value="{{.domain}}" required  {{if .Err_Domain}}aria-invalid="true" aria-describedby="domain-error"{{end}}>{{if .Err_Domain}}<span class="hg-field-error" id="domain-error">{{.Flash.ErrorMsg}}</span>{{end}}
+                            <span class="hg-meta">{{.i18n.Tr "install.domain_helper"}}</span>
                         </div>
-                        <div class="field">
+                        <div class="hg-field">
                             <label class="req" for="http_port">{{.i18n.Tr "install.http_port"}}</label>
-                            <input class="ipt ipt-large ipt-radius {{if .Err_HttpPort}}ipt-error{{end}}" id="http_port" name="http_port" value="{{.http_port}}" required />
-                            <label></label>
-                            <span class="help">{{.i18n.Tr "install.http_port_helper"}}</span>
+                            <input  id="http_port" name="http_port" value="{{.http_port}}" required  {{if .Err_HttpPort}}aria-invalid="true" aria-describedby="http_port-error"{{end}}>{{if .Err_HttpPort}}<span class="hg-field-error" id="http_port-error">{{.Flash.ErrorMsg}}</span>{{end}}
+                            <span class="hg-meta">{{.i18n.Tr "install.http_port_helper"}}</span>
                         </div>
-                        <div class="field">
+                        <div class="hg-field">
                             <label class="req" for="app_url">{{.i18n.Tr "install.app_url"}}</label>
-                            <input class="ipt ipt-large ipt-radius {{if .Err_AppUrl}}ipt-error{{end}}" id="app_url" name="app_url" value="{{.app_url}}" required />
-                            <label></label>
-                            <span class="help">{{.i18n.Tr "install.app_url_helper"}}</span>
+                            <input  id="app_url" name="app_url" value="{{.app_url}}" required  {{if .Err_AppUrl}}aria-invalid="true" aria-describedby="app_url-error"{{end}}>{{if .Err_AppUrl}}<span class="hg-field-error" id="app_url-error">{{.Flash.ErrorMsg}}</span>{{end}}
+                            <span class="hg-meta">{{.i18n.Tr "install.app_url_helper"}}</span>
                         </div>
 
                         <hr>
 
-                        <div class="text-center panel-desc">{{.i18n.Tr "install.email_title"}}</div>
-                        <div class="field">
+                        <h2 class="hg-install-section">{{.i18n.Tr "install.email_title"}}</h2>
+                        <div class="hg-field">
                             <label for="smtp_host">{{.i18n.Tr "install.smtp_host"}}</label>
-                            <input class="ipt ipt-large ipt-radius {{if .Err_SmtpHost}}ipt-error{{end}}" id="smtp_host" name="smtp_host" value="{{.smtp_host}}" />
+                            <input  id="smtp_host" name="smtp_host" value="{{.smtp_host}}"  {{if .Err_SmtpHost}}aria-invalid="true" aria-describedby="smtp_host-error"{{end}}>{{if .Err_SmtpHost}}<span class="hg-field-error" id="smtp_host-error">{{.Flash.ErrorMsg}}</span>{{end}}
                         </div>
-                        <div class="field">
+                        <div class="hg-field">
                             <label for="smtp_user">{{.i18n.Tr "install.mailer_user"}}</label>
-                            <input class="ipt ipt-large ipt-radius {{if .Err_SMTPEmail}}ipt-error{{end}}" id="smtp_user" name="smtp_user" value="{{.smtp_user}}" />
+                            <input  id="smtp_user" name="smtp_email" value="{{.smtp_email}}"  {{if .Err_SMTPEmail}}aria-invalid="true" aria-describedby="smtp_user-error"{{end}}>{{if .Err_SMTPEmail}}<span class="hg-field-error" id="smtp_user-error">{{.Flash.ErrorMsg}}</span>{{end}}
                         </div>
-                        <div class="field">
+                        <div class="hg-field">
                             <label for="smtp_pwd">{{.i18n.Tr "install.mailer_password"}}</label>
-                            <input class="ipt ipt-large ipt-radius {{if .Err_SMTPPasswd}}ipt-error{{end}}" id="smtp_pwd" name="smtp_pwd" type="password" value="{{.smtp_pwd}}" />
+                            <input  id="smtp_pwd" name="smtp_passwd" type="password"  {{if .Err_SMTPPasswd}}aria-invalid="true" aria-describedby="smtp_pwd-error"{{end}}>{{if .Err_SMTPPasswd}}<span class="hg-field-error" id="smtp_pwd-error">{{.Flash.ErrorMsg}}</span>{{end}}
                         </div>
 
                         <hr>
 
-                        <div class="text-center panel-desc">{{.i18n.Tr "install.notify_title"}}</div>
-                        <div class="field">
-                            <label></label>
-                            <input name="register_confirm" type="checkbox" {{if .register_confirm}}checked{{end}}>
-                            <strong>{{.i18n.Tr "install.register_confirm"}}</strong>
+                        <h2 class="hg-install-section">{{.i18n.Tr "install.notify_title"}}</h2>
+                        <div class="hg-field">
+                            <label class="hg-choice"><input name="register_confirm" type="checkbox" {{if .register_confirm}}checked{{end}}>
+                            <strong>{{.i18n.Tr "install.register_confirm"}}</strong></label>
                             <br>
-                            <label></label>
-                            <input name="mail_notify" type="checkbox" {{if .mail_notify}}checked{{end}}>
-                            <strong>{{.i18n.Tr "install.mail_notify"}}</strong>
+                            <label class="hg-choice"><input name="mail_notify" type="checkbox" {{if .mail_notify}}checked{{end}}>
+                            <strong>{{.i18n.Tr "install.mail_notify"}}</strong></label>
                         </div>
 
                         <hr>
 
-                        <div class="text-center panel-desc">{{.i18n.Tr "install.admin_title"}}</div>
-                        <div class="field">
+                        <h2 class="hg-install-section">{{.i18n.Tr "install.admin_title"}}</h2>
+                        <div class="hg-field">
                             <label class="req" for="admin_name">{{.i18n.Tr "install.admin_name"}}</label>
-                            <input class="ipt ipt-large ipt-radius {{if .Err_AdminName}}ipt-error{{end}}" id="admin_name" name="admin_name" value="{{.admin_name}}" required />
+                            <input  id="admin_name" name="admin_name" value="{{.admin_name}}" required  {{if .Err_AdminName}}aria-invalid="true" aria-describedby="admin_name-error"{{end}}>{{if .Err_AdminName}}<span class="hg-field-error" id="admin_name-error">{{.Flash.ErrorMsg}}</span>{{end}}
                         </div>
-                        <div class="field">
+                        <div class="hg-field">
                             <label class="req" for="admin_passwd">{{.i18n.Tr "install.admin_password"}}</label>
-                            <input class="ipt ipt-large ipt-radius {{if .Err_AdminPasswd}}ipt-error{{end}}" id="admin_passwd" name="admin_passwd" type="password" value="{{.admin_passwd}}" required />
+                            <input  id="admin_passwd" name="admin_passwd" type="password" required  {{if .Err_AdminPasswd}}aria-invalid="true" aria-describedby="admin_passwd-error"{{end}}>{{if .Err_AdminPasswd}}<span class="hg-field-error" id="admin_passwd-error">{{.Flash.ErrorMsg}}</span>{{end}}
                         </div>
-                        <div class="field">
+                        <div class="hg-field">
                             <label class="req" for="admin_confirm_passwd">{{.i18n.Tr "install.confirm_password"}}</label>
-                            <input class="ipt ipt-large ipt-radius {{if .Err_AdminPasswd}}ipt-error{{end}}" id="admin_confirm_passwd" name="admin_confirm_passwd" type="password" required />
+                            <input  id="admin_confirm_passwd" name="admin_confirm_passwd" type="password" required  {{if .Err_AdminPasswd}}aria-invalid="true" aria-describedby="admin_confirm_passwd-error"{{end}}>{{if .Err_AdminPasswd}}<span class="hg-field-error" id="admin_confirm_passwd-error">{{.Flash.ErrorMsg}}</span>{{end}}
                         </div>
-                        <div class="field">
+                        <div class="hg-field">
                             <label class="req" for="admin_email">{{.i18n.Tr "install.admin_email"}}</label>
-                            <input class="ipt ipt-large ipt-radius {{if .Err_AdminEmail}}ipt-error{{end}}" id="admin_email" name="admin_email" value="{{.admin_email}}" required />
+                            <input  id="admin_email" name="admin_email" value="{{.admin_email}}" required  {{if .Err_AdminEmail}}aria-invalid="true" aria-describedby="admin_email-error"{{end}}>{{if .Err_AdminEmail}}<span class="hg-field-error" id="admin_email-error">{{.Flash.ErrorMsg}}</span>{{end}}
                         </div>
 
                         <hr>
 
-                        <div class="field">
-                            <label></label>
-                            <button class="btn btn-blue btn-large btn-radius">{{.i18n.Tr "install.install_gogs"}}</button>
+                        <div class="hg-field">
+                            <button class="hg-button hg-button-primary">{{.i18n.Tr "ui.install_hgs"}}</button>
                         </div>
                     </form>
                 </div>
@@ -152,4 +143,5 @@
         </div>
     </div>
 </div>
-{{template "ng/base/footer" .}}
+</div>
+{{template "shared/end" .}}

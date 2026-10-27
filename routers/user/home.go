@@ -205,6 +205,10 @@ func Profile(ctx *middleware.Context) {
 	}
 	ctx.Data["Owner"] = u
 
+	actorID := int64(0)
+	if ctx.IsSigned {
+		actorID = ctx.User.Id
+	}
 	tab := ctx.Query("tab")
 	ctx.Data["TabName"] = tab
 	switch tab {
@@ -216,15 +220,18 @@ func Profile(ctx *middleware.Context) {
 		}
 		feeds := make([]*models.Action, 0, len(actions))
 		for _, act := range actions {
-			if act.IsPrivate {
-				if !ctx.IsSigned {
-					continue
-				}
-				if has, _ := models.HasAccess(ctx.User.Id, act.RepoId,
-					models.READABLE); !has {
-					continue
-				}
+			access, accessErr := models.RepositoryAccessFor(actorID, act.RepoId)
+			if accessErr == models.ErrRepoNotExist {
+				continue
 			}
+			if accessErr != nil {
+				ctx.Handle(500, "RepositoryAccessFor", accessErr)
+				return
+			}
+			if !access.Read {
+				continue
+			}
+
 			// FIXME: cache results?
 			u, err := models.GetUserByName(act.ActUserName)
 			if err != nil {
@@ -239,7 +246,11 @@ func Profile(ctx *middleware.Context) {
 		}
 		ctx.Data["Feeds"] = feeds
 	default:
-		ctx.Data["Repos"], err = models.GetRepositories(u.Id, ctx.IsSigned && ctx.User.Id == u.Id)
+		var repos []*models.Repository
+		repos, err = models.GetRepositories(u.Id, ctx.IsSigned && ctx.User.Id == u.Id)
+		if err == nil {
+			ctx.Data["Repos"], err = models.FilterReadableRepositories(actorID, repos)
+		}
 		if err != nil {
 			ctx.Handle(500, "GetRepositories", err)
 			return

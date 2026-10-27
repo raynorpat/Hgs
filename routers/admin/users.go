@@ -73,6 +73,13 @@ func NewUser(ctx *middleware.Context) {
 }
 
 func NewUserPost(ctx *middleware.Context, form auth.RegisterForm) {
+	sources, sourceErr := models.GetAuths()
+	if sourceErr != nil {
+		ctx.Handle(500, "GetAuths", sourceErr)
+		return
+	}
+	ctx.Data["LoginSources"] = sources
+
 	ctx.Data["Title"] = ctx.Tr("admin.users.new_account")
 	ctx.Data["PageIsAdmin"] = true
 	ctx.Data["PageIsAdminUsers"] = true
@@ -96,12 +103,34 @@ func NewUserPost(ctx *middleware.Context, form auth.RegisterForm) {
 		LoginType: models.PLAIN,
 	}
 
-	if len(form.LoginType) > 0 {
-		// NOTE: need rewrite.
+	if form.LoginType != "" && form.LoginType != "0-0" {
 		fields := strings.Split(form.LoginType, "-")
-		tp, _ := com.StrTo(fields[0]).Int()
-		u.LoginType = models.LoginType(tp)
-		u.LoginSource, _ = com.StrTo(fields[1]).Int64()
+		invalid := func() {
+			ctx.Data["Err_LoginType"] = true
+			ctx.RenderWithErr(ctx.Tr("ui.invalid_auth_source"), USER_NEW, &form)
+		}
+		if len(fields) != 2 {
+			invalid()
+			return
+		}
+		tp, typeErr := com.StrTo(fields[0]).Int()
+		sourceID, idErr := com.StrTo(fields[1]).Int64()
+		if typeErr != nil || idErr != nil || sourceID <= 0 {
+			invalid()
+			return
+		}
+		source, err := models.GetLoginSourceById(sourceID)
+		if err != nil || source.Type != models.LoginType(tp) || (source.Type != models.LDAP && source.Type != models.SMTP) {
+			invalid()
+			return
+		}
+		if strings.TrimSpace(form.LoginName) == "" {
+			ctx.Data["Err_LoginName"] = true
+			ctx.RenderWithErr(ctx.Tr("ui.provider_login_required"), USER_NEW, &form)
+			return
+		}
+		u.LoginType = source.Type
+		u.LoginSource = source.Id
 		u.LoginName = form.LoginName
 	}
 
@@ -169,6 +198,13 @@ func EditUserPost(ctx *middleware.Context, form auth.AdminEditUserForm) {
 		return
 	}
 
+	ctx.Data["User"] = u
+	sources, sourceErr := models.GetAuths()
+	if sourceErr != nil {
+		ctx.Handle(500, "GetAuths", sourceErr)
+		return
+	}
+	ctx.Data["LoginSources"] = sources
 	if ctx.HasError() {
 		ctx.HTML(200, USER_EDIT)
 		return

@@ -43,6 +43,7 @@ func NewAuthSource(ctx *middleware.Context) {
 	ctx.Data["PageIsAdminAuthentications"] = true
 	ctx.Data["LoginTypes"] = models.LoginTypes
 	ctx.Data["SMTPAuths"] = models.SMTPAuths
+	ctx.Data["AuthType"] = models.LDAP
 	ctx.HTML(200, AUTH_NEW)
 }
 
@@ -52,6 +53,7 @@ func NewAuthSourcePost(ctx *middleware.Context, form auth.AuthenticationForm) {
 	ctx.Data["PageIsAdminAuthentications"] = true
 	ctx.Data["LoginTypes"] = models.LoginTypes
 	ctx.Data["SMTPAuths"] = models.SMTPAuths
+	ctx.Data["AuthType"] = models.LoginType(form.Type)
 
 	if ctx.HasError() {
 		ctx.HTML(200, AUTH_NEW)
@@ -125,6 +127,13 @@ func EditAuthSource(ctx *middleware.Context) {
 }
 
 func EditAuthSourcePost(ctx *middleware.Context, form auth.AuthenticationForm) {
+	source, sourceErr := models.GetLoginSourceById(com.StrTo(ctx.Params(":authid")).MustInt64())
+	if sourceErr != nil {
+		ctx.Handle(404, "GetLoginSourceById", sourceErr)
+		return
+	}
+	ctx.Data["Source"] = source
+
 	ctx.Data["Title"] = ctx.Tr("admin.auths.edit")
 	ctx.Data["PageIsAdmin"] = true
 	ctx.Data["PageIsAdminAuthentications"] = true

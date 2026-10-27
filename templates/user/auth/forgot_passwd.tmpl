@@ -1,26 +1,25 @@
-{{template "ng/base/head" .}}
-{{template "ng/base/header" .}}
+{{template "shared/start" .}}
+<div class="hg-account-page hg-auth-page">
+
 <div id="sign-wrapper">
-    <form class="form-align form panel sign-panel sign-form container panel-radius" id="sign-up-form" action="{{AppSubUrl}}/user/forget_password" method="post">
+    <form class="hg-form hg-panel sign-panel sign-form" id="sign-up-form" action="{{AppSubUrl}}/user/forget_password" method="post" data-prevent-duplicate>
         {{.CsrfTokenHtml}}
-        <div class="panel-header">
-            <h2>{{.i18n.Tr "auth.forgot_password"}}</h2>
+        <div class="hg-panel-heading">
+            <h1>{{.i18n.Tr "auth.forgot_password"}}</h1>
         </div>
-        <div class="panel-content">
-            {{template "ng/base/alert" .}}
+        <div class="hg-panel-body">
+
             {{if .IsResetSent}}
             <p>{{.i18n.Tr "auth.confirmation_mail_sent_prompt" .Email .Hours | Str2html}}</p>
             <hr/>
-            <label></label>
-            <a class="btn btn-green btn-large btn-link btn-radius" href="http://{{Mail2Domain .Email}}">{{.i18n.Tr "auth.sign_in_email"}}</a>
+            <a class="hg-button hg-button-primary " href="http://{{Mail2Domain .Email}}">{{.i18n.Tr "auth.sign_in_email"}}</a>
             {{else if .IsResetRequest}}
-            <div class="field">
+            <div class="hg-field">
                 <label class="req" for="email">{{.i18n.Tr "email"}}</label>
-                <input class="ipt ipt-large ipt-radius {{if .Err_Email}}ipt-error{{end}}" id="email" name="email" type="email"  value="{{.email}}"required/>
+                <input  id="email" name="email" type="email"  value="{{.email}}" required {{if .Err_Email}}aria-invalid="true" aria-describedby="email-error"{{end}}>{{if .Err_Email}}<span class="hg-field-error" id="email-error">{{.Flash.ErrorMsg}}</span>{{end}}
             </div>
             <hr/>
-            <label></label>
-            <button class="btn btn-blue btn-large btn-radius">{{.i18n.Tr "auth.send_reset_mail"}}</button>
+            <button class="hg-button hg-button-primary">{{.i18n.Tr "auth.send_reset_mail"}}</button>
             {{else if .IsResetDisable}}
             <p>{{.i18n.Tr "auth.disable_register_mail"}}</p>
             {{else if .ResendLimited}}
@@ -29,4 +28,5 @@
         </div>
     </form>
 </div>
-{{template "ng/base/footer" .}}
+</div>
+{{template "shared/end" .}}

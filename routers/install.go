@@ -6,8 +6,10 @@ package routers
 
 import (
 	"errors"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/Unknwon/com"
@@ -83,7 +85,6 @@ func Install(ctx *middleware.Context) {
 
 	form.DbHost = models.DbCfg.Host
 	form.DbUser = models.DbCfg.User
-	form.DbPasswd = models.DbCfg.Passwd
 	form.DbName = models.DbCfg.Name
 	form.DbPath = models.DbCfg.Path
 
@@ -104,7 +105,11 @@ func Install(ctx *middleware.Context) {
 	form.HTTPPort = setting.HttpPort
 	form.AppUrl = setting.AppUrl
 
-	ctx.Data["CurDbOption"] = "SQLite3"
+	ctx.Data["CurDbOption"] = map[string]string{"mysql": "MySQL", "postgres": "PostgreSQL", "sqlite3": "SQLite3"}[models.DbCfg.Type]
+	if ctx.Data["CurDbOption"] == "" {
+		ctx.Data["CurDbOption"] = "SQLite3"
+	}
+	form.SSLMode = models.DbCfg.SSLMode
 
 	auth.AssignForm(form, ctx.Data)
 	ctx.HTML(200, INSTALL)
@@ -120,6 +125,41 @@ func InstallPost(ctx *middleware.Context, form auth.InstallForm, initialize Init
 		return
 	}
 
+	// Validate all local settings before opening a database or persisting setup.
+	invalid := func(field, message string) {
+		ctx.Data["Err_"+field] = true
+		ctx.RenderWithErr(ctx.Tr(message), INSTALL, &form)
+	}
+	if form.DbType != "MySQL" && form.DbType != "PostgreSQL" && form.DbType != "SQLite3" {
+		invalid("DbType", "ui.invalid_database")
+		return
+	}
+	if form.DbType == "PostgreSQL" && form.SSLMode != "disable" && form.SSLMode != "require" && form.SSLMode != "verify-full" {
+		invalid("SSLMode", "ui.invalid_database")
+		return
+	}
+	if form.DbType == "SQLite3" && strings.TrimSpace(form.DbPath) == "" {
+		invalid("DbPath", "ui.invalid_database")
+		return
+	}
+	if !models.IsLegalName(form.AdminName) {
+		invalid("AdminName", "form.illegal_username")
+		return
+	}
+	if form.AdminPasswd != form.AdminConfirmPasswd {
+		invalid("AdminPasswd", "form.password_not_match")
+		return
+	}
+	parsedURL, parseErr := url.Parse(form.AppUrl)
+	if parseErr != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") || parsedURL.Host == "" || parsedURL.User != nil || parsedURL.RawQuery != "" || parsedURL.Fragment != "" {
+		invalid("AppUrl", "ui.invalid_service_url")
+		return
+	}
+	port, portErr := strconv.Atoi(form.HTTPPort)
+	if portErr != nil || port < 1 || port > 65535 {
+		invalid("HTTPPort", "ui.invalid_http_port")
+		return
+	}
 	// Pass basic check, now test configuration.
 	// Test database setting.
 	dbTypes := map[string]string{"MySQL": "mysql", "PostgreSQL": "postgres", "SQLite3": "sqlite3"}
@@ -137,7 +177,7 @@ func InstallPost(ctx *middleware.Context, form auth.InstallForm, initialize Init
 		ctx.RenderWithErr(err.Error(), INSTALL, &form)
 		return
 	} else if err != nil {
-		ctx.RenderWithErr(ctx.Tr("install.invalid_db_setting", err), INSTALL, &form)
+		ctx.RenderWithErr(ctx.Tr("ui.invalid_database"), INSTALL, &form)
 		return
 	}
 

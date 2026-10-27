@@ -1,102 +1,101 @@
-{{template "ng/base/head" .}}
-{{template "ng/base/header" .}}
+{{template "shared/start" .}}
+<div class="hg-account-page">
+<h1>{{.Title}}</h1>
+
 <div id="admin-wrapper">
-    <div id="setting-wrapper" class="main-wrapper">
-        <div id="admin-setting" class="container clear">
-            {{template "admin/nav" .}}
-            <div class="grid-4-5 left">
+    <div id="setting-wrapper" class="">
+        <div id="admin-setting" class="">
+
+            <div class="">
                 <div class="setting-content">
-                    {{template "ng/base/alert" .}}
+
                     <div id="setting-content">
-                        <div class="panel panel-radius">
-                            <div class="panel-header">
+                        <div class="hg-panel">
+                            <div class="hg-panel-heading">
                                 <strong>{{.i18n.Tr "admin.auths.new"}}</strong>
                             </div>
-                            <form class="form form-align panel-body" id="repo-setting-form" action="{{AppSubUrl}}/admin/auths/new" method="post">
+                            <form class="hg-form hg-panel-body" id="repo-setting-form" action="{{AppSubUrl}}/admin/auths/new" method="post" data-prevent-duplicate>
                                 {{.CsrfTokenHtml}}
-                                <div class="field">
-                                    <label class="req">{{.i18n.Tr "admin.auths.auth_type"}}</label>
+                                <div class="hg-field">
+                                    <label class="req" for="auth-type">{{.i18n.Tr "admin.auths.auth_type"}}</label>
                                     <select id="auth-type" name="type">
                                         {{range $key, $val := .LoginTypes}}
-                                        <option value="{{$key}}">{{$val}}</option>
+                                        <option value="{{$key}}" {{if eq $key $.AuthType}}selected{{end}}>{{$val}}</option>
                                         {{end}}
                                     </select>
                                 </div>
-                                <div class="field">
+                                <div class="hg-field">
                                     <label class="req" for="name">{{.i18n.Tr "admin.auths.auth_name"}}</label>
-                                    <input class="ipt ipt-large ipt-radius {{if .Err_AuthName}}ipt-error{{end}}" id="name" name="name" value="{{.name}}" required />
+                                    <input  id="name" name="name" value="{{.name}}" required  {{if .Err_AuthName}}aria-invalid="true" aria-describedby="name-error"{{end}}>{{if .Err_AuthName}}<span class="hg-field-error" id="name-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                 </div>
                                 <div class="ldap">
-                                    <div class="field">
+                                    <div class="hg-field">
                                         <label class="req" for="domain">{{.i18n.Tr "admin.auths.domain"}}</label>
-                                        <input class="ipt ipt-large ipt-radius {{if .Err_Domain}}ipt-error{{end}}" id="domain" name="domain" value="{{.domain}}" />
+                                        <input  id="domain" name="domain" value="{{.domain}}"  {{if .Err_Domain}}aria-invalid="true" aria-describedby="domain-error"{{end}}>{{if .Err_Domain}}<span class="hg-field-error" id="domain-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                     </div>
-                                    <div class="field">
+                                    <div class="hg-field">
                                         <label class="req" for="host">{{.i18n.Tr "admin.auths.host"}}</label>
-                                        <input class="ipt ipt-large ipt-radius {{if .Err_Host}}ipt-error{{end}}" id="host" name="host" value="{{.host}}" />
+                                        <input  id="host" name="host" value="{{.host}}"  {{if .Err_Host}}aria-invalid="true" aria-describedby="host-error"{{end}}>{{if .Err_Host}}<span class="hg-field-error" id="host-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                     </div>
-                                    <div class="field">
+                                    <div class="hg-field">
                                         <label class="req" for="port">{{.i18n.Tr "admin.auths.port"}}</label>
-                                        <input class="ipt ipt-large ipt-radius {{if .Err_Port}}ipt-error{{end}}" id="port" name="port" value="{{.port}}" />
+                                        <input  id="port" name="port" value="{{.port}}"  {{if .Err_Port}}aria-invalid="true" aria-describedby="port-error"{{end}}>{{if .Err_Port}}<span class="hg-field-error" id="port-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                     </div>
-                                    <div class="field">
+                                    <div class="hg-field">
                                         <label class="req" for="base_dn">{{.i18n.Tr "admin.auths.base_dn"}}</label>
-                                        <input class="ipt ipt-large ipt-radius {{if .Err_BaseDN}}ipt-error{{end}}" id="base_dn" name="base_dn" value="{{.base_dn}}" />
+                                        <input  id="base_dn" name="base_dn" value="{{.base_dn}}"  {{if .Err_BaseDN}}aria-invalid="true" aria-describedby="base_dn-error"{{end}}>{{if .Err_BaseDN}}<span class="hg-field-error" id="base_dn-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                     </div>
-                                    <div class="field">
+                                    <div class="hg-field">
                                         <label class="req" for="attributes">{{.i18n.Tr "admin.auths.attributes"}}</label>
-                                        <input class="ipt ipt-large ipt-radius {{if .Err_Attributes}}ipt-error{{end}}" id="attributes" name="attributes" value="{{.attributes}}" />
+                                        <input  id="attributes" name="attributes" value="{{.attributes}}"  {{if .Err_Attributes}}aria-invalid="true" aria-describedby="attributes-error"{{end}}>{{if .Err_Attributes}}<span class="hg-field-error" id="attributes-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                     </div>
-                                    <div class="field">
+                                    <div class="hg-field">
                                         <label class="req" for="filter">{{.i18n.Tr "admin.auths.filter"}}</label>
-                                        <input class="ipt ipt-large ipt-radius {{if .Err_Filter}}ipt-error{{end}}" id="filter" name="filter" value="{{.filter}}" />
+                                        <input  id="filter" name="filter" value="{{.filter}}"  {{if .Err_Filter}}aria-invalid="true" aria-describedby="filter-error"{{end}}>{{if .Err_Filter}}<span class="hg-field-error" id="filter-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                     </div>
-                                    <div class="field">
+                                    <div class="hg-field">
                                         <label class="req" for="ms_ad_sa">{{.i18n.Tr "admin.auths.ms_ad_sa"}}</label>
-                                        <input class="ipt ipt-large ipt-radius {{if .Err_MsAdSA}}ipt-error{{end}}" id="ms_ad_sa" name="ms_ad_sa" value="{{.ms_ad_sa}}" />
+                                        <input  id="ms_ad_sa" name="ms_ad_sa" value="{{.ms_ad_sa}}"  {{if .Err_MsAdSA}}aria-invalid="true" aria-describedby="ms_ad_sa-error"{{end}}>{{if .Err_MsAdSA}}<span class="hg-field-error" id="ms_ad_sa-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                     </div>
                                 </div>
                                 <div class="smtp hidden">
-                                    <div class="field">
-                                        <label class="req">{{.i18n.Tr "admin.auths.smtp_auth"}}</label>
-                                        <select name="smtpauth">
+                                    <div class="hg-field">
+                                        <label class="req" for="smtp-auth">{{.i18n.Tr "admin.auths.smtp_auth"}}</label>
+                                        <select id="smtp-auth" name="smtpauth">
                                             {{range .SMTPAuths}}
                                             <option value="{{.}}">{{.}}</option>
                                             {{end}}
                                         </select>
                                     </div>
-                                    <div class="field">
+                                    <div class="hg-field">
                                         <label class="req" for="smtphost">{{.i18n.Tr "admin.auths.smtphost"}}</label>
-                                        <input class="ipt ipt-large ipt-radius {{if .Err_SmtpHost}}ipt-error{{end}}" id="smtphost" name="smtphost" value="{{.smtphost}}" />
+                                        <input  id="smtphost" name="smtphost" value="{{.smtphost}}"  {{if .Err_SmtpHost}}aria-invalid="true" aria-describedby="smtphost-error"{{end}}>{{if .Err_SmtpHost}}<span class="hg-field-error" id="smtphost-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                     </div>
-                                    <div class="field">
+                                    <div class="hg-field">
                                         <label class="req" for="smtpport">{{.i18n.Tr "admin.auths.smtpport"}}</label>
-                                        <input class="ipt ipt-large ipt-radius {{if .Err_SmtpPort}}ipt-error{{end}}" id="smtpport" name="smtpport" value="{{.smtpport}}" />
+                                        <input  id="smtpport" name="smtpport" value="{{.smtpport}}"  {{if .Err_SmtpPort}}aria-invalid="true" aria-describedby="smtpport-error"{{end}}>{{if .Err_SmtpPort}}<span class="hg-field-error" id="smtpport-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                     </div>
                                 </div>
-                                <div class="field">
+                                <div class="hg-field">
                                     <div class="smtp hidden">
-                                        <label></label>
-                                        <input name="tls" type="checkbox" {{if .tls}}checked{{end}}>
-                                        <strong>{{.i18n.Tr "admin.auths.enable_tls"}}</strong>
+                                        <label class="hg-choice"><input name="tls" type="checkbox" {{if .tls}}checked{{end}}>
+                                        <strong>{{.i18n.Tr "admin.auths.enable_tls"}}</strong></label>
                                         <br>
                                     </div>
-                                    <label></label>
-                                    <input name="allowautoregister" type="checkbox" {{if .allowautoregister}}checked{{end}}>
-                                    <strong>{{.i18n.Tr "admin.auths.enable_auto_register"}}</strong>
+                                    <label class="hg-choice"><input name="allowautoregister" type="checkbox" {{if .allowautoregister}}checked{{end}}>
+                                    <strong>{{.i18n.Tr "admin.auths.enable_auto_register"}}</strong></label>
                                 </div>
-                                <div class="field">
-                                    <label></label>
-                                    <button class="btn btn-blue btn-large btn-radius">{{.i18n.Tr "admin.auths.new"}}</button>
+                                <div class="hg-field">
+                                    <button class="hg-button hg-button-primary">{{.i18n.Tr "admin.auths.new"}}</button>
                                 </div>
                             </form>
                         </div>
                         <br>
-                        <div class="panel panel-radius">
-                            <div class="panel-header">
+                        <div class="hg-panel">
+                            <div class="hg-panel-heading">
                                 {{.i18n.Tr "admin.auths.tips"}}
                             </div>
-                            <div class="panel-body admin-panel">
+                            <div class="hg-panel-body admin-panel">
                                 <h5>GMail Setting:</h5>
                                 <p>Host: smtp.gmail.com, Post: 587, Enable TLS Encryption: true</p>
                             </div>
@@ -105,6 +104,7 @@
                 </div>
             </div>
         </div>
-	</div>
+    </div>
 </div>
-{{template "ng/base/footer" .}}
+</div>
+{{template "shared/end" .}}

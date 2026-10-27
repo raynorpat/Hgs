@@ -1,50 +1,49 @@
-{{template "ng/base/head" .}}
-{{template "ng/base/header" .}}
-<div id="setting-wrapper" class="main-wrapper">
-    <div id="user-profile-setting" class="container clear">
+{{template "shared/start" .}}
+<div class="hg-account-page">
+<h1>{{.Title}}</h1>
+
+<div id="setting-wrapper" class="">
+    <div id="user-profile-setting" class="">
         {{template "user/settings/nav" .}}
-        <div class="grid-4-5 left">
+        <div class="">
             <div class="setting-content">
-                {{template "ng/base/alert" .}}
+
                 <div id="setting-content">
-                    <div id="user-applications-panel" class="panel panel-radius">
-                        <div class="panel-header">
-                        	<a class="show-form-btn" data-target-form="#access-add-form">
-                        		<button class="btn btn-medium btn-black btn-radius right">{{.i18n.Tr "settings.generate_new_token"}}</button>
-                        	</a>
-                        	<strong>{{.i18n.Tr "settings.manage_access_token"}}</strong>
+                    <div id="user-applications-panel" class="hg-panel">
+                        <div class="hg-panel-heading">
+
+                            <strong>{{.i18n.Tr "settings.manage_access_token"}}</strong>
                         </div>
-                        <ul class="panel-body setting-list">
+                        <ul class="hg-panel-body hg-account-list">
                             <li>{{.i18n.Tr "settings.tokens_desc"}}</li>
                             {{range .Tokens}}
-                            <li class="ssh clear">
-                                <span class="active-icon left label label-{{if .HasRecentActivity}}green{{else}}gray{{end}} label-radius"></span>
-                                <i class="fa fa-send fa-2x left"></i>
-                                <div class="ssh-content left">
+                            <li class="ssh">
+                                <span class="active-icon label label-{{if .HasRecentActivity}}green{{else}}gray{{end}} label-radius"></span>
+
+                                <div class="ssh-content">
                                     <p><strong>{{.Name}}</strong></p>
-                                    <p class="activity"><i>{{$.i18n.Tr "settings.add_on"}} <span title="{{DateFormat .Created "r"}}">{{DateFormat .Created "M d, Y"}}</span> —  <i class="octicon octicon-info"></i>{{if .HasUsed}}{{$.i18n.Tr "settings.last_used"}} {{DateFormat .Updated "M d, Y"}}{{else}}{{$.i18n.Tr "settings.no_activity"}}{{end}}</i></p>
+                                    <p class="activity"><i>{{$.i18n.Tr "settings.add_on"}} <span title="{{DateFormat .Created "r"}}">{{DateFormat .Created "M d, Y"}}</span> —  {{if .HasUsed}}{{$.i18n.Tr "settings.last_used"}} {{DateFormat .Updated "M d, Y"}}{{else}}{{$.i18n.Tr "settings.no_activity"}}{{end}}</i></p>
                                 </div>
-                                <a href="{{AppSubUrl}}/user/settings/applications?remove={{.Id}}">
-                                	<button class="btn btn-small btn-red btn-radius ssh-btn right">{{$.i18n.Tr "settings.delete_token"}}</button>
-                                </a>
+                                <form class="hg-inline-form" method="post" action="{{AppSubUrl}}/user/settings/applications?remove={{.Id}}" data-confirm-message="{{$.i18n.Tr "ui.confirm_action"}}">{{$.CsrfTokenHtml}}<button type="submit" class="hg-button">
+                                    {{$.i18n.Tr "settings.delete_token"}}
+                                </button></form>
                             </li>
                             {{end}}
                         </ul>
                     </div>
                     <br>
-                    <form class="panel panel-radius form form-align form-settings-add hide" id="access-add-form" action="{{AppSubUrl}}/user/settings/applications" method="post">
+                    <form class="hg-panel hg-form form-settings-add" id="access-add-form" action="{{AppSubUrl}}/user/settings/applications" method="post" data-prevent-duplicate>
                         {{.CsrfTokenHtml}}
-                        <p class="panel-header"><strong>{{.i18n.Tr "settings.generate_new_token"}}</strong></p>
-                        <div class="panel-body">
-                        	<div class="text-center panel-desc">{{.i18n.Tr "settings.new_token_desc"}}</div>
-                        	<input type="hidden" name="type" value="token">
-                            <p class="field">
+                        <p class="hg-panel-heading"><strong>{{.i18n.Tr "settings.generate_new_token"}}</strong></p>
+                        <div class="hg-panel-body">
+                            <div class="text-center hg-meta">{{.i18n.Tr "settings.new_token_desc"}}</div>
+                            <input type="hidden" name="type" value="token">
+                            <p class="hg-field">
                                 <label class="req" for="token-name">{{.i18n.Tr "settings.token_name"}}</label>
-                                <input class="ipt ipt-radius" id="token-name" name="name" required />
+                                <input class="" id="token-name" name="name" value="{{.name}}" required />
                             </p>
-                            <p class="field">
-                                <label></label>
-                                <button class="btn btn-green btn-medium btn-radius" id="ssh-add-btn">{{.i18n.Tr "settings.generate_token"}}</button>
+                            <p class="hg-field">
+                                <button class="hg-button hg-button-primary" id="ssh-add-btn">{{.i18n.Tr "settings.generate_token"}}</button>
                             </p>
                         </div>
                     </form>
@@ -53,4 +52,5 @@
         </div>
     </div>
 </div>
-{{template "ng/base/footer" .}}
+</div>
+{{template "shared/end" .}}

@@ -111,3 +111,22 @@ func ListAccessibleRepositories(ctx context.Context, actorID int64, q CatalogQue
 	}
 	return page, nil
 }
+
+// FilterReadableRepositories applies live policy to already loaded metadata. It
+// intentionally returns no counts for repositories the actor can no longer read.
+func FilterReadableRepositories(actorID int64, repos []*Repository) ([]*Repository, error) {
+	visible := make([]*Repository, 0, len(repos))
+	for _, repo := range repos {
+		access, err := RepositoryAccessFor(actorID, repo.Id)
+		if err == ErrRepoNotExist {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if access.Read {
+			visible = append(visible, repo)
+		}
+	}
+	return visible, nil
+}

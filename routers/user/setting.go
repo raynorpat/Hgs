@@ -160,6 +160,18 @@ func SettingsEmailPost(ctx *middleware.Context, form auth.AddEmailForm) {
 	if ctx.Query("_method") == "DELETE" {
 		id := com.StrTo(ctx.Query("id")).MustInt64()
 		if id <= 0 {
+			ctx.Error(404)
+			return
+		}
+		owned := false
+		for _, email := range ctx.Data["Emails"].([]*models.EmailAddress) {
+			if email.Id == id {
+				owned = true
+				break
+			}
+		}
+		if !owned {
+			ctx.Error(404)
 			return
 		}
 
@@ -176,6 +188,18 @@ func SettingsEmailPost(ctx *middleware.Context, form auth.AddEmailForm) {
 	if ctx.Query("_method") == "PRIMARY" {
 		id := com.StrTo(ctx.Query("id")).MustInt64()
 		if id <= 0 {
+			ctx.Error(404)
+			return
+		}
+		owned := false
+		for _, email := range ctx.Data["Emails"].([]*models.EmailAddress) {
+			if email.Id == id {
+				owned = true
+				break
+			}
+		}
+		if !owned {
+			ctx.Error(404)
 			return
 		}
 
@@ -363,7 +387,12 @@ func SettingsSocial(ctx *middleware.Context) {
 
 	// Unbind social account.
 	remove, _ := com.StrTo(ctx.Query("remove")).Int64()
-	if remove > 0 {
+	if remove > 0 && ctx.Req.Method == "POST" {
+		social, err := models.GetOauth2ById(remove)
+		if err != nil || social.Uid != ctx.User.Id {
+			ctx.Error(404)
+			return
+		}
 		if err := models.DeleteOauth2ById(remove); err != nil {
 			ctx.Handle(500, "DeleteOauth2ById", err)
 			return
@@ -387,18 +416,6 @@ func SettingsApplications(ctx *middleware.Context) {
 	ctx.Data["PageIsUserSettings"] = true
 	ctx.Data["PageIsSettingsApplications"] = true
 
-	// Delete access token.
-	remove, _ := com.StrTo(ctx.Query("remove")).Int64()
-	if remove > 0 {
-		if err := models.DeleteAccessTokenById(remove); err != nil {
-			ctx.Handle(500, "DeleteAccessTokenById", err)
-			return
-		}
-		ctx.Flash.Success(ctx.Tr("settings.delete_token_success"))
-		ctx.Redirect(setting.AppSubUrl + "/user/settings/applications")
-		return
-	}
-
 	tokens, err := models.ListAccessTokens(ctx.User.Id)
 	if err != nil {
 		ctx.Handle(500, "ListAccessTokens", err)
@@ -414,6 +431,34 @@ func SettingsApplicationsPost(ctx *middleware.Context, form auth.NewAccessTokenF
 	ctx.Data["Title"] = ctx.Tr("settings")
 	ctx.Data["PageIsUserSettings"] = true
 	ctx.Data["PageIsSettingsApplications"] = true
+
+	// Removal is an owner-scoped management POST, never a GET query side effect.
+	remove := com.StrTo(ctx.Query("remove")).MustInt64()
+	if remove > 0 {
+		tokens, err := models.ListAccessTokens(ctx.User.Id)
+		if err != nil {
+			ctx.Handle(500, "ListAccessTokens", err)
+			return
+		}
+		owned := false
+		for _, token := range tokens {
+			if token.Id == remove {
+				owned = true
+				break
+			}
+		}
+		if !owned {
+			ctx.Error(404)
+			return
+		}
+		if err := models.DeleteAccessTokenById(remove); err != nil {
+			ctx.Handle(500, "DeleteAccessTokenById", err)
+			return
+		}
+		ctx.Flash.Success(ctx.Tr("settings.delete_token_success"))
+		ctx.Redirect(setting.AppSubUrl + "/user/settings/applications")
+		return
+	}
 
 	switch ctx.Query("type") {
 	case "token":

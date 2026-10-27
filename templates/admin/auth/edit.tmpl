@@ -1,22 +1,24 @@
-{{template "ng/base/head" .}}
-{{template "ng/base/header" .}}
+{{template "shared/start" .}}
+<div class="hg-account-page">
+<h1>{{.Title}}</h1>
+
 <div id="admin-wrapper">
-    <div id="setting-wrapper" class="main-wrapper">
-        <div id="admin-setting" class="container clear">
-            {{template "admin/nav" .}}
-            <div class="grid-4-5 left">
+    <div id="setting-wrapper" class="">
+        <div id="admin-setting" class="">
+
+            <div class="">
                 <div class="setting-content">
-                    {{template "ng/base/alert" .}}
+
                     <div id="setting-content">
-                        <div class="panel panel-radius">
-                            <div class="panel-header">
+                        <div class="hg-panel">
+                            <div class="hg-panel-heading">
                                 <strong>{{.i18n.Tr "admin.auths.edit"}}</strong>
                             </div>
-                            <form class="form form-align panel-body" id="auth-setting-form" action="{{AppSubUrl}}/admin/auths/{{.Source.Id}}" data-delete-url="/admin/auths/{{.Source.Id}}/delete" method="post">
+                            <form class="hg-form hg-panel-body" id="auth-setting-form" action="{{AppSubUrl}}/admin/auths/{{.Source.Id}}" method="post" data-prevent-duplicate>
                                 {{.CsrfTokenHtml}}
                                 <input type="hidden" value="{{.Source.Id}}" name="id"/>
                                 {{$type := .Source.Type}}
-                                <div class="field">
+                                <div class="hg-field">
                                     <label>{{.i18n.Tr "admin.auths.auth_type"}}</label>
                                     <input type="hidden" name="type" value="{{.Source.Type}}"/>
                                     <label class="control-label">
@@ -25,45 +27,45 @@
                                         {{end}}
                                     </label>
                                 </div>
-                                <div class="field">
+                                <div class="hg-field">
                                     <label class="req" for="name">{{.i18n.Tr "admin.auths.auth_name"}}</label>
-                                    <input class="ipt ipt-large ipt-radius {{if .Err_AuthName}}ipt-error{{end}}" id="name" name="name" value="{{.Source.Name}}" required />
+                                    <input  id="name" name="name" value="{{if .HasError}}{{.name}}{{else}}{{.Source.Name}}{{end}}" required  {{if .Err_AuthName}}aria-invalid="true" aria-describedby="name-error"{{end}}>{{if .Err_AuthName}}<span class="hg-field-error" id="name-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                 </div>
 
                                 {{if eq $type 2}}
-                                <div class="field">
+                                <div class="hg-field">
                                     <label class="req" for="domain">{{.i18n.Tr "admin.auths.domain"}}</label>
-                                    <input class="ipt ipt-large ipt-radius {{if .Err_Domain}}ipt-error{{end}}" id="domain" name="domain" value="{{.Source.LDAP.Name}}" required />
+                                    <input  id="domain" name="domain" value="{{if .HasError}}{{.domain}}{{else}}{{.Source.LDAP.Name}}{{end}}" required  {{if .Err_Domain}}aria-invalid="true" aria-describedby="domain-error"{{end}}>{{if .Err_Domain}}<span class="hg-field-error" id="domain-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                 </div>
-                                <div class="field">
+                                <div class="hg-field">
                                     <label class="req" for="host">{{.i18n.Tr "admin.auths.host"}}</label>
-                                    <input class="ipt ipt-large ipt-radius {{if .Err_Host}}ipt-error{{end}}" id="host" name="host" value="{{.Source.LDAP.Host}}" required />
+                                    <input  id="host" name="host" value="{{if .HasError}}{{.host}}{{else}}{{.Source.LDAP.Host}}{{end}}" required  {{if .Err_Host}}aria-invalid="true" aria-describedby="host-error"{{end}}>{{if .Err_Host}}<span class="hg-field-error" id="host-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                 </div>
-                                <div class="field">
+                                <div class="hg-field">
                                     <label class="req" for="port">{{.i18n.Tr "admin.auths.port"}}</label>
-                                    <input class="ipt ipt-large ipt-radius {{if .Err_Port}}ipt-error{{end}}" id="port" name="port" value="{{.Source.LDAP.Port}}" required />
+                                    <input  id="port" name="port" value="{{if .HasError}}{{.port}}{{else}}{{.Source.LDAP.Port}}{{end}}" required  {{if .Err_Port}}aria-invalid="true" aria-describedby="port-error"{{end}}>{{if .Err_Port}}<span class="hg-field-error" id="port-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                 </div>
-                                <div class="field">
+                                <div class="hg-field">
                                     <label class="req" for="base_dn">{{.i18n.Tr "admin.auths.base_dn"}}</label>
-                                    <input class="ipt ipt-large ipt-radius {{if .Err_BaseDN}}ipt-error{{end}}" id="base_dn" name="base_dn" value="{{.Source.LDAP.BaseDN}}" />
+                                    <input  id="base_dn" name="base_dn" value="{{if .HasError}}{{.base_dn}}{{else}}{{.Source.LDAP.BaseDN}}{{end}}"  {{if .Err_BaseDN}}aria-invalid="true" aria-describedby="base_dn-error"{{end}}>{{if .Err_BaseDN}}<span class="hg-field-error" id="base_dn-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                 </div>
-                                <div class="field">
+                                <div class="hg-field">
                                     <label class="req" for="attributes">{{.i18n.Tr "admin.auths.attributes"}}</label>
-                                    <input class="ipt ipt-large ipt-radius {{if .Err_Attributes}}ipt-error{{end}}" id="attributes" name="attributes" value="{{.Source.LDAP.Attributes}}" />
+                                    <input  id="attributes" name="attributes" value="{{if .HasError}}{{.attributes}}{{else}}{{.Source.LDAP.Attributes}}{{end}}"  {{if .Err_Attributes}}aria-invalid="true" aria-describedby="attributes-error"{{end}}>{{if .Err_Attributes}}<span class="hg-field-error" id="attributes-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                 </div>
-                                <div class="field">
+                                <div class="hg-field">
                                     <label class="req" for="filter">{{.i18n.Tr "admin.auths.filter"}}</label>
-                                    <input class="ipt ipt-large ipt-radius {{if .Err_Filter}}ipt-error{{end}}" id="filter" name="filter" value="{{.Source.LDAP.Filter}}" />
+                                    <input  id="filter" name="filter" value="{{if .HasError}}{{.filter}}{{else}}{{.Source.LDAP.Filter}}{{end}}"  {{if .Err_Filter}}aria-invalid="true" aria-describedby="filter-error"{{end}}>{{if .Err_Filter}}<span class="hg-field-error" id="filter-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                 </div>
-                                <div class="field">
+                                <div class="hg-field">
                                     <label class="req" for="ms_ad_sa">{{.i18n.Tr "admin.auths.ms_ad_sa"}}</label>
-                                    <input class="ipt ipt-large ipt-radius {{if .Err_MsAdSA}}ipt-error{{end}}" id="ms_ad_sa" name="ms_ad_sa" value="{{.Source.LDAP.MsAdSAFormat}}" />
+                                    <input  id="ms_ad_sa" name="ms_ad_sa" value="{{if .HasError}}{{.ms_ad_sa}}{{else}}{{.Source.LDAP.MsAdSAFormat}}{{end}}"  {{if .Err_MsAdSA}}aria-invalid="true" aria-describedby="ms_ad_sa-error"{{end}}>{{if .Err_MsAdSA}}<span class="hg-field-error" id="ms_ad_sa-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                 </div>
 
                                 {{else if eq $type 3}}
-                                <div class="field">
-                                    <label class="req">{{.i18n.Tr "admin.auths.smtp_auth"}}</label>
-                                    <select name="smtpauth">
+                                <div class="hg-field">
+                                    <label class="req" for="smtp-auth">{{.i18n.Tr "admin.auths.smtp_auth"}}</label>
+                                    <select id="smtp-auth" name="smtpauth">
                                         {{$auth := .Source.SMTP.Auth}}
                                         {{range .SMTPAuths}}
                                         <option value="{{.}}"
@@ -71,44 +73,34 @@
                                         {{end}}
                                     </select>
                                 </div>
-                                <div class="field">
+                                <div class="hg-field">
                                     <label class="req" for="smtphost">{{.i18n.Tr "admin.auths.smtphost"}}</label>
-                                    <input class="ipt ipt-large ipt-radius {{if .Err_SmtpHost}}ipt-error{{end}}" id="smtphost" name="smtphost" value="{{.Source.SMTP.Host}}" />
+                                    <input  id="smtphost" name="smtphost" value="{{if .HasError}}{{.smtphost}}{{else}}{{.Source.SMTP.Host}}{{end}}"  {{if .Err_SmtpHost}}aria-invalid="true" aria-describedby="smtphost-error"{{end}}>{{if .Err_SmtpHost}}<span class="hg-field-error" id="smtphost-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                 </div>
-                                <div class="field">
+                                <div class="hg-field">
                                     <label class="req" for="smtpport">{{.i18n.Tr "admin.auths.smtpport"}}</label>
-                                    <input class="ipt ipt-large ipt-radius {{if .Err_SmtpPort}}ipt-error{{end}}" id="smtpport" name="smtpport" value="{{.Source.SMTP.Port}}" />
+                                    <input  id="smtpport" name="smtpport" value="{{if .HasError}}{{.smtpport}}{{else}}{{.Source.SMTP.Port}}{{end}}"  {{if .Err_SmtpPort}}aria-invalid="true" aria-describedby="smtpport-error"{{end}}>{{if .Err_SmtpPort}}<span class="hg-field-error" id="smtpport-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                 </div>
                                 {{end}}
 
-                                <div class="field">
+                                <div class="hg-field">
                                     {{if eq $type 3}}
-                                    <label></label>
-                                    <input name="tls" type="checkbox" {{if .Source.SMTP.TLS}}checked{{end}}>
-                                    <strong>{{.i18n.Tr "admin.auths.enable_tls"}}</strong>
+                                    <label class="hg-choice"><input name="tls" type="checkbox" {{if .HasError}}{{if .tls}}checked{{end}}{{else}}{{if .Source.SMTP.TLS}}checked{{end}}{{end}}>
+                                    <strong>{{.i18n.Tr "admin.auths.enable_tls"}}</strong></label>
                                     <br>
                                     {{end}}
-                                    <label></label>
-                                    <input name="allowautoregister" type="checkbox" {{if .Source.AllowAutoRegister}}checked{{end}}>
-                                    <strong>{{.i18n.Tr "admin.auths.enable_auto_register"}}</strong>
+                                    <label class="hg-choice"><input name="allowautoregister" type="checkbox" {{if .HasError}}{{if .allowautoregister}}checked{{end}}{{else}}{{if .Source.AllowAutoRegister}}checked{{end}}{{end}}>
+                                    <strong>{{.i18n.Tr "admin.auths.enable_auto_register"}}</strong></label>
                                     <br>
-                                    <label></label>
-                                    <input name="is_actived" type="checkbox" {{if .Source.IsActived}}checked{{end}}>
-                                    <strong>{{.i18n.Tr "admin.auths.activated"}}</strong>
+                                    <label class="hg-choice"><input name="is_actived" type="checkbox" {{if .HasError}}{{if .is_actived}}checked{{end}}{{else}}{{if .Source.IsActived}}checked{{end}}{{end}}>
+                                    <strong>{{.i18n.Tr "admin.auths.activated"}}</strong></label>
                                 </div>
-                                <div class="field">
-                                    <label></label>
-                                    <button class="btn btn-green btn-large btn-radius">{{.i18n.Tr "admin.auths.update"}}</button>
+                                <div class="hg-field">
+                                    <button class="hg-button hg-button-primary">{{.i18n.Tr "admin.auths.update"}}</button>
                                     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-                                    <button class="btn btn-large btn-red btn-radius" id="delete-auth-btn" href="#delete-auth-modal">{{.i18n.Tr "admin.auths.delete"}}</button>
+                                    <button class="hg-button hg-button-danger" id="delete-auth-btn" type="submit" formnovalidate formaction="{{AppSubUrl}}/admin/auths/{{.Source.Id}}/delete" data-confirm-message="{{.i18n.Tr "ui.confirm_action"}}">{{.i18n.Tr "admin.auths.delete"}}</button>
                                 </div>
-                                <div class="white-popup-block mfp-hide" id="delete-auth-modal">
-                                    <h1 class="text-red">{{.i18n.Tr "admin.auths.delete_auth_title"}}</h1>
-                                    <p>{{.i18n.Tr "admin.auths.delete_auth_desc"}}</p>
-                                    <br>
-                                    <button class="btn btn-red btn-large btn-radius" id="delete-auth-submit">{{.i18n.Tr "settings.continue"}}</button>
-                                    <button class="btn btn-large btn-radius popup-modal-dismiss">{{.i18n.Tr "settings.cancel"}}</button>
-                                </div>
+
                             </form>
                         </div>
                     </div>
@@ -117,4 +109,5 @@
         </div>
     </div>
 </div>
-{{template "ng/base/footer" .}}
+</div>
+{{template "shared/end" .}}

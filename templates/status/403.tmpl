@@ -1,6 +1,3 @@
-{{template "ng/base/head" .}}
-{{template "ng/base/header" .}}
-<div class="container">
-	403 Forbidden
-</div>
-{{template "ng/base/footer" .}}
+{{template "status/start" .}}
+<h1>403 · {{.i18n.Tr "ui.status_403"}}</h1><p>{{.i18n.Tr "ui.status_403_description"}}</p>
+{{template "status/end" .}}

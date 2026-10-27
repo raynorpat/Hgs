@@ -41,6 +41,8 @@ type Context struct {
 
 	// PrepareHTML composes optional page utilities only after request authority exists.
 	PrepareHTML func(*Context) error
+	// PreparePage supplies data-only presentation before optional discovery.
+	PreparePage func(*Context, base.TplName)
 
 	Repo struct {
 		HgContext   context.Context
@@ -98,6 +100,9 @@ func (ctx *Context) HasError() bool {
 
 // HTML calls Context.HTML and converts template name to string.
 func (ctx *Context) HTML(status int, name base.TplName) {
+	if ctx.PreparePage != nil {
+		ctx.PreparePage(ctx, name)
+	}
 	// Native readers are reaped before transferring a buffered HTML response.
 	if ctx.Repo.FinishRead != nil {
 		ctx.Repo.FinishRead()

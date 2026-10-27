@@ -3,6 +3,17 @@
   const root = document.querySelector('[data-hg-shell]');
   if (!root || root.dataset.formsReady) return;
   root.dataset.formsReady = 'true';
+  // Native account confirmations run before duplicate suppression.
+  root.addEventListener('submit', event => {
+    const form = event.target;
+    if (!form.closest('.hg-account-page')) return;
+    const message = event.submitter?.dataset.confirmMessage || form.dataset.confirmMessage;
+    const rename = form.dataset.renameField;
+    const changed = !rename || form.elements[rename]?.value !== form.dataset.originalName;
+    if (message && changed && !window.confirm(message)) {
+      event.preventDefault(); event.stopImmediatePropagation();
+    }
+  }, true);
   // Opt in only on forms whose native validation and response lifecycle support this.
   root.addEventListener('submit', e => {
     const form = e.target.closest('form[data-prevent-duplicate]');

@@ -1,42 +1,44 @@
-{{template "ng/base/head" .}}
-{{template "ng/base/header" .}}
+{{template "shared/start" .}}
+<div class="hg-account-page">
+
 {{template "org/base/header" .}}
-<div class="container">
-	<div class="org-header-alert">
-		{{template "ng/base/alert" .}}
-	</div>
-	<div class="org-toolbar clear">
-		{{if .IsOrganizationOwner}}
-        <a class="btn btn-green btn-large btn-link btn-radius right" href="{{.OrgLink}}/teams/new"><i class="octicon octicon-repo-create"></i> {{.i18n.Tr "org.create_new_team"}}</a>
-		{{end}}
-	</div>
-	<div class="org-team-list">
-		{{range .Teams}}
-		<div class="org-team-list-item">
-			<div class="panel panel-radius">
-				<div class="panel-header">
-					{{if .IsMember $.SignedUser.Id}}
-                    <a class="btn btn-small btn-red btn-header btn-radius right" href="{{$.OrgLink}}/teams/{{.LowerName}}/action/leave?uid={{$.SignedUser.Id}}">{{$.i18n.Tr "org.teams.leave"}}</a>
+<div class="">
+    <div class="org-header-alert">
+
+    </div>
+    <div class="org-toolbar">
+        {{if .IsOrganizationOwner}}
+        <a class="hg-button hg-button-primary " href="{{.OrgLink}}/teams/new"> {{.i18n.Tr "org.create_new_team"}}</a>
+        {{end}}
+    </div>
+    <div class="org-team-list">
+        {{range .Teams}}
+        <div class="org-team-list-item">
+            <div class="hg-panel">
+                <div class="hg-panel-heading">
+                    {{if .IsMember $.SignedUser.Id}}
+                    <form class="hg-inline-form" method="post" action="{{$.OrgLink}}/teams/{{.LowerName}}/action/leave?uid={{$.SignedUser.Id}}" data-confirm-message="{{$.i18n.Tr "ui.confirm_action"}}">{{$.CsrfTokenHtml}}<button type="submit" class="hg-button">{{$.i18n.Tr "org.teams.leave"}}</button></form>
                     {{else if $.IsOrganizationOwner}}
-                    <a class="btn btn-small btn-blue btn-header btn-radius right" href="{{$.OrgLink}}/teams/{{.LowerName}}/action/join?uid={{$.SignedUser.Id}}">{{$.i18n.Tr "org.teams.join"}}</a>
+                    <form class="hg-inline-form" method="post" action="{{$.OrgLink}}/teams/{{.LowerName}}/action/join?uid={{$.SignedUser.Id}}" data-confirm-message="{{$.i18n.Tr "ui.confirm_action"}}">{{$.CsrfTokenHtml}}<button type="submit" class="hg-button">{{$.i18n.Tr "org.teams.join"}}</button></form>
                     {{end}}
                     <a class="text-black" href="{{$.OrgLink}}/teams/{{.LowerName}}"><strong>{{.Name}}</strong></a>
-				</div>
-				{{if .NumMembers}}
-				<div class="panel-body member-avatar-group">
-					{{range .Members}}
-					<a href="{{AppSubUrl}}/{{.Name}}" title="{{.Name}}">
-						<img src="{{.AvatarLink}}">
-					</a>
-					{{end}}
-				</div>
-				{{end}}
-				<div class="panel-footer">
-	    			<p class="team-meta">{{.NumMembers}} {{$.i18n.Tr "org.lower_members"}} · {{.NumRepos}} {{$.i18n.Tr "org.lower_repositories"}}</p>
-				</div>
-			</div>
-		</div>
-		{{end}}
-	</div>
+                </div>
+                {{if .NumMembers}}
+                <div class="hg-panel-body member-avatar-group">
+                    {{range .Members}}
+                    <a href="{{AppSubUrl}}/{{.Name}}" title="{{.Name}}">
+                        <img alt="{{.Name}}" width="40" height="40" src="{{.AvatarLink}}" data-avatar-fallback="{{AppSubUrl}}/img/avatar_default.jpg">
+                    </a>
+                    {{end}}
+                </div>
+                {{end}}
+                <div class="panel-footer">
+                    <p class="team-meta">{{.NumMembers}} {{$.i18n.Tr "org.lower_members"}} · {{.NumRepos}} {{$.i18n.Tr "org.lower_repositories"}}</p>
+                </div>
+            </div>
+        </div>
+        {{end}}
+    </div>
 </div>
-{{template "ng/base/footer" .}}
+</div>
+{{template "shared/end" .}}

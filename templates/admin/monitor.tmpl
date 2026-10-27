@@ -1,19 +1,21 @@
-{{template "ng/base/head" .}}
-{{template "ng/base/header" .}}
+{{template "shared/start" .}}
+<div class="hg-account-page">
+<h1>{{.Title}}</h1>
+
 <div id="admin-wrapper">
-    <div id="setting-wrapper" class="main-wrapper">
-        <div id="admin-setting" class="container clear">
-            {{template "admin/nav" .}}
-            <div class="grid-4-5 left">
+    <div id="setting-wrapper" class="">
+        <div id="admin-setting" class="">
+
+            <div class="">
                 <div class="setting-content">
-                    {{template "ng/base/alert" .}}
+
                     <div id="setting-content">
-                        <div class="panel panel-radius">
-                            <div class="panel-header">
+                        <div class="hg-panel">
+                            <div class="hg-panel-heading">
                                 <strong>{{.i18n.Tr "admin.monitor.cron"}}</strong>
                             </div>
-                            <div class="panel-body admin-panel">
-                                <table class="table table-striped">
+                            <div class="hg-panel-body admin-panel">
+                                <div class="hg-table-scroll"><table class="hg-table table-striped">
                                     <thead>
                                         <tr>
                                             <th>{{.i18n.Tr "admin.monitor.name"}}</th>
@@ -34,16 +36,16 @@
                                         </tr>
                                         {{end}}
                                     </tbody>
-                                </table>
+                                </table></div>
                             </div>
                         </div>
                         <br>
-                        <div class="panel panel-radius">
-                            <div class="panel-header">
+                        <div class="hg-panel">
+                            <div class="hg-panel-heading">
                                 <strong>{{.i18n.Tr "admin.monitor.process"}}</strong>
                             </div>
-                            <div class="panel-body admin-panel">
-                                <table class="table table-striped">
+                            <div class="hg-panel-body admin-panel">
+                                <div class="hg-table-scroll"><table class="hg-table table-striped">
                                     <thead>
                                         <tr>
                                             <th>Pid</th>
@@ -62,7 +64,7 @@
                                         </tr>
                                         {{end}}
                                     </tbody>
-                                </table>
+                                </table></div>
                             </div>
                         </div>
                     </div>
@@ -71,4 +73,5 @@
         </div>
     </div>
 </div>
-{{template "ng/base/footer" .}}
+</div>
+{{template "shared/end" .}}

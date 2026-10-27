@@ -1,6 +1,3 @@
-{{template "ng/base/head" .}}
-{{template "ng/base/header" .}}
-<div class="container">
-	401 Unauthorized: {{.ErrorMsg}}
-</div>
-{{template "ng/base/footer" .}}
+{{template "status/start" .}}
+<h1>401 · {{.i18n.Tr "ui.status_401"}}</h1><p>{{.i18n.Tr "ui.status_401_description"}}</p>
+{{template "status/end" .}}

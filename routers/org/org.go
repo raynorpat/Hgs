@@ -27,7 +27,17 @@ func Home(ctx *middleware.Context) {
 		ctx.Handle(500, "GetRepositories", err)
 		return
 	}
-	ctx.Data["Repos"] = repos
+	actorID := int64(0)
+	if ctx.IsSigned {
+		actorID = ctx.User.Id
+	}
+	visible, err := models.FilterReadableRepositories(actorID, repos)
+	if err != nil {
+		ctx.Handle(500, "FilterReadableRepositories", err)
+		return
+	}
+	ctx.Data["Repos"] = visible
+	ctx.Data["IsOrganizationMember"] = ctx.Org.IsMember
 
 	if err = org.GetMembers(); err != nil {
 		ctx.Handle(500, "GetMembers", err)
@@ -38,6 +48,12 @@ func Home(ctx *middleware.Context) {
 	if err = org.GetTeams(); err != nil {
 		ctx.Handle(500, "GetTeams", err)
 		return
+	}
+	for _, team := range org.Teams {
+		if err := prepareTeamRepositories(ctx, team); err != nil {
+			ctx.Handle(500, "TeamRepositories", err)
+			return
+		}
 	}
 	ctx.Data["Teams"] = org.Teams
 

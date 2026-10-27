@@ -1,53 +1,55 @@
-{{template "ng/base/head" .}}
-{{template "ng/base/header" .}}
+{{template "shared/start" .}}
+<div class="hg-account-page">
+<h1>{{.Title}}</h1>
+
 <div id="admin-wrapper">
-    <div id="setting-wrapper" class="main-wrapper">
-        <div id="admin-setting" class="container clear">
-            {{template "admin/nav" .}}
-            <div class="grid-4-5 left">
+    <div id="setting-wrapper" class="">
+        <div id="admin-setting" class="">
+
+            <div class="">
                 <div class="setting-content">
-                    {{template "ng/base/alert" .}}
+
                     <div id="setting-content">
-                        <div class="panel panel-radius">
-                            <div class="panel-header">
+                        <div class="hg-panel">
+                            <div class="hg-panel-heading">
                                 <strong>{{.i18n.Tr "admin.users.new_account"}}</strong>
                             </div>
-                            <form class="form form-align panel-body" id="repo-setting-form" action="{{AppSubUrl}}/admin/users/new" method="post">
-					            {{.CsrfTokenHtml}}
-                                <div class="field">
-                                    <label class="req">{{.i18n.Tr "admin.users.auth_source"}}</label>
+                            <form class="hg-form hg-panel-body" id="repo-setting-form" data-account-create action="{{AppSubUrl}}/admin/users/new" method="post" data-prevent-duplicate>
+                                {{.CsrfTokenHtml}}
+                                <div class="hg-field">
+                                    <label class="req" for="login-type">{{.i18n.Tr "admin.users.auth_source"}}</label>
                                     <select id="login-type" name="logintype">
                                         <option value="0-0">{{.i18n.Tr "admin.users.local"}}</option>
                                         {{range $key, $val := .LoginSources}}
-                                        <option value="{{$val.Type}}-{{$val.Id}}">{{$val.Name}}</option>
+                                        <option value="{{$val.Type}}-{{$val.Id}}" {{if eq (printf "%d-%d" $val.Type $val.Id) $.logintype}}selected{{end}}>{{$val.Name}}</option>
                                         {{end}}
                                     </select>
                                 </div>
-                                <div class="field auth-name hidden">
+                                <div class="hg-field auth-name hidden">
                                     <label class="req" for="loginname">{{.i18n.Tr "admin.users.auth_login_name"}}</label>
-                                    <input class="ipt ipt-large ipt-radius {{if .Err_LoginName}}ipt-error{{end}}" id="loginname" name="loginname" value="{{.loginname}}" />
+                                    <input  id="loginname" name="loginname" value="{{.loginname}}"  {{if .Err_LoginName}}aria-invalid="true" aria-describedby="loginname-error"{{end}}>{{if .Err_LoginName}}<span class="hg-field-error" id="loginname-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                 </div>
-                                <div class="field">
+                                <div class="hg-field">
                                     <label class="req" for="username">{{.i18n.Tr "username"}}</label>
-                                    <input class="ipt ipt-large ipt-radius {{if .Err_UserName}}ipt-error{{end}}" id="username" name="uname" type="text" value="{{.uname}}" required />
+                                    <input  id="username" name="uname" type="text" value="{{.uname}}" required  {{if .Err_UserName}}aria-invalid="true" aria-describedby="username-error"{{end}}>{{if .Err_UserName}}<span class="hg-field-error" id="username-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                 </div>
-                                <div class="field">
+                                <div class="hg-field">
                                     <label class="req" for="email">{{.i18n.Tr "email"}}</label>
-                                    <input class="ipt ipt-large ipt-radius {{if .Err_Email}}ipt-error{{end}}" id="email" name="email" type="email" value="{{.email}}" required/>
+                                    <input  id="email" name="email" type="email" value="{{.email}}" required {{if .Err_Email}}aria-invalid="true" aria-describedby="email-error"{{end}}>{{if .Err_Email}}<span class="hg-field-error" id="email-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                 </div>
-                                <div class="field pwd">
+                                <p class="auth-name hg-meta">{{.i18n.Tr "ui.provider_initial_password"}}</p>
+ <div class="hg-field pwd">
                                     <label class="req" for="password">{{.i18n.Tr "password"}}</label>
-                                    <input class="ipt ipt-large ipt-radius {{if .Err_Password}}ipt-error{{end}}" id="password" name="password" type="password" value="{{.password}}" required/>
+                                    <input  id="password" name="password" type="password" required {{if .Err_Password}}aria-invalid="true" aria-describedby="password-error"{{end}}>{{if .Err_Password}}<span class="hg-field-error" id="password-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                 </div>
-                                <div class="field">
+                                <div class="hg-field">
                                     <label class="req" for="re-type">{{.i18n.Tr "re_type"}}</label>
-                                    <input class="ipt ipt-large ipt-radius {{if .Err_Password}}ipt-error{{end}}" id="re-type" name="retype" type="password" required/>
+                                    <input  id="re-type" name="retype" type="password" required {{if .Err_Password}}aria-invalid="true" aria-describedby="re-type-error"{{end}}>{{if .Err_Password}}<span class="hg-field-error" id="re-type-error">{{.Flash.ErrorMsg}}</span>{{end}}
                                 </div>
-                                <div class="field">
-                                    <label></label>
-                                    <button class="btn btn-blue btn-large btn-radius">{{.i18n.Tr "admin.users.new_account"}}</button>
+                                <div class="hg-field">
+                                    <button class="hg-button hg-button-primary">{{.i18n.Tr "admin.users.new_account"}}</button>
                                 </div>
-				            </form>
+                            </form>
                         </div>
                     </div>
                 </div>
@@ -55,4 +57,5 @@
         </div>
     </div>
 </div>
-{{template "ng/base/footer" .}}
+</div>
+{{template "shared/end" .}}

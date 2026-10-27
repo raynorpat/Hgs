@@ -22,7 +22,7 @@
                 </div>
             </form> -->
             {{end}}
-            <a id="nav-out" class="nav-item navbar-right navbar-btn btn btn-danger" href="{{AppSubUrl}}/user/logout/"><i class="fa fa-power-off fa-lg"></i></a>
+            <form class="nav-item navbar-right" action="{{AppSubUrl}}/user/logout" method="post">{{.CsrfTokenHtml}}<button id="nav-out" type="submit" class="navbar-btn btn btn-danger">{{.i18n.Tr "sign_out"}}</button></form>
             <a id="nav-avatar" class="nav-item navbar-right{{if .PageIsUserProfile}} active{{end}}" href="{{.SignedUser.HomeLink}}" data-toggle="tooltip" data-placement="bottom" title="{{.SignedUserName}}">
                 <img src="{{.SignedUser.AvatarLink}}?s=28" alt="user-avatar" title="username"/>
             </a>

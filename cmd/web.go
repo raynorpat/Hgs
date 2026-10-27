@@ -41,6 +41,7 @@ import (
 	"github.com/gogits/gogs/modules/log"
 	"github.com/gogits/gogs/modules/middleware"
 	"github.com/gogits/gogs/modules/setting"
+	"github.com/gogits/gogs/modules/ui"
 	"github.com/gogits/gogs/modules/version"
 	"github.com/gogits/gogs/routers"
 	"github.com/gogits/gogs/routers/admin"
@@ -164,7 +165,10 @@ func newMacaron() *macaron.Macaron {
 		}
 	}
 	m.Use(middleware.Contexter())
-	m.Use(func(ctx *middleware.Context) { ctx.PrepareHTML = user.PrepareDiscovery })
+	m.Use(func(ctx *middleware.Context) {
+		ctx.PrepareHTML = user.PrepareDiscovery
+		ctx.PreparePage = ui.PrepareAccountPage
+	})
 	return m
 }
 
@@ -275,6 +279,7 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 
 	bind := binding.Bind
 	bindIgnErr := binding.BindIgnErr
+	protectedPOST := func(ctx *macaron.Context, token csrf.CSRF) { csrf.Validate(ctx, token) }
 
 	// Routers.
 	m.Get("/", ignSignIn, routers.Home)
@@ -284,7 +289,7 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 	m.Post("/user/recent/clear", reqSignIn, user.ClearRecent)
 	m.Combo("/install", routers.InstallInit).
 		Get(routers.Install).
-		Post(bindIgnErr(auth.InstallForm{}), routers.InstallPost)
+		Post(protectedPOST, bindIgnErr(auth.InstallForm{}), routers.InstallPost)
 	m.Group("", func() {
 		m.Get("/issues", user.Issues)
 	}, reqSignIn)
@@ -324,12 +329,12 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 	// User.
 	m.Group("/user", func() {
 		m.Get("/login", user.SignIn)
-		m.Post("/login", bindIgnErr(auth.SignInForm{}), user.SignInPost)
+		m.Post("/login", protectedPOST, bindIgnErr(auth.SignInForm{}), user.SignInPost)
 		m.Get("/info/:name", user.SocialSignIn)
 		m.Get("/sign_up", user.SignUp)
-		m.Post("/sign_up", bindIgnErr(auth.RegisterForm{}), user.SignUpPost)
+		m.Post("/sign_up", protectedPOST, bindIgnErr(auth.RegisterForm{}), user.SignUpPost)
 		m.Get("/reset_password", user.ResetPasswd)
-		m.Post("/reset_password", user.ResetPasswdPost)
+		m.Post("/reset_password", protectedPOST, user.ResetPasswdPost)
 	}, reqSignOut)
 	m.Group("/user/settings", func() {
 		m.Get("", user.Settings)
@@ -342,17 +347,19 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 		m.Get("/ssh", user.SettingsSSHKeys)
 		m.Post("/ssh", bindIgnErr(auth.AddSSHKeyForm{}), user.SettingsSSHKeysPost)
 		m.Get("/social", user.SettingsSocial)
+		m.Post("/social", user.SettingsSocial)
 		m.Combo("/applications").Get(user.SettingsApplications).Post(bindIgnErr(auth.NewAccessTokenForm{}), user.SettingsApplicationsPost)
 		m.Route("/delete", "GET,POST", user.SettingsDelete)
 	}, reqSignIn)
 	m.Group("/user", func() {
 		// r.Get("/feeds", binding.Bind(auth.FeedsForm{}), user.Feeds)
-		m.Any("/activate", user.Activate)
-		m.Any("/activate_email", user.ActivateEmail)
+		m.Get("/activate", user.Activate)
+		m.Post("/activate", protectedPOST, user.Activate)
+		m.Get("/activate_email", user.ActivateEmail)
 		m.Get("/email2user", user.Email2User)
 		m.Get("/forget_password", user.ForgotPasswd)
-		m.Post("/forget_password", user.ForgotPasswdPost)
-		m.Get("/logout", user.SignOut)
+		m.Post("/forget_password", protectedPOST, user.ForgotPasswdPost)
+		m.Post("/logout", protectedPOST, user.SignOut)
 	})
 
 	// Gravatar service.
@@ -364,7 +371,8 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 	adminReq := middleware.Toggle(&middleware.ToggleOptions{SignInRequire: true, AdminRequire: true})
 
 	m.Group("/admin", func() {
-		m.Get("", adminReq, admin.Dashboard)
+		m.Get("", admin.Dashboard)
+		m.Post("", admin.Dashboard)
 		m.Get("/config", admin.Config)
 		m.Get("/monitor", admin.Monitor)
 
@@ -396,7 +404,7 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 
 		m.Group("/notices", func() {
 			m.Get("", admin.Notices)
-			m.Get("/:id:int/delete", admin.DeleteNotice)
+			m.Post("/:id:int/delete", admin.DeleteNotice)
 		})
 	}, adminReq)
 
@@ -416,13 +424,13 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 		m.Group("/:org", func() {
 			m.Get("/dashboard", user.Dashboard)
 			m.Get("/members", org.Members)
-			m.Get("/members/action/:action", org.MembersAction)
+			m.Post("/members/action/:action", org.MembersAction)
 
 			m.Get("/teams", org.Teams)
 			m.Get("/teams/:team", org.TeamMembers)
 			m.Get("/teams/:team/repositories", org.TeamRepositories)
-			m.Get("/teams/:team/action/:action", org.TeamsAction)
-			m.Get("/teams/:team/action/repo/:action", org.TeamsRepoAction)
+			m.Post("/teams/:team/action/:action", org.TeamsAction)
+			m.Post("/teams/:team/action/repo/:action", org.TeamsRepoAction)
 		}, middleware.OrgAssignment(true, true))
 
 		m.Group("/:org", func() {

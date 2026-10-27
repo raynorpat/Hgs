@@ -13,7 +13,7 @@
 
         {{if .IsSigned}}
         <li class="right" id="header-nav-sign-out">
-            <a href="{{AppSubUrl}}/user/logout" title="{{.i18n.Tr "sign_out"}}"><i class="octicon octicon-sign-out"></i></a>
+            <form action="{{AppSubUrl}}/user/logout" method="post">{{.CsrfTokenHtml}}<button type="submit">{{.i18n.Tr "sign_out"}}</button></form>
         </li>
         <li class="right {{if .PageIsUserSettings}}current{{end}}">
             <a href="{{AppSubUrl}}/user/settings" title="{{.i18n.Tr "account_settings"}}"><i class="octicon octicon-settings"></i></a>

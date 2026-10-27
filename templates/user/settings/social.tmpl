@@ -1,26 +1,28 @@
-{{template "ng/base/head" .}}
-{{template "ng/base/header" .}}
-<div id="setting-wrapper" class="main-wrapper">
-    <div id="user-profile-setting" class="container clear">
+{{template "shared/start" .}}
+<div class="hg-account-page">
+<h1>{{.Title}}</h1>
+
+<div id="setting-wrapper" class="">
+    <div id="user-profile-setting" class="">
         {{template "user/settings/nav" .}}
-        <div class="grid-4-5 left">
+        <div class="">
             <div class="setting-content">
-                {{template "ng/base/alert" .}}
+
                 <div id="setting-content">
-                    <div id="user-social-panel" class="panel panel-radius">
-                        <div class="panel-header"><strong>{{.i18n.Tr "settings.manage_social"}}</strong></div>
-                        <ul class="panel-body setting-list">
+                    <div id="user-social-panel" class="hg-panel">
+                        <div class="hg-panel-heading"><strong>{{.i18n.Tr "settings.manage_social"}}</strong></div>
+                        <ul class="hg-panel-body hg-account-list">
                             <li>{{.i18n.Tr "settings.social_desc"}}</li>
                             {{range .Socials}}
-                            <li class="ssh clear">
-                                <span class="active-icon left label label-{{if .HasRecentActivity}}green{{else}}gray{{end}} label-radius"></span>
-                                <i class="fa {{Oauth2Icon .Type}} fa-2x left"></i>
-                                <div class="ssh-content left">
+                            <li class="ssh">
+                                <span class="active-icon label label-{{if .HasRecentActivity}}green{{else}}gray{{end}} label-radius"></span>
+
+                                <div class="ssh-content">
                                     <p><strong>{{Oauth2Name .Type}}</strong></p>
                                     <p class="print">{{.Identity}}</p>
-                                    <p class="activity"><i>{{$.i18n.Tr "settings.add_on"}} <span title="{{DateFormat .Created "r"}}">{{DateFormat .Created "M d, Y"}}</span> —  <i class="octicon octicon-info"></i>{{$.i18n.Tr "settings.last_used"}} {{DateFormat .Updated "M d, Y"}}</i></p>
+                                    <p class="activity"><i>{{$.i18n.Tr "settings.add_on"}} <span title="{{DateFormat .Created "r"}}">{{DateFormat .Created "M d, Y"}}</span> —  {{$.i18n.Tr "settings.last_used"}} {{DateFormat .Updated "M d, Y"}}</i></p>
                                 </div>
-                                <a class="right btn btn-small btn-red btn-header btn-radius" href="{{AppSubUrl}}/user/settings/social?remove={{.Id}}">{{$.i18n.Tr "settings.unbind"}}</a>
+                                <form class="hg-inline-form" method="post" action="{{AppSubUrl}}/user/settings/social?remove={{.Id}}" data-confirm-message="{{$.i18n.Tr "ui.confirm_action"}}">{{$.CsrfTokenHtml}}<button type="submit" class="hg-button">{{$.i18n.Tr "settings.unbind"}}</button></form>
                             </li>
                             {{end}}
                         </ul>
@@ -30,4 +32,5 @@
         </div>
     </div>
 </div>
-{{template "ng/base/footer" .}}
+</div>
+{{template "shared/end" .}}

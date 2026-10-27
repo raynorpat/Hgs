@@ -221,7 +221,6 @@ func SignUpPost(ctx *middleware.Context, cpt *captcha.Captcha, form auth.Registe
 		} else {
 			ctx.Data["uname"] = uname
 		}
-		ctx.Data["password"] = ctx.Query("password")
 		ctx.HTML(200, SIGNUP)
 		return
 	}
@@ -296,13 +295,13 @@ func SignUpPost(ctx *middleware.Context, cpt *captcha.Captcha, form auth.Registe
 func Activate(ctx *middleware.Context) {
 	code := ctx.Query("code")
 	if len(code) == 0 {
-		ctx.Data["IsActivatePage"] = true
-		if ctx.User.IsActive {
+		ctx.Data["IsActivatePage"] = ctx.Req.Method == "POST"
+		if ctx.User == nil || ctx.User.IsActive {
 			ctx.Error(404)
 			return
 		}
 		// Resend confirmation e-mail.
-		if setting.Service.RegisterEmailConfirm {
+		if setting.Service.RegisterEmailConfirm && ctx.Req.Method == "POST" {
 			if ctx.Cache.IsExist("MailResendLimit_" + ctx.User.LowerName) {
 				ctx.Data["ResendLimited"] = true
 			} else {
@@ -313,7 +312,8 @@ func Activate(ctx *middleware.Context) {
 					log.Error(4, "Set cache(MailResendLimit) fail: %v", err)
 				}
 			}
-		} else {
+		} else if !setting.Service.RegisterEmailConfirm {
+			ctx.Data["IsActivatePage"] = true
 			ctx.Data["ServiceNotEnabled"] = true
 		}
 		ctx.HTML(200, ACTIVATE)

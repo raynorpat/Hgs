@@ -125,7 +125,7 @@ func Dashboard(ctx *middleware.Context) {
 
 	// Run operation.
 	op, _ := com.StrTo(ctx.Query("op")).Int()
-	if op > 0 {
+	if op > 0 && ctx.Req.Method == "POST" {
 		var err error
 		var success string
 
@@ -137,6 +137,9 @@ func Dashboard(ctx *middleware.Context) {
 			success = ctx.Tr("admin.dashboard.delete_inactivate_accounts_success")
 			err = models.DeleteInactivateUsers()
 
+		default:
+			ctx.Error(400)
+			return
 		}
 
 		if err != nil {

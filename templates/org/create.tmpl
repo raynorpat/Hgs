@@ -1,31 +1,31 @@
-{{template "ng/base/head" .}}
-{{template "ng/base/header" .}}
+{{template "shared/start" .}}
+<div class="hg-account-page">
+
 <div id="sign-wrapper">
-    <form class="form-align form panel sign-panel sign-form container panel-radius" id="sign-up-form" action="{{AppSubUrl}}/org/create" method="post">
+    <form class="hg-form hg-panel sign-panel sign-form" id="sign-up-form" action="{{AppSubUrl}}/org/create" method="post" data-prevent-duplicate>
         {{.CsrfTokenHtml}}
-        <div class="panel-header">
+        <div class="hg-panel-heading">
             <h2>{{.i18n.Tr "new_org"}}</h2>
         </div>
-        <div class="panel-content">
-            {{template "ng/base/alert" .}}
-            <div class="field">
+        <div class="hg-panel-body">
+
+            <div class="hg-field">
                 <label class="req" for="org_name">{{.i18n.Tr "org.org_name_holder"}}</label>
-                <input class="ipt ipt-large ipt-radius {{if .Err_OrgName}}ipt-error{{end}}" id="org_name" name="org_name" type="text" value="{{.org_name}}" required/>
-                <label></label>
-                <span class="help">{{.i18n.Tr "org.org_name_helper"}}</span>
+                <input  id="org_name" name="org_name" type="text" value="{{.org_name}}" required {{if .Err_OrgName}}aria-invalid="true" aria-describedby="org_name-error"{{end}}>{{if .Err_OrgName}}<span class="hg-field-error" id="org_name-error">{{.Flash.ErrorMsg}}</span>{{end}}
+                <span class="hg-meta">{{.i18n.Tr "org.org_name_helper"}}</span>
             </div>
-            <div class="field">
+            <div class="hg-field">
                 <label class="req" for="email">{{.i18n.Tr "email"}}</label>
-                <input class="ipt ipt-large ipt-radius {{if .Err_Email}}ipt-error{{end}}" id="email" name="email" type="email" value="{{.email}}" required/>
-                <label></label>
-                <span class="help">{{.i18n.Tr "org.org_email_helper"}}</span>
+                <input  id="email" name="email" type="email" value="{{.email}}" required {{if .Err_Email}}aria-invalid="true" aria-describedby="email-error"{{end}}>{{if .Err_Email}}<span class="hg-field-error" id="email-error">{{.Flash.ErrorMsg}}</span>{{end}}
+                <span class="hg-meta">{{.i18n.Tr "org.org_email_helper"}}</span>
             </div>
-            <div class="field">
+            <div class="hg-field">
                 <span class="form-label"></span>
-                <button class="btn btn-large btn-blue btn-radius">{{.i18n.Tr "org.create_org"}}</button>
-                <a class="btn btn-small btn-gray btn-radius" id="repo-create-cancel" href="{{AppSubUrl}}/"><strong>{{.i18n.Tr "cancel"}}</strong></a>
+                <button class="hg-button hg-button-primary">{{.i18n.Tr "org.create_org"}}</button>
+                <a class="hg-button " id="repo-create-cancel" href="{{AppSubUrl}}/"><strong>{{.i18n.Tr "cancel"}}</strong></a>
             </div>
         </div>
     </form>
 </div>
-{{template "ng/base/footer" .}}
+</div>
+{{template "shared/end" .}}

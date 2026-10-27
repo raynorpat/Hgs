@@ -1,18 +1,20 @@
-{{template "ng/base/head" .}}
-{{template "ng/base/header" .}}
+{{template "shared/start" .}}
+<div class="hg-account-page">
+<h1>{{.Title}}</h1>
+
 <div id="admin-wrapper">
-    <div id="setting-wrapper" class="main-wrapper">
-        <div id="admin-setting" class="container clear">
-            {{template "admin/nav" .}}
-            <div class="grid-4-5 left">
+    <div id="setting-wrapper" class="">
+        <div id="admin-setting" class="">
+
+            <div class="">
                 <div class="setting-content">
-                    {{template "ng/base/alert" .}}
+
                     <div id="setting-content">
-                        <div class="panel panel-radius">
-                            <div class="panel-header">
+                        <div class="hg-panel">
+                            <div class="hg-panel-heading">
                                 <strong>{{.i18n.Tr "admin.config.server_config"}}</strong>
                             </div>
-                            <div class="panel-body">
+                            <div class="hg-panel-body">
                                 <dl class="dl-horizontal admin-dl-horizontal">
                                     <dt>{{.i18n.Tr "admin.config.app_name"}}</dt>
                                     <dd>{{AppName}}</dd>
@@ -23,9 +25,9 @@
                                     <dt>{{.i18n.Tr "admin.config.domain"}}</dt>
                                     <dd>{{.Domain}}</dd>
                                     <dt>{{.i18n.Tr "admin.config.offline_mode"}}</dt>
-                                    <dd><i class="fa fa{{if .OfflineMode}}-check{{end}}-square-o"></i></dd>
+                                    <dd>{{if .OfflineMode}}{{$.i18n.Tr "ui.yes"}}{{else}}{{$.i18n.Tr "ui.no"}}{{end}}</dd>
                                     <dt>{{.i18n.Tr "admin.config.disable_router_log"}}</dt>
-                                    <dd><i class="fa fa{{if .DisableRouterLog}}-check{{end}}-square-o"></i></dd>
+                                    <dd>{{if .DisableRouterLog}}{{$.i18n.Tr "ui.yes"}}{{else}}{{$.i18n.Tr "ui.no"}}{{end}}</dd>
                                     <hr/>
                                     <dt>{{.i18n.Tr "admin.config.run_user"}}</dt>
                                     <dd>{{.RunUser}}</dd>
@@ -44,11 +46,11 @@
                             </div>
                         </div>
                         <br>
-                        <div class="panel panel-radius">
-                            <div class="panel-header">
+                        <div class="hg-panel">
+                            <div class="hg-panel-heading">
                                 <strong>{{.i18n.Tr "admin.config.db_config"}}</strong>
                             </div>
-                            <div class="panel-body">
+                            <div class="hg-panel-body">
                                 <dl class="dl-horizontal admin-dl-horizontal">
                                     <dt>{{.i18n.Tr "admin.config.db_type"}}</dt>
                                     <dd>{{.DbCfg.Type}}</dd>
@@ -66,24 +68,24 @@
                             </div>
                         </div>
                         <br>
-                        <div class="panel panel-radius">
-                            <div class="panel-header">
+                        <div class="hg-panel">
+                            <div class="hg-panel-heading">
                                 <strong>{{.i18n.Tr "admin.config.service_config"}}</strong>
                             </div>
-                            <div class="panel-body">
+                            <div class="hg-panel-body">
                                 <dl class="dl-horizontal admin-dl-horizontal">
                                     <dt>{{.i18n.Tr "admin.config.register_email_confirm"}}</dt>
-                                    <dd><i class="fa fa{{if .Service.RegisterEmailConfirm}}-check{{end}}-square-o"></i></dd>
+                                    <dd>{{if .Service.RegisterEmailConfirm}}{{$.i18n.Tr "ui.yes"}}{{else}}{{$.i18n.Tr "ui.no"}}{{end}}</dd>
                                     <dt>{{.i18n.Tr "admin.config.disable_register"}}</dt>
-                                    <dd><i class="fa fa{{if .Service.DisableRegistration}}-check{{end}}-square-o"></i></dd>
+                                    <dd>{{if .Service.DisableRegistration}}{{$.i18n.Tr "ui.yes"}}{{else}}{{$.i18n.Tr "ui.no"}}{{end}}</dd>
                                     <dt>{{.i18n.Tr "admin.config.show_registration_button"}}</dt>
-                                    <dd><i class="fa fa{{if .Service.ShowRegistrationButton}}-check{{end}}-square-o"></i></dd>
+                                    <dd>{{if .Service.ShowRegistrationButton}}{{$.i18n.Tr "ui.yes"}}{{else}}{{$.i18n.Tr "ui.no"}}{{end}}</dd>
                                     <dt>{{.i18n.Tr "admin.config.require_sign_in_view"}}</dt>
-                                    <dd><i class="fa fa{{if .Service.RequireSignInView}}-check{{end}}-square-o"></i></dd>
+                                    <dd>{{if .Service.RequireSignInView}}{{$.i18n.Tr "ui.yes"}}{{else}}{{$.i18n.Tr "ui.no"}}{{end}}</dd>
                                     <dt>{{.i18n.Tr "admin.config.mail_notify"}}</dt>
-                                    <dd><i class="fa fa{{if .Service.EnableNotifyMail}}-check{{end}}-square-o"></i></dd>
+                                    <dd>{{if .Service.EnableNotifyMail}}{{$.i18n.Tr "ui.yes"}}{{else}}{{$.i18n.Tr "ui.no"}}{{end}}</dd>
                                     <dt>{{.i18n.Tr "admin.config.enable_cache_avatar"}}</dt>
-                                    <dd><i class="fa fa{{if .Service.EnableCacheAvatar}}-check{{end}}-square-o"></i></dd>
+                                    <dd>{{if .Service.EnableCacheAvatar}}{{$.i18n.Tr "ui.yes"}}{{else}}{{$.i18n.Tr "ui.no"}}{{end}}</dd>
                                     <hr/>
                                     <dt>{{.i18n.Tr "admin.config.active_code_lives"}}</dt>
                                     <dd>{{.Service.ActiveCodeLives}} {{.i18n.Tr "tool.raw_minutes"}}</dd>
@@ -93,14 +95,14 @@
                             </div>
                         </div>
                         <br>
-                        <div class="panel panel-radius">
-                            <div class="panel-header">
+                        <div class="hg-panel">
+                            <div class="hg-panel-heading">
                                 <strong>{{.i18n.Tr "admin.config.mailer_config"}}</strong>
                             </div>
-                            <div class="panel-body">
+                            <div class="hg-panel-body">
                                 <dl class="dl-horizontal admin-dl-horizontal">
                                     <dt>{{.i18n.Tr "admin.config.mailer_enabled"}}</dt>
-                                    <dd><i class="fa fa{{if .MailerEnabled}}-check{{end}}-square-o"></i></dd>
+                                    <dd>{{if .MailerEnabled}}{{$.i18n.Tr "ui.yes"}}{{else}}{{$.i18n.Tr "ui.no"}}{{end}}</dd>
                                     {{if .MailerEnabled}}<dt>{{.i18n.Tr "admin.config.mailer_name"}}</dt>
                                     <dd>{{.Mailer.Name}}</dd>
                                     <dt>{{.i18n.Tr "admin.config.mailer_host"}}</dt>
@@ -111,53 +113,53 @@
                             </div>
                         </div>
                         <br>
-                        <div class="panel panel-radius">
-                            <div class="panel-header">
+                        <div class="hg-panel">
+                            <div class="hg-panel-heading">
                                 <strong>{{.i18n.Tr "admin.config.oauth_config"}}</strong>
                             </div>
-                            <div class="panel-body">
+                            <div class="hg-panel-body">
                                 <dl class="dl-horizontal admin-dl-horizontal">
                                     <dt>{{.i18n.Tr "admin.config.oauth_enabled"}}</dt>
-                                    <dd><i class="fa fa{{if .OauthEnabled}}-check{{end}}-square-o"></i></dd>
+                                    <dd>{{if .OauthEnabled}}{{$.i18n.Tr "ui.yes"}}{{else}}{{$.i18n.Tr "ui.no"}}{{end}}</dd>
                                     {{if .OauthEnabled}}<dt>GitHub</dt>
-                                    <dd><i class="fa fa{{if .Oauther.GitHub}}-check{{end}}-square-o"></i></dd>
+                                    <dd>{{if .Oauther.GitHub}}{{$.i18n.Tr "ui.yes"}}{{else}}{{$.i18n.Tr "ui.no"}}{{end}}</dd>
                                     <dt>Google</dt>
-                                    <dd><i class="fa fa{{if .Oauther.Google}}-check{{end}}-square-o"></i></dd>
+                                    <dd>{{if .Oauther.Google}}{{$.i18n.Tr "ui.yes"}}{{else}}{{$.i18n.Tr "ui.no"}}{{end}}</dd>
                                     <dt>腾讯 QQ</dt>
-                                    <dd><i class="fa fa{{if .Oauther.Tencent}}-check{{end}}-square-o"></i></dd>
+                                    <dd>{{if .Oauther.Tencent}}{{$.i18n.Tr "ui.yes"}}{{else}}{{$.i18n.Tr "ui.no"}}{{end}}</dd>
                                     <dt>新浪微博</dt>
-                                    <dd><i class="fa fa{{if .Oauther.Weibo}}-check{{end}}-square-o"></i></dd>
+                                    <dd>{{if .Oauther.Weibo}}{{$.i18n.Tr "ui.yes"}}{{else}}{{$.i18n.Tr "ui.no"}}{{end}}</dd>
                                     {{end}}
                                 </dl>
                             </div>
                         </div>
                         <br>
-                        <div class="panel panel-radius">
-                            <div class="panel-header">
+                        <div class="hg-panel">
+                            <div class="hg-panel-heading">
                                 <strong>{{.i18n.Tr "admin.config.cache_config"}}</strong>
                             </div>
-                            <div class="panel-body">
+                            <div class="hg-panel-body">
                                 <dl class="dl-horizontal admin-dl-horizontal">
                                     <dt>{{.i18n.Tr "admin.config.cache_adapter"}}</dt>
                                     <dd>{{.CacheAdapter}}</dd>
                                     <dt>{{.i18n.Tr "admin.config.cache_interval"}}</dt>
                                     <dd>{{.CacheInternal}} {{.i18n.Tr "tool.raw_seconds"}}</dd>
                                     <dt>{{.i18n.Tr "admin.config.cache_conn"}}</dt>
-                                    <dd><pre>{{.CacheConn}}</pre></dd>
+                                    <dd><pre>{{$.i18n.Tr "ui.sensitive_config_hidden"}}</pre></dd>
                                 </dl>
                             </div>
                         </div>
                         <br>
-                        <div class="panel panel-radius">
-                            <div class="panel-header">
+                        <div class="hg-panel">
+                            <div class="hg-panel-heading">
                                 <strong>{{.i18n.Tr "admin.config.session_config"}}</strong>
                             </div>
-                            <div class="panel-body">
+                            <div class="hg-panel-body">
                                 <dl class="dl-horizontal admin-dl-horizontal">
                                     <dt>{{.i18n.Tr "admin.config.session_provider"}}</dt>
                                     <dd>{{.SessionConfig.Provider}}</dd>
                                     <dt>{{.i18n.Tr "admin.config.provider_config"}}</dt>
-                                    <dd><pre>{{.SessionConfig.ProviderConfig}}</pre></dd>
+                                    <dd><pre>{{$.i18n.Tr "ui.sensitive_config_hidden"}}</pre></dd>
                                     <dt>{{.i18n.Tr "admin.config.cookie_name"}}</dt>
                                     <dd>{{.SessionConfig.CookieName}}</dd>
                                     <dt>{{.i18n.Tr "admin.config.gc_interval_time"}}</dt>
@@ -165,38 +167,38 @@
                                     <dt>{{.i18n.Tr "admin.config.session_life_time"}}</dt>
                                     <dd>{{.SessionConfig.Maxlifetime}} {{.i18n.Tr "tool.raw_seconds"}}</dd>
                                     <dt>{{.i18n.Tr "admin.config.https_only"}}</dt>
-                                    <dd><i class="fa fa{{if .SessionConfig.Secure}}-check{{end}}-square-o"></i></dd>
+                                    <dd>{{if .SessionConfig.Secure}}{{$.i18n.Tr "ui.yes"}}{{else}}{{$.i18n.Tr "ui.no"}}{{end}}</dd>
                                     <dt>{{.i18n.Tr "admin.config.cookie_life_time"}}</dt>
                                     <dd>{{.SessionConfig.CookieLifeTime}} {{.i18n.Tr "tool.raw_seconds"}}</dd>
                                 </dl>
                             </div>
                         </div>
                         <br>
-                        <div class="panel panel-radius">
-                            <div class="panel-header">
+                        <div class="hg-panel">
+                            <div class="hg-panel-heading">
                                 <strong>{{.i18n.Tr "admin.config.picture_config"}}</strong>
                             </div>
-                            <div class="panel-body">
+                            <div class="hg-panel-body">
                                 <dl class="dl-horizontal admin-dl-horizontal">
                                     <dt>{{.i18n.Tr "admin.config.picture_service"}}</dt>
                                     <dd>{{.PictureService}}</dd>
                                     <dt>{{.i18n.Tr "admin.config.disable_gravatar"}}</dt>
-                                    <dd><i class="fa fa{{if .DisableGravatar}}-check{{end}}-square-o"></i></dd>
+                                    <dd>{{if .DisableGravatar}}{{$.i18n.Tr "ui.yes"}}{{else}}{{$.i18n.Tr "ui.no"}}{{end}}</dd>
                                 </dl>
                             </div>
                         </div>
                         <br>
-                        <div class="panel panel-radius">
-                            <div class="panel-header">
+                        <div class="hg-panel">
+                            <div class="hg-panel-heading">
                                 <strong>{{.i18n.Tr "admin.config.log_config"}}</strong>
                             </div>
-                            <div class="panel-body">
+                            <div class="hg-panel-body">
                                 <dl class="dl-horizontal admin-dl-horizontal">
                                     {{range .Loggers}}
                                     <dt>{{$.i18n.Tr "admin.config.log_mode"}}</dt>
                                     <dd>{{.Mode}}</dd>
                                     <dt>{{$.i18n.Tr "admin.config.log_config"}}</dt>
-                                    <dd><pre>{{.Config}}</pre></dd>
+                                    <dd><pre>{{$.i18n.Tr "ui.sensitive_config_hidden"}}</pre></dd>
                                     {{end}}
                                 </dl>
                             </div>
@@ -207,4 +209,5 @@
         </div>
     </div>
 </div>
-{{template "ng/base/footer" .}}
+</div>
+{{template "shared/end" .}}

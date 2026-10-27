@@ -1,44 +1,45 @@
-{{template "ng/base/head" .}}
-{{template "ng/base/header" .}}
+{{template "shared/start" .}}
+<div class="hg-account-page hg-auth-page">
+
 <div id="sign-wrapper">
-    <form class="form-align form panel sign-panel sign-form container panel-radius" id="sign-up-form" action="{{AppSubUrl}}/user/login" method="post">
-        <div class="panel-header">
-            <h2>{{if .IsSocialLogin}}{{.i18n.Tr "social_sign_in" | Str2html}}{{else}}{{.i18n.Tr "sign_in"}}{{end}}</h2>
+    <form class="hg-form hg-panel sign-panel sign-form" id="sign-up-form" action="{{AppSubUrl}}/user/login" method="post" data-prevent-duplicate>{{$.CsrfTokenHtml}}
+        <div class="hg-panel-heading">
+            <h1>{{if .IsSocialLogin}}{{.i18n.Tr "social_sign_in" | Str2html}}{{else}}{{.i18n.Tr "sign_in"}}{{end}}</h1>
         </div>
-        <div class="panel-content">
-            {{template "ng/base/alert" .}}
-            <div class="field">
+        <div class="hg-panel-body">
+
+            <div class="hg-field">
                 <label class="req" for="username">{{.i18n.Tr "home.uname_holder"}}</label>
-                <input class="ipt ipt-large ipt-radius {{if .Err_UserName}}ipt-error{{end}}" id="username" name="uname" type="text" value="{{.uname}}" required/>
+                <input  id="username" name="uname" type="text" value="{{.uname}}" required {{if .Err_UserName}}aria-invalid="true" aria-describedby="username-error"{{end}}>{{if .Err_UserName}}<span class="hg-field-error" id="username-error">{{.Flash.ErrorMsg}}</span>{{end}}
             </div>
-            <div class="field">
+            <div class="hg-field">
                 <label class="req" for="password">{{.i18n.Tr "password"}}</label>
-                <input class="ipt ipt-large ipt-radius {{if .Err_Password}}ipt-error{{end}}" id="password" name="password" type="password" required/>
+                <input  id="password" name="password" type="password" required {{if .Err_Password}}aria-invalid="true" aria-describedby="password-error"{{end}}>{{if .Err_Password}}<span class="hg-field-error" id="password-error">{{.Flash.ErrorMsg}}</span>{{end}}
             </div>
             {{if not .IsSocialLogin}}
-            <div class="field">
+            <div class="hg-field">
                 <span class="form-label"></span>
-                <input class="ipt-chk" id="remember" name="remember" type="checkbox"/>&nbsp;&nbsp;&nbsp;&nbsp;<strong>{{.i18n.Tr "auth.remember_me"}}</strong>
+                <label class="hg-choice"><input class="" id="remember" name="remember" type="checkbox"/>&nbsp;&nbsp;&nbsp;&nbsp;<strong>{{.i18n.Tr "auth.remember_me"}}</strong></label>
             </div>
             {{end}}
-            <div class="field">
+            <div class="hg-field">
                 <span class="form-label"></span>
-                <button class="btn btn-green btn-large btn-radius">{{.i18n.Tr "sign_in"}}</button>&nbsp;&nbsp;&nbsp;&nbsp;
+                <button class="hg-button hg-button-primary">{{.i18n.Tr "sign_in"}}</button>&nbsp;&nbsp;&nbsp;&nbsp;
                 {{if not .IsSocialLogin}}<a href="{{AppSubUrl}}/user/forget_password">{{.i18n.Tr "auth.forget_password"}}</a>{{end}}
             </div>
             {{if .ShowRegistrationButton}}
-            <div class="field">
-                <label></label>
+            <div class="hg-field">
                 <a href="{{AppSubUrl}}/user/sign_up">{{.i18n.Tr "auth.sign_up_now" | Str2html}}</a>
             </div>
             {{end}}
             {{if and (not .IsSocialLogin) .OauthEnabled}}
             <hr/>
             <div id="sign-social" class="text-center social-buttons">
-                {{template "ng/base/social" .}}
+                {{template "shared/social" .}}
             </div>
             {{end}}
         </div>
     </form>
 </div>
-{{template "ng/base/footer" .}}
+</div>
+{{template "shared/end" .}}

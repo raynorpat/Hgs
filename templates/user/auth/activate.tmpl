@@ -1,12 +1,13 @@
-{{template "ng/base/head" .}}
-{{template "ng/base/header" .}}
+{{template "shared/start" .}}
+<div class="hg-account-page hg-auth-page">
+
 <div id="sign-wrapper">
-    <form class="form-align form panel sign-panel sign-form container panel-radius" id="sign-up-form" action="{{AppSubUrl}}/user/activate" method="post">
+    <form class="hg-form hg-panel sign-panel sign-form" id="sign-up-form" action="{{AppSubUrl}}/user/activate" method="post" data-prevent-duplicate>
         {{.CsrfTokenHtml}}
-        <div class="panel-header">
-            <h2>{{.i18n.Tr "auth.active_your_account"}}</h2>
+        <div class="hg-panel-heading">
+            <h1>{{.i18n.Tr "auth.active_your_account"}}</h1>
         </div>
-        <div class="panel-content">
+        <div class="hg-panel-body">
         {{if .IsActivatePage}}
             {{if .ServiceNotEnabled}}
             <p>{{.i18n.Tr "auth.disable_register_mail"}}</p>
@@ -15,25 +16,23 @@
             {{else}}
             <p>{{.i18n.Tr "auth.confirmation_mail_sent_prompt" .SignedUser.Email .Hours | Str2html}}</p>
             <hr/>
-            <label></label>
-            <a class="btn btn-green btn-large btn-link btn-radius" href="http://{{Mail2Domain .SignedUser.Email}}">{{.i18n.Tr "auth.sign_in_email"}}</a>
+            <a class="hg-button hg-button-primary " href="http://{{Mail2Domain .SignedUser.Email}}">{{.i18n.Tr "auth.sign_in_email"}}</a>
             {{end}}
         {{else}}
             {{if .IsSendRegisterMail}}
             <p>{{.i18n.Tr "auth.confirmation_mail_sent_prompt" .Email .Hours | Str2html}}</p>
             <hr/>
-            <label></label>
-            <a class="btn btn-green btn-large btn-link btn-radius" href="http://{{Mail2Domain .Email}}">{{.i18n.Tr "auth.sign_in_email"}}</a>
+            <a class="hg-button hg-button-primary " href="http://{{Mail2Domain .Email}}">{{.i18n.Tr "auth.sign_in_email"}}</a>
             {{else if .IsActivateFailed}}
             <p>{{.i18n.Tr "auth.invalid_code"}}</p>
             {{else}}
             <p>{{.i18n.Tr "auth.has_unconfirmed_mail" .SignedUser.Name .SignedUser.Email | Str2html}}</p>
             <hr/>
-            <label></label>
-            <button class="btn btn-blue btn-large btn-radius">{{.i18n.Tr "auth.resend_mail"}}</button>
+            <button class="hg-button hg-button-primary">{{.i18n.Tr "auth.resend_mail"}}</button>
             {{end}}
         {{end}}
         </div>
     </form>
 </div>
-{{template "ng/base/footer" .}}
+</div>
+{{template "shared/end" .}}

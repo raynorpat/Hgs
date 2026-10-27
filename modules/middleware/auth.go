@@ -61,7 +61,7 @@ func Toggle(options *ToggleOptions) macaron.Handler {
 
 		if options.AdminRequire {
 			if !ctx.User.IsAdmin {
-				ctx.Error(403)
+				ctx.Handle(403, "Administration", nil)
 				return
 			}
 			ctx.Data["PageIsAdmin"] = true

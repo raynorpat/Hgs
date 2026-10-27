@@ -1,0 +1,4 @@
+{{if .OauthService.GitHub}}<a class="hg-button github" href="{{AppSubUrl}}/user/login/oauth2/github?next={{AppSubUrl}}/user/info/github">GitHub</a>{{end}}
+{{if .OauthService.Google}}<a class="hg-button google" href="{{AppSubUrl}}/user/login/oauth2/google?next={{AppSubUrl}}/user/info/google">Google +</a>{{end}}
+{{if .OauthService.Weibo}}<a class="hg-button weibo" href="{{AppSubUrl}}/user/login/oauth2/weibo?next={{AppSubUrl}}/user/info/weibo">新浪微博</a>{{end}}
+{{if .OauthService.Tencent}}<a class="hg-button qq" href="{{AppSubUrl}}/user/login/oauth2/qq?next={{AppSubUrl}}/user/info/qq">腾讯 QQ&nbsp;</a>{{end}}

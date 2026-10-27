@@ -33,6 +33,10 @@ func Teams(ctx *middleware.Context) {
 		return
 	}
 	for _, t := range org.Teams {
+		if err := prepareTeamRepositories(ctx, t); err != nil {
+			ctx.Handle(500, "TeamRepositories", err)
+			return
+		}
 		if err := t.GetMembers(); err != nil {
 			ctx.Handle(500, "GetMembers", err)
 			return
@@ -204,6 +208,10 @@ func NewTeamPost(ctx *middleware.Context, form auth.CreateTeamForm) {
 }
 
 func TeamMembers(ctx *middleware.Context) {
+	if err := prepareTeamRepositories(ctx, ctx.Org.Team); err != nil {
+		ctx.Handle(500, "TeamRepositories", err)
+		return
+	}
 	ctx.Data["Title"] = ctx.Org.Team.Name
 	ctx.Data["PageIsOrgTeams"] = true
 	if err := ctx.Org.Team.GetMembers(); err != nil {
@@ -216,7 +224,7 @@ func TeamMembers(ctx *middleware.Context) {
 func TeamRepositories(ctx *middleware.Context) {
 	ctx.Data["Title"] = ctx.Org.Team.Name
 	ctx.Data["PageIsOrgTeams"] = true
-	if err := ctx.Org.Team.GetRepositories(); err != nil {
+	if err := prepareTeamRepositories(ctx, ctx.Org.Team); err != nil {
 		ctx.Handle(500, "GetRepositories", err)
 		return
 	}
@@ -235,8 +243,8 @@ func EditTeamPost(ctx *middleware.Context, form auth.CreateTeamForm) {
 	t := ctx.Org.Team
 	ctx.Data["Title"] = ctx.Org.Organization.FullName
 	ctx.Data["PageIsOrgTeams"] = true
-	ctx.Data["team_name"] = t.Name
-	ctx.Data["desc"] = t.Description
+	ctx.Data["team_name"] = form.TeamName
+	ctx.Data["desc"] = form.Description
 
 	if ctx.HasError() {
 		ctx.HTML(200, TEAM_NEW)
@@ -285,4 +293,22 @@ func DeleteTeam(ctx *middleware.Context) {
 	}
 	ctx.Flash.Success(ctx.Tr("org.teams.delete_team_success"))
 	ctx.Redirect(ctx.Org.OrgLink + "/teams")
+}
+
+// Team metadata views expose only currently readable repository rows and counts.
+func prepareTeamRepositories(ctx *middleware.Context, team *models.Team) error {
+	if err := team.GetRepositories(); err != nil {
+		return err
+	}
+	actorID := int64(0)
+	if ctx.IsSigned {
+		actorID = ctx.User.Id
+	}
+	repos, err := models.FilterReadableRepositories(actorID, team.Repos)
+	if err != nil {
+		return err
+	}
+	team.Repos = repos
+	team.NumRepos = len(repos)
+	return nil
 }
