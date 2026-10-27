@@ -91,11 +91,17 @@ func getEngine() (*xorm.Engine, error) {
 			DbCfg.User, DbCfg.Passwd, host, port, DbCfg.Name, DbCfg.SSLMode)
 	case "sqlite3":
 		os.MkdirAll(path.Dir(DbCfg.Path), os.ModePerm)
-		cnnstr = "file:" + DbCfg.Path + "?cache=shared&mode=rwc"
+		cnnstr = sqliteDSN(DbCfg.Path)
 	default:
 		return nil, fmt.Errorf("Unknown database type: %s", DbCfg.Type)
 	}
 	return xorm.NewEngine(DbCfg.Type, cnnstr)
+}
+
+// sqliteDSN waits briefly on a locked database and uses WAL so a hook check
+// can finish inside its timeout instead of failing as "not authorized".
+func sqliteDSN(p string) string {
+	return "file:" + p + "?cache=shared&mode=rwc&_pragma=busy_timeout(2000)&_pragma=journal_mode(WAL)"
 }
 
 func SetEngine() (err error) {
@@ -126,12 +132,7 @@ func setEngine(e *xorm.Engine) error {
 	xormLog = f
 	x = e
 	x.Logger = xorm.NewSimpleLogger(f)
-
-	x.ShowSQL = true
-	x.ShowInfo = true
-	x.ShowDebug = true
 	x.ShowErr = true
-	x.ShowWarn = true
 	return nil
 }
 

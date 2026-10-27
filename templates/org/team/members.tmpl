@@ -14,7 +14,7 @@
                     <ul class="panel-body setting-list" id="team-members-list">
                     	{{if .IsOrganizationOwner}}
 						<li class="search">
-			                <form class="form form-align" action="{{$.OrgLink}}/teams/{{$.Team.LowerName}}/action/add" id="repo-collab-form">
+			                <form class="form form-align" method="post" action="{{$.OrgLink}}/teams/{{$.Team.LowerName}}/action/add" id="repo-collab-form">
 			                    {{.CsrfTokenHtml}}
 			                    <input type="hidden" name="uid" value="{{.SignedUser.Id}}">
                                 <input class="ipt ipt-large ipt-radius" id="org-team-members-add" name="uname" autocomplete="off" required />
@@ -28,7 +28,7 @@
                 		{{range .Team.Members}}
                 		<li class="collab">
                 			{{if $.IsOrganizationOwner}}
-							<a class="btn btn-small btn-red btn-radius right" href="{{$.OrgLink}}/teams/{{$.Team.LowerName}}/action/remove?uid={{.Id}}">{{$.i18n.Tr "org.members.remove"}}</a>
+							<form class="right" method="post" action="{{$.OrgLink}}/teams/{{$.Team.LowerName}}/action/remove" style="display:inline">{{$.CsrfTokenHtml}}<input type="hidden" name="uid" value="{{.Id}}"><button type="submit" class="btn btn-small btn-red btn-radius">{{$.i18n.Tr "org.members.remove"}}</button></form>
 							{{end}}
 							<a class="member" href="{{AppSubUrl}}/{{.Name}}">
 							    <img alt="{{.Name}}" class="pull-left avatar" src="{{.AvatarLink}}">

@@ -352,6 +352,9 @@ func newService() {
 	Service.EnableCacheAvatar = Cfg.Section("service").Key("ENABLE_CACHE_AVATAR").MustBool()
 	Service.EnableReverseProxyAuth = Cfg.Section("service").Key("ENABLE_REVERSE_PROXY_AUTHENTICATION").MustBool()
 	Service.EnableReverseProxyAutoRegister = Cfg.Section("service").Key("ENABLE_REVERSE_PROXY_AUTO_REGISTERATION").MustBool()
+	if Service.EnableReverseProxyAuth && len(TrustedProxyCIDRs) == 0 {
+		log.Fatal(4, "ENABLE_REVERSE_PROXY_AUTHENTICATION requires TRUSTED_PROXY_CIDRS")
+	}
 }
 
 var logLevels = map[string]string{
@@ -444,13 +447,18 @@ func newCacheService() {
 	log.Info("Cache Service Enabled")
 }
 
+// SessionCookieSecure is set when the site URL is HTTPS or the config asked for it.
+func SessionCookieSecure(appURL string, configured bool) bool {
+	return configured || strings.HasPrefix(strings.ToLower(appURL), "https://")
+}
+
 func newSessionService() {
 	SessionConfig.Provider = Cfg.Section("session").Key("PROVIDER").In("memory",
 		[]string{"memory", "file", "redis", "mysql"})
 	SessionConfig.ProviderConfig = strings.Trim(Cfg.Section("session").Key("PROVIDER_CONFIG").String(), "\" ")
 	SessionConfig.CookieName = Cfg.Section("session").Key("COOKIE_NAME").MustString("i_like_gogits")
 	SessionConfig.CookiePath = AppSubUrl
-	SessionConfig.Secure = Cfg.Section("session").Key("COOKIE_SECURE").MustBool()
+	SessionConfig.Secure = SessionCookieSecure(AppUrl, Cfg.Section("session").Key("COOKIE_SECURE").MustBool())
 	SessionConfig.Gclifetime = Cfg.Section("session").Key("GC_INTERVAL_TIME").MustInt64(86400)
 	SessionConfig.Maxlifetime = Cfg.Section("session").Key("SESSION_LIFE_TIME").MustInt64(86400)
 

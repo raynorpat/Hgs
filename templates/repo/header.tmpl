@@ -27,19 +27,21 @@
                 </div>
             </details></li>
             <li id="repo-header-watch">
-                <a id="repo-header-watch-btn" href="{{$.RepoLink}}/action/{{if $.IsWatchingRepo}}un{{end}}watch">
-                    <button class="btn btn-gray text-bold btn-radius">
+                <form method="post" action="{{$.RepoLink}}/action/{{if $.IsWatchingRepo}}un{{end}}watch" style="display:inline">
+                    {{$.CsrfTokenHtml}}
+                    <button type="submit" id="repo-header-watch-btn" class="btn btn-gray text-bold btn-radius">
                         <i class="octicon octicon-eye-watch"></i>{{if $.IsWatchingRepo}}{{$.i18n.Tr "repo.unwatch"}}{{else}}{{$.i18n.Tr "repo.watch"}}{{end}}<span class="num">{{.NumWatches}}</span>
                     </button>
-                </a>
+                </form>
             </li>
             <li id="repo-header-star">
-                <a id="repo-header-star-btn" href="{{$.RepoLink}}/action/{{if $.IsStaringRepo}}un{{end}}star">
-                    <button class="btn btn-gray text-bold btn-radius">
+                <form method="post" action="{{$.RepoLink}}/action/{{if $.IsStaringRepo}}un{{end}}star" style="display:inline">
+                    {{$.CsrfTokenHtml}}
+                    <button type="submit" id="repo-header-star-btn" class="btn btn-gray text-bold btn-radius">
                         <i class="octicon octicon-star"></i>{{if $.IsStaringRepo}}{{$.i18n.Tr "repo.unstar"}}{{else}}{{$.i18n.Tr "repo.star"}}{{end}}
                         <span class="num">{{.NumStars}}</span>
                     </button>
-                </a>
+                </form>
             </li>
 
         </ul>

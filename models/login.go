@@ -174,7 +174,7 @@ func UserSignIn(uname, passwd string) (*User, error) {
 		if u.Passwd != newUser.Passwd {
 			return nil, ErrUserNotExist
 		}
-		return u, nil
+		return signInResult(u, nil)
 	} else {
 		if !has {
 			var sources []LoginSource
@@ -188,14 +188,14 @@ func UserSignIn(uname, passwd string) (*User, error) {
 					u, err := LoginUserLdapSource(nil, uname, passwd,
 						source.Id, source.Cfg.(*LDAPConfig), true)
 					if err == nil {
-						return u, nil
+						return signInResult(u, nil)
 					}
 					log.Warn("Fail to login(%s) by LDAP(%s): %v", uname, source.Name, err)
 				} else if source.Type == SMTP {
 					u, err := LoginUserSMTPSource(nil, uname, passwd,
 						source.Id, source.Cfg.(*SMTPConfig), true)
 					if err == nil {
-						return u, nil
+						return signInResult(u, nil)
 					}
 					log.Warn("Fail to login(%s) by SMTP(%s): %v", uname, source.Name, err)
 				}
@@ -216,14 +216,22 @@ func UserSignIn(uname, passwd string) (*User, error) {
 
 		switch u.LoginType {
 		case LDAP:
-			return LoginUserLdapSource(u, u.LoginName, passwd,
-				source.Id, source.Cfg.(*LDAPConfig), false)
+			return signInResult(LoginUserLdapSource(u, u.LoginName, passwd,
+				source.Id, source.Cfg.(*LDAPConfig), false))
 		case SMTP:
-			return LoginUserSMTPSource(u, u.LoginName, passwd,
-				source.Id, source.Cfg.(*SMTPConfig), false)
+			return signInResult(LoginUserSMTPSource(u, u.LoginName, passwd,
+				source.Id, source.Cfg.(*SMTPConfig), false))
 		}
 		return nil, ErrUnsupportedLoginType
 	}
+}
+
+// signInResult drops an account whose password matched but which is not active.
+func signInResult(u *User, err error) (*User, error) {
+	if err != nil || u == nil || u.IsActive {
+		return u, err
+	}
+	return nil, ErrUserNotExist
 }
 
 // Query if name/passwd can login against the LDAP directory pool

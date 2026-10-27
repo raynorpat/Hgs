@@ -52,6 +52,24 @@ func fakeViewHg(args []string) int {
 			fmt.Print(read("content"))
 		}
 	case "files":
+		if strings.Contains(strings.Join(args, " "), "{if(flags") {
+			var b strings.Builder
+			for _, line := range strings.Split(read("manifest"), "\n") {
+				if len(line) < 7 {
+					continue
+				}
+				flag := "."
+				switch line[:6] {
+				case "755 * ":
+					flag = "x"
+				case "644 @ ":
+					flag = "l"
+				}
+				fmt.Fprintf(&b, "%s %s\n", flag, line[6:])
+			}
+			fmt.Print(b.String())
+			break
+		}
 		fmt.Print(read("filepath") + "\n")
 	case "diff":
 		fmt.Print(read("patch"))

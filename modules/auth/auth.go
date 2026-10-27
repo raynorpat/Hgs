@@ -5,6 +5,7 @@
 package auth
 
 import (
+	"net"
 	"net/http"
 	"reflect"
 	"strings"
@@ -71,7 +72,7 @@ func SignedInUser(req *http.Request, sess session.Store) (*models.User, bool) {
 	uid := SignedInId(req, sess)
 
 	if uid <= 0 {
-		if setting.Service.EnableReverseProxyAuth {
+		if setting.Service.EnableReverseProxyAuth && trustedProxyRequest(req.RemoteAddr) {
 			webAuthUser := req.Header.Get(setting.ReverseProxyAuthUser)
 			if len(webAuthUser) > 0 {
 				u, err := models.GetUserByName(webAuthUser)
@@ -93,10 +94,12 @@ func SignedInUser(req *http.Request, sess session.Store) (*models.User, bool) {
 							// FIXME: should I create a system notice?
 							log.Error(4, "CreateUser: %v", err)
 							return nil, false
-						} else {
-							return u, false
 						}
+						return u, false
 					}
+				}
+				if u == nil || !u.IsActive {
+					return nil, false
 				}
 				return u, false
 			}
@@ -117,6 +120,9 @@ func SignedInUser(req *http.Request, sess session.Store) (*models.User, bool) {
 				}
 
 				if u.ValidtePassword(passwd) {
+					if !u.IsActive {
+						return nil, false
+					}
 					return u, true
 				}
 			}
@@ -129,7 +135,34 @@ func SignedInUser(req *http.Request, sess session.Store) (*models.User, bool) {
 		log.Error(4, "GetUserById: %v", err)
 		return nil, false
 	}
+	if !u.IsActive {
+		return nil, false
+	}
 	return u, false
+}
+
+// trustedProxyRequest reports whether remote is inside TrustedProxyCIDRs.
+// An empty list trusts nobody, including when a CIDR string does not parse.
+func trustedProxyRequest(remote string) bool {
+	if len(setting.TrustedProxyCIDRs) == 0 {
+		return false
+	}
+	host, _, err := net.SplitHostPort(remote)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	for _, cidr := range setting.TrustedProxyCIDRs {
+		_, network, err := net.ParseCIDR(cidr)
+		if err != nil || network == nil || !network.Contains(ip) {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 type Form interface {

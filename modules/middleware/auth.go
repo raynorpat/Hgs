@@ -49,8 +49,7 @@ func Toggle(options *ToggleOptions) macaron.Handler {
 
 		if options.SignInRequire {
 			if !ctx.IsSigned {
-				ctx.SetCookie("redirect_to", url.QueryEscape(setting.AppSubUrl+ctx.Req.RequestURI), 0, setting.AppSubUrl)
-				ctx.Redirect(setting.AppSubUrl + "/user/login")
+				ctx.RedirectToLogin()
 				return
 			} else if !ctx.User.IsActive && setting.Service.RegisterEmailConfirm {
 				ctx.Data["Title"] = ctx.Tr("auth.active_your_account")
@@ -67,6 +66,22 @@ func Toggle(options *ToggleOptions) macaron.Handler {
 			ctx.Data["PageIsAdmin"] = true
 		}
 	}
+}
+
+// RedirectToLogin sends the browser to sign-in and stores a same-origin path to resume.
+func (ctx *Context) RedirectToLogin() {
+	ctx.SetCookie("redirect_to", url.QueryEscape(setting.AppSubUrl+ctx.Req.RequestURI), 0, setting.AppSubUrl)
+	ctx.Redirect(setting.AppSubUrl + "/user/login")
+}
+
+// LoginRedirect accepts only a path with a single leading slash.
+// A second slash or backslash is a protocol-relative URL after the cookie is decoded.
+func LoginRedirect(cookie string) (string, bool) {
+	path, err := url.QueryUnescape(cookie)
+	if err != nil || path == "" || path[0] != '/' || (len(path) > 1 && (path[1] == '/' || path[1] == '\\')) {
+		return "", false
+	}
+	return path, true
 }
 
 func ApiReqToken() macaron.Handler {

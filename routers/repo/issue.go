@@ -10,7 +10,6 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -54,8 +53,7 @@ func Issues(ctx *middleware.Context) {
 	isShowClosed := ctx.Query("state") == "closed"
 
 	if viewType != "all" && !ctx.IsSigned {
-		ctx.SetCookie("redirect_to", "/"+url.QueryEscape(setting.AppSubUrl+ctx.Req.RequestURI), 0, setting.AppSubUrl)
-		ctx.Redirect(setting.AppSubUrl + "/user/login")
+		ctx.RedirectToLogin()
 		return
 	}
 
@@ -235,7 +233,6 @@ func CreateIssuePost(ctx *middleware.Context, form auth.CreateIssueForm) {
 	}
 	issue := &models.Issue{
 		RepoId:      ctx.Repo.Repository.Id,
-		Index:       int64(ctx.Repo.Repository.NumIssues) + 1,
 		Name:        form.IssueName,
 		PosterId:    ctx.User.Id,
 		MilestoneId: form.MilestoneId,
@@ -673,7 +670,6 @@ func uploadFiles(ctx *middleware.Context, issueId, commentId int64) {
 			buf = buf[:n]
 		}
 		fileType := http.DetectContentType(buf)
-		fmt.Println(fileType)
 
 		allowed := false
 

@@ -145,5 +145,11 @@ func Action(ctx *middleware.Context) {
 		})
 		return
 	}
+	if ctx.Req.Header.Get("X-Requested-With") == "XMLHttpRequest" {
+		ctx.JSON(200, map[string]interface{}{
+			"ok": true,
+		})
+		return
+	}
 	ctx.Redirect(ctx.Repo.RepoLink)
 }

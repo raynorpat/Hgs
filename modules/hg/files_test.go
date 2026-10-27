@@ -115,3 +115,107 @@ func TestReadFileNeverChecksOut(t *testing.T) {
 		t.Errorf("repository directory now holds %v, %v", ls, err)
 	}
 }
+
+func TestListDirectoryFlat(t *testing.T) {
+	ctx := context.Background()
+	r, repo := newBrowseRunner(t, "")
+	writeFakeFixture(t, r, "fake-files", ". a.txt\nx bin\nl link\n. my file.txt\n. only/nested/c.txt\n. only/d.txt\n")
+	root, err := r.ListDirectory(ctx, repo, newerDefaultNode, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(root, []TreeEntry{
+		{Name: "a.txt"},
+		{Name: "bin", Executable: true},
+		{Name: "link", Symlink: true},
+		{Name: "my file.txt"},
+		{Name: "only", Directory: true},
+	}) {
+		t.Fatalf("root %+v", root)
+	}
+	sub, err := r.ListDirectory(ctx, repo, newerDefaultNode, "only")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(sub, []TreeEntry{{Name: "d.txt"}, {Name: "nested", Directory: true}}) {
+		t.Fatalf("only %+v", sub)
+	}
+	sawFiles := false
+	for _, call := range fakeCalls(t, r) {
+		if call[2] == "debugdata" {
+			t.Fatalf("flat listing used %v", call)
+		}
+		if call[2] == "files" && strings.Contains(strings.Join(call, " "), "{if(flags, flags, '.')}") {
+			sawFiles = true
+		}
+	}
+	if !sawFiles {
+		t.Fatal("flat listing did not ask files for flags and paths")
+	}
+
+	writeFakeFixture(t, r, "fake-files", ". a.txt")
+	if _, err := r.ListDirectory(ctx, repo, newerDefaultNode, ""); err == nil || errors.Is(err, ErrNotFound) {
+		t.Fatalf("unterminated list: %v", err)
+	}
+	writeFakeFixture(t, r, "fake-files", "")
+	if entries, err := r.ListDirectory(ctx, repo, newerDefaultNode, ""); err != nil || len(entries) != 0 {
+		t.Fatalf("empty list: %v %+v", err, entries)
+	}
+	writeFakeFixture(t, r, "fake-files", "EXIT")
+	if entries, err := r.ListDirectory(ctx, repo, newerDefaultNode, "only"); err != nil || len(entries) != 0 {
+		t.Fatalf("no match: %v %+v", err, entries)
+	}
+}
+
+func TestListDirectoryTree(t *testing.T) {
+	ctx := context.Background()
+	r, repo := newBrowseRunner(t, "")
+	if err := os.MkdirAll(filepath.Join(repo, ".hg", "store"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".hg", "store", "requires"), []byte("share-safe\ntreemanifest\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	manifestNode := strings.Repeat("d", 40)
+	child := strings.Repeat("b", 40)
+	fileNode := strings.Repeat("c", 40)
+	writeFakeFixture(t, r, "fake-manifest-node", manifestNode+"\n")
+	writeFakeFixture(t, r, "fake-debugdata", "a.txt\x00"+fileNode+"\nonly\x00"+child+"t\n")
+	writeFakeFixture(t, r, "fake-debugdata-only", "d.txt\x00"+fileNode+"x\n")
+	root, err := r.ListDirectory(ctx, repo, newerDefaultNode, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(root, []TreeEntry{{Name: "a.txt"}, {Name: "only", Directory: true}}) {
+		t.Fatalf("root %+v", root)
+	}
+	sub, err := r.ListDirectory(ctx, repo, newerDefaultNode, "only")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(sub, []TreeEntry{{Name: "d.txt", Executable: true}}) {
+		t.Fatalf("only %+v", sub)
+	}
+	if _, err := r.ListDirectory(ctx, repo, newerDefaultNode, "missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing directory: %v", err)
+	}
+	for _, call := range fakeCalls(t, r) {
+		if call[2] == "files" {
+			t.Fatalf("tree listing used %v", call)
+		}
+	}
+	sawData := false
+	for _, call := range fakeCalls(t, r) {
+		if call[2] == "debugdata" {
+			sawData = true
+		}
+	}
+	if !sawData {
+		t.Fatal("tree listing did not read manifest text")
+	}
+
+	writeFakeFixture(t, r, "fake-debugdata", "a.txt\x00"+fileNode)
+	if _, err := r.ListDirectory(ctx, repo, newerDefaultNode, ""); err == nil || errors.Is(err, ErrNotFound) {
+		t.Fatalf("unterminated manifest text: %v", err)
+	}
+}

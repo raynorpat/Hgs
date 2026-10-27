@@ -412,13 +412,13 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 		m.Group("/:org", func() {
 			m.Get("/dashboard", user.Dashboard)
 			m.Get("/members", org.Members)
-			m.Get("/members/action/:action", org.MembersAction)
+			m.Post("/members/action/:action", org.MembersAction)
 
 			m.Get("/teams", org.Teams)
 			m.Get("/teams/:team", org.TeamMembers)
 			m.Get("/teams/:team/repositories", org.TeamRepositories)
-			m.Get("/teams/:team/action/:action", org.TeamsAction)
-			m.Get("/teams/:team/action/repo/:action", org.TeamsRepoAction)
+			m.Post("/teams/:team/action/:action", org.TeamsAction)
+			m.Post("/teams/:team/action/repo/:action", org.TeamsRepoAction)
 		}, middleware.OrgAssignment(true, true))
 
 		m.Group("/:org", func() {
@@ -457,7 +457,7 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 	}, reqSignIn, middleware.RepoAssignment(true), reqTrueOwner)
 
 	m.Group("/:username/:reponame", func() {
-		m.Get("/action/:action", repo.Action)
+		m.Post("/action/:action", repo.Action)
 
 		m.Group("/issues", func() {
 			m.Get("/new", repo.CreateIssue)

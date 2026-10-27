@@ -14,8 +14,14 @@ import (
 	"os/exec"
 	pathpkg "path"
 	"path/filepath"
+	"sort"
 	"strings"
 )
+
+// flatDirectoryScanLimit bounds a flat-manifest directory scan. Flat
+// manifests have no per-directory revlog, so child names come from a bounded
+// scan of paths under that directory.
+const flatDirectoryScanLimit = 32 << 20
 
 // Manifest lists the files of a served changeset from the store; nothing is
 // checked out.
@@ -133,4 +139,236 @@ func (r *Runner) notServed(ctx context.Context, path string, node NodeID, err er
 		return ErrNotFound
 	}
 	return err
+}
+
+// ListDirectory returns the immediate children of dir at a served changeset.
+// dir is empty at the repository root. An unknown or secret node is
+// ErrNotFound. A Mercurial failure while the node is served is returned as-is.
+func (r *Runner) ListDirectory(ctx context.Context, repoPath string, node NodeID, dir string) ([]TreeEntry, error) {
+	node, err := ParseNodeID(string(node))
+	if err != nil {
+		return nil, err
+	}
+	if dir != "" {
+		if err = checkFile(dir); err != nil {
+			return nil, err
+		}
+	}
+	ctx, cancel := context.WithTimeout(ctx, BrowserCommandTimeout)
+	defer cancel()
+	if usesTreeManifest(repoPath) {
+		return r.listTreeDirectory(ctx, repoPath, node, dir)
+	}
+	return r.listFlatDirectory(ctx, repoPath, node, dir)
+}
+
+func usesTreeManifest(repoPath string) bool {
+	for _, name := range []string{
+		filepath.Join(repoPath, ".hg", "requires"),
+		filepath.Join(repoPath, ".hg", "store", "requires"),
+	} {
+		b, err := os.ReadFile(name)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(b), "\n") {
+			if strings.TrimSpace(line) == "treemanifest" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (r *Runner) listFlatDirectory(ctx context.Context, repoPath string, node NodeID, dir string) ([]TreeEntry, error) {
+	args := []string{"files", "-r", nodeRevset(node), "-T", "{if(flags, flags, '.')} {path}\\n"}
+	if dir != "" {
+		patternDir, err := os.MkdirTemp(filepath.Dir(r.cfg.ConfigPath), "dir-")
+		if err != nil {
+			return nil, err
+		}
+		defer os.RemoveAll(patternDir)
+		pattern := filepath.Join(patternDir, "pattern")
+		if err = os.WriteFile(pattern, []byte("path:"+dir+"\x00"), 0600); err != nil {
+			return nil, err
+		}
+		args = append(args, "--", "listfile0:"+pattern)
+	}
+	var out bytes.Buffer
+	err := r.run(ctx, repoPath, args, nil, &out, flatDirectoryScanLimit)
+	var exit *exec.ExitError
+	switch {
+	case err == nil:
+		return parseFlatDirectory(out.Bytes(), dir)
+	case errors.Is(err, ErrOutputLimit):
+		return nil, err
+	case errors.As(err, &exit) && exit.ExitCode() == 1:
+		return []TreeEntry{}, nil
+	default:
+		return nil, r.notServed(ctx, repoPath, node, err)
+	}
+}
+
+func parseFlatDirectory(b []byte, dir string) ([]TreeEntry, error) {
+	if len(b) == 0 {
+		return []TreeEntry{}, nil
+	}
+	text, ok := strings.CutSuffix(string(b), "\n")
+	if !ok {
+		return nil, errors.New("hg: unterminated file list")
+	}
+	prefix := dir
+	if prefix != "" {
+		prefix += "/"
+	}
+	byName := map[string]TreeEntry{}
+	for _, line := range strings.Split(text, "\n") {
+		if len(line) < 2 || line[1] != ' ' || line[2:] == "" {
+			return nil, fmt.Errorf("hg: unrecognized file list line %q", line)
+		}
+		switch line[0] {
+		case '.', 'x', 'l':
+		default:
+			return nil, fmt.Errorf("hg: unrecognized file list line %q", line)
+		}
+		rel, ok := strings.CutPrefix(line[2:], prefix)
+		if !ok {
+			continue
+		}
+		for _, seg := range strings.Split(rel, "/") {
+			if seg == "" {
+				return nil, fmt.Errorf("hg: unrecognized file list line %q", line)
+			}
+		}
+		name, _, isDir := strings.Cut(rel, "/")
+		e := TreeEntry{Name: name, Directory: isDir}
+		if !isDir {
+			switch line[0] {
+			case 'x':
+				e.Executable = true
+			case 'l':
+				e.Symlink = true
+			}
+		}
+		if prev, seen := byName[name]; seen {
+			if prev.Directory || !isDir {
+				continue
+			}
+		}
+		byName[name] = e
+	}
+	return sortedTreeEntries(byName), nil
+}
+
+type treeTextEntry struct {
+	TreeEntry
+	node string
+}
+
+func (r *Runner) listTreeDirectory(ctx context.Context, repoPath string, node NodeID, dir string) ([]TreeEntry, error) {
+	var out bytes.Buffer
+	err := r.Run(ctx, repoPath, []string{"log", "-r", nodeRevset(node), "-T", "{manifest % '{node}'}"}, nil, &out)
+	if err != nil {
+		return nil, r.notServed(ctx, repoPath, node, err)
+	}
+	manifestNode, err := ParseNodeID(strings.TrimSpace(out.String()))
+	if err != nil {
+		return nil, fmt.Errorf("hg: manifest node %q", strings.TrimSpace(out.String()))
+	}
+	text, err := r.debugManifest(ctx, repoPath, manifestNode, "")
+	if err != nil {
+		return nil, err
+	}
+	cur := ""
+	if dir != "" {
+		for _, part := range strings.Split(dir, "/") {
+			entries, err := parseTreeManifest(text)
+			if err != nil {
+				return nil, err
+			}
+			var child string
+			for _, e := range entries {
+				if e.Name == part && e.Directory {
+					child = e.node
+					break
+				}
+			}
+			if child == "" {
+				return nil, ErrNotFound
+			}
+			if cur != "" {
+				cur += "/"
+			}
+			cur += part
+			text, err = r.debugManifest(ctx, repoPath, NodeID(child), cur)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	entries, err := parseTreeManifest(text)
+	if err != nil {
+		return nil, err
+	}
+	byName := make(map[string]TreeEntry, len(entries))
+	for _, e := range entries {
+		byName[e.Name] = e.TreeEntry
+	}
+	return sortedTreeEntries(byName), nil
+}
+
+func (r *Runner) debugManifest(ctx context.Context, repoPath string, node NodeID, dir string) ([]byte, error) {
+	args := []string{"debugdata", "-m", string(node)}
+	if dir != "" {
+		args = []string{"debugdata", "--dir", dir, string(node)}
+	}
+	var out bytes.Buffer
+	if err := r.run(ctx, repoPath, args, nil, &out, flatDirectoryScanLimit); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
+func parseTreeManifest(b []byte) ([]treeTextEntry, error) {
+	if len(b) == 0 {
+		return []treeTextEntry{}, nil
+	}
+	text, ok := strings.CutSuffix(string(b), "\n")
+	if !ok {
+		return nil, errors.New("hg: unterminated manifest text")
+	}
+	var entries []treeTextEntry
+	for _, line := range strings.Split(text, "\n") {
+		name, rest, ok := strings.Cut(line, "\x00")
+		if !ok || name == "" || strings.Contains(name, "/") || len(rest) < 40 {
+			return nil, fmt.Errorf("hg: unrecognized manifest text %q", line)
+		}
+		node, flag := strings.ToLower(rest[:40]), rest[40:]
+		if strings.Trim(node, "0123456789abcdef") != "" {
+			return nil, fmt.Errorf("hg: unrecognized manifest text %q", line)
+		}
+		e := treeTextEntry{node: node, TreeEntry: TreeEntry{Name: name}}
+		switch flag {
+		case "":
+		case "x":
+			e.Executable = true
+		case "l":
+			e.Symlink = true
+		case "t":
+			e.Directory = true
+		default:
+			return nil, fmt.Errorf("hg: unrecognized manifest text %q", line)
+		}
+		entries = append(entries, e)
+	}
+	return entries, nil
+}
+
+func sortedTreeEntries(byName map[string]TreeEntry) []TreeEntry {
+	entries := make([]TreeEntry, 0, len(byName))
+	for _, e := range byName {
+		entries = append(entries, e)
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
+	return entries
 }
