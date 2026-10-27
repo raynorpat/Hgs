@@ -53,7 +53,7 @@ func init() {
 		new(Issue), new(Comment), new(Attachment), new(IssueUser), new(Label), new(Milestone),
 		new(LoginSource),
 		new(Team), new(OrgUser), new(TeamUser),
-		new(Notice), new(EmailAddress), new(HostingFormat), new(ReviewPublication), new(ReviewReservation))
+		new(Notice), new(EmailAddress), new(HostingFormat), new(ReviewPublication), new(ReviewReservation), new(ForkRelation), new(ForkProvisioning))
 }
 
 func LoadModelsConfig() {

@@ -74,6 +74,11 @@ func BeginReviewPublication(op ReviewPublication, ids []int64) (bool, error) {
 		if e := lockReadyReviewRepository(sess, id); e != nil {
 			return false, e
 		}
+		if reserved, e := forkReserved(sess, id); e != nil {
+			return false, e
+		} else if reserved {
+			return false, ErrReviewReserved
+		}
 		if _, e := sess.Insert(&ReviewReservation{RepoID: id, OperationID: op.ID}); e != nil {
 			return false, fmt.Errorf("%w: %v", ErrReviewReserved, e)
 		}
@@ -177,6 +182,14 @@ func tombstoneReviewSafe(repoID int64) error {
 		return err
 	} else if reserved {
 		return ErrReviewReserved
+	}
+	if reserved, err := forkReserved(sess, repoID); err != nil {
+		return err
+	} else if reserved {
+		return ErrReviewReserved
+	}
+	if err := forkDependents(sess, repoID); err != nil {
+		return err
 	}
 	if err := setRepositoryState(sess, repoID, RepositoryReady, RepositoryDeleting); err != nil {
 		return err

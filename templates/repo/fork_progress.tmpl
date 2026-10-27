@@ -1,0 +1,9 @@
+{{template "shared/start" .}}
+<h1>{{.i18n.Tr "repo.fork_title"}}</h1>
+<section data-fork-progress data-status-url="{{.ForkStatusURL}}" data-pending="{{.i18n.Tr "repo.fork_still_pending"}}" data-unavailable="{{.i18n.Tr "repo.fork_unavailable"}}">
+<p role="status" data-fork-message>{{.i18n.Tr "repo.fork_preparing"}}</p>
+{{if .ForkURL}}<a class="hg-button hg-button-primary" href="{{.ForkURL}}">{{.i18n.Tr "repo.fork_open"}}</a>{{end}}
+<a class="hg-button" href="">{{.i18n.Tr "repo.fork_refresh"}}</a>
+</section>
+<script defer src="{{AppSubUrl}}/js/app/fork.js"></script>
+{{template "shared/end" .}}

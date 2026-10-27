@@ -17,7 +17,7 @@ func TestGitAndDeferredRoutesAbsent(t *testing.T) {
 	paths := []string{
 		"/alice/project.git/info/refs?service=git-upload-pack", "/alice/project.git/git-upload-pack", "/alice/project.git/git-receive-pack",
 		"/alice/project/info/refs?service=git-receive-pack", "/alice/project/git-upload-pack", "/alice/project/git-receive-pack",
-		"/alice/project/archive/main.zip", "/alice/project/fork", "/repo/fork/1", "/repo/migrate", "/repo/mirror",
+		"/alice/project/archive/main.zip", "/repo/fork/1", "/repo/migrate", "/repo/mirror",
 		"/alice/project/releases", "/alice/project/releases/new", "/alice/project/releases/edit/v1", "/alice/project/pulls", "/alice/project/pulls/1", "/pulls",
 		"/alice/project/settings/hooks", "/alice/project/settings/hooks/new", "/alice/project/settings/hooks/gogs/new", "/alice/project/settings/hooks/slack/new",
 		"/alice/project/settings/hooks/1", "/alice/project/settings/hooks/gogs/1", "/alice/project/settings/hooks/slack/1", "/alice/project/settings/hooks/1/delete",
@@ -76,5 +76,15 @@ func TestRepositorySearchUsesMercurialMetadata(t *testing.T) {
 	body := w.Body.String()
 	if !strings.Contains(body, `"clone_url": "http://example.test/gogs/hg/alice/project"`) || strings.Contains(body, `"fork"`) || strings.Contains(body, ".git") {
 		t.Fatalf("repository search contains false Git metadata: %s", body)
+	}
+}
+
+func TestForkRouteAndHeaderAvailable(t *testing.T) {
+	a := newViewApp(t)
+	for _, path := range []string{"/gogs/alice/project", "/gogs/alice/project/fork"} {
+		w := a.request(t, "GET", path, "", "alice")
+		if w.Code != 200 || !strings.Contains(w.Body.String(), "/gogs/alice/project/fork") {
+			t.Fatalf("fork route/header %s: %d %s", path, w.Code, w.Body)
+		}
 	}
 }

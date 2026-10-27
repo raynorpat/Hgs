@@ -27,51 +27,93 @@ type RepositoryAccess struct {
 // shared by the web UI and both transports. userID 0 means anonymous.
 // It reads the database on every call; any error means no access.
 func RepositoryAccessFor(userID, repoID int64) (RepositoryAccess, error) {
+	return repositoryAccessFor(x, userID, repoID, false)
+}
+func repositoryAccessFor(e Engine, userID, repoID int64, locked bool) (RepositoryAccess, error) {
+	ancestors, err := forkAncestors(e, repoID, locked)
+	if err != nil {
+		return RepositoryAccess{}, err
+	}
+	// Apply ancestry before every direct-access return, including anonymous and
+	// owner/admin implication. Missing or non-ready ancestors fail closed.
+	for _, id := range ancestors {
+		var parent Repository
+		has, err := policyGet(e, locked, "repository", "id = ? AND state = ?", &parent, id, RepositoryReady)
+		if err != nil {
+			return RepositoryAccess{}, err
+		}
+		if !has {
+			return RepositoryAccess{}, ErrForkLineage
+		}
+		if parent.IsPrivate {
+			a, err := directRepositoryAccess(e, userID, id, locked)
+			if err != nil || !a.Read {
+				return RepositoryAccess{}, err
+			}
+		}
+	}
+	return directRepositoryAccess(e, userID, repoID, locked)
+}
+func directRepositoryAccess(e Engine, userID, repoID int64, locked bool) (RepositoryAccess, error) {
 	var access RepositoryAccess
 	repo := new(Repository)
-	has, err := x.Id(repoID).Where("state = ?", RepositoryReady).Get(repo)
+	has, err := policyGet(e, locked, "repository", "id = ? AND state = ?", repo, repoID, RepositoryReady)
 	if err != nil {
 		return access, err
-	} else if !has {
+	}
+	if !has {
 		return access, ErrRepoNotExist
 	}
-
 	if userID == 0 {
 		access.Read = !repo.IsPrivate && !setting.Service.RequireSignInView
 		return access, nil
 	}
-
-	u, err := enabledAccount(userID)
+	u, err := enabledPolicyAccount(e, userID, locked)
 	if err == ErrInvalidCredential {
 		return access, nil
-	} else if err != nil {
+	}
+	if err != nil {
 		return access, err
 	}
-
-	row := &Access{UserId: u.Id, RepoId: repo.Id}
-	hasRow, err := x.Get(row)
+	row := new(Access)
+	hasRow, err := policyGet(e, locked, "access", "user_id = ? AND repo_id = ?", row, u.Id, repo.Id)
 	if err != nil {
 		return access, err
 	}
 	access.Admin = repo.OwnerId == u.Id
 	access.Write = hasRow && row.Mode >= WRITABLE
 	access.Read = !repo.IsPrivate || hasRow
-
 	owner := new(User)
-	if has, err = x.Id(repo.OwnerId).Get(owner); err != nil {
+	has, err = policyGet(e, locked, "user", "id = ?", owner, repo.OwnerId)
+	if err != nil {
 		return RepositoryAccess{}, err
-	} else if has && owner.IsOrganization() {
-		// Organization owners administer the repository; admin-level teams only
-		// get a WRITABLE row, as in RepoAssignment.
-		if access.Admin, err = x.Where("uid=?", u.Id).And("org_id=?", owner.Id).
-			And("is_owner=?", true).Get(new(OrgUser)); err != nil {
+	}
+	if !has {
+		return RepositoryAccess{}, ErrUserNotExist
+	}
+	if owner.IsOrganization() {
+		access.Admin, err = policyGet(e, locked, "org_user", "uid = ? AND org_id = ? AND is_owner = ?", new(OrgUser), u.Id, owner.Id, true)
+		if err != nil {
 			return RepositoryAccess{}, err
 		}
 	}
-
 	access.Write = access.Write || access.Admin
 	access.Read = access.Read || access.Write
 	return access, nil
+}
+func enabledPolicyAccount(e Engine, userID int64, locked bool) (*User, error) {
+	if userID <= 0 {
+		return nil, ErrInvalidCredential
+	}
+	u := new(User)
+	has, err := policyGet(e, locked, "user", "id = ?", u, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !has || !u.IsActive || u.IsOrganization() {
+		return nil, ErrInvalidCredential
+	}
+	return u, nil
 }
 
 // enabledAccount returns the individual account of given ID, or

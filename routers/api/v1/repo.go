@@ -54,45 +54,22 @@ func SearchRepos(ctx *middleware.Context, provider hosting.Provider) {
 		opt.Limit = 10
 	}
 
-	// Check visibility.
-	if ctx.IsSigned && opt.Uid > 0 {
-		if ctx.User.Id == opt.Uid {
-			opt.Private = true
-		} else {
-			u, err := models.GetUserById(opt.Uid)
-			if err != nil {
-				ctx.JSON(500, map[string]interface{}{
-					"ok":    false,
-					"error": err.Error(),
-				})
-				return
-			}
-			if u.IsOrganization() && u.IsOwnedBy(ctx.User.Id) {
-				opt.Private = true
-			}
-			// FIXME: how about collaborators?
-		}
+	actorID := int64(0)
+	if ctx.User != nil {
+		actorID = ctx.User.Id
 	}
-
-	repos, err := models.SearchRepositoryByName(opt)
+	page, err := models.ListAccessibleRepositories(ctx.Req.Context(), actorID, models.CatalogQuery{Text: opt.Keyword, OwnerID: opt.Uid, PageSize: opt.Limit})
 	if err != nil {
-		ctx.JSON(500, map[string]interface{}{
-			"ok":    false,
-			"error": err.Error(),
-		})
+		ctx.JSON(500, &base.ApiJsonErr{Message: err.Error(), DocUrl: base.DOC_URL})
 		return
 	}
-
-	results := make([]*Repository, len(repos))
-	for i := range repos {
-		if err = repos[i].GetOwner(); err != nil {
-			ctx.JSON(500, map[string]interface{}{
-				"ok":    false,
-				"error": err.Error(),
-			})
-			return
+	results := make([]*Repository, 0, len(page.Repositories))
+	for _, repo := range page.Repositories {
+		access, err := models.RepositoryAccessFor(actorID, repo.Id)
+		if err != nil || !access.Read {
+			continue
 		}
-		results[i] = ToApiRepository(repos[i].Owner, repos[i], api.Permission{}, service)
+		results = append(results, ToApiRepository(repo.Owner, repo, api.Permission{Admin: access.Admin, Push: access.Write, Pull: access.Read}, service))
 	}
 
 	ctx.JSON(200, map[string]interface{}{
@@ -113,31 +90,38 @@ func ListMyRepos(ctx *middleware.Context, provider hosting.Provider) {
 		ctx.JSON(500, &base.ApiJsonErr{Message: "GetRepositories: " + err.Error(), DocUrl: base.DOC_URL})
 		return
 	}
-	numOwnRepos := len(ownRepos)
-
 	collaRepos, err := models.GetCollaborativeRepos(ctx.User.Id)
 	if err != nil {
-		ctx.JSON(500, &base.ApiJsonErr{Message: "GetCollaborativeRepos: " + err.Error(), DocUrl: base.DOC_URL})
+		ctx.JSON(500, &base.ApiJsonErr{Message: err.Error(), DocUrl: base.DOC_URL})
 		return
 	}
-
-	repos := make([]*Repository, numOwnRepos+len(collaRepos))
-	for i := range ownRepos {
-		repos[i] = ToApiRepository(ctx.User, ownRepos[i], api.Permission{Admin: true, Push: true, Pull: true}, service)
+	candidates := append([]*models.Repository{}, ownRepos...)
+	for _, repo := range collaRepos {
+		candidates = append(candidates, repo.Repository)
 	}
-	for i := range collaRepos {
-		if err = collaRepos[i].GetOwner(); err != nil {
-			ctx.JSON(500, &base.ApiJsonErr{Message: "GetOwner: " + err.Error(), DocUrl: base.DOC_URL})
+	repos := make([]*Repository, 0, len(candidates))
+	seen := map[int64]bool{}
+	for _, repo := range candidates {
+		if seen[repo.Id] {
+			continue
+		}
+		seen[repo.Id] = true
+		access, err := models.RepositoryAccessFor(ctx.User.Id, repo.Id)
+		if err == models.ErrRepoNotExist {
+			continue
+		}
+		if err != nil {
+			ctx.JSON(500, &base.ApiJsonErr{Message: err.Error(), DocUrl: base.DOC_URL})
 			return
 		}
-		j := i + numOwnRepos
-		repos[j] = ToApiRepository(collaRepos[i].Owner, collaRepos[i].Repository, api.Permission{Admin: false, Push: collaRepos[i].CanPush, Pull: true}, service)
-
-		// FIXME: cache result to reduce DB query?
-		if collaRepos[i].Owner.IsOrganization() && collaRepos[i].Owner.IsOwnedBy(ctx.User.Id) {
-			repos[j].Permissions.Admin = true
+		if !access.Read {
+			continue
 		}
+		if err = repo.GetOwner(); err != nil {
+			ctx.JSON(500, &base.ApiJsonErr{Message: err.Error(), DocUrl: base.DOC_URL})
+			return
+		}
+		repos = append(repos, ToApiRepository(repo.Owner, repo, api.Permission{Admin: access.Admin, Push: access.Write, Pull: access.Read}, service))
 	}
-
 	ctx.JSON(200, &repos)
 }

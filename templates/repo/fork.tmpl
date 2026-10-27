@@ -1,0 +1,16 @@
+{{template "shared/start" .}}
+{{template "repo/header" .}}
+<h2>{{.i18n.Tr "repo.fork_title"}}</h2>
+<p>{{.i18n.Tr "repo.fork_description"}}</p>
+<form class="hg-form" action="{{.RepoLink}}/fork" method="post" data-prevent-duplicate>
+{{.CsrfTokenHtml}}
+<div class="hg-field"><label for="fork-owner">{{.i18n.Tr "repo.owner"}}</label>
+<select id="fork-owner" name="uid"><option value="{{.SignedUser.Id}}"{{if eq .ForkOwnerID .SignedUser.Id}} selected{{end}}>{{.SignedUser.Name}}</option>{{range .Orgs}}<option value="{{.Id}}"{{if eq $.ForkOwnerID .Id}} selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+<div class="hg-field"><label for="fork-name">{{.i18n.Tr "repo.repo_name"}}</label>
+<input id="fork-name" name="repo_name" value="{{.repo_name}}" required maxlength="100"{{if .Err_RepoName}} aria-invalid="true"{{end}}></div>
+<div class="hg-field"><label for="fork-description">{{.i18n.Tr "repo.repo_desc"}}</label>
+<textarea id="fork-description" name="desc" maxlength="255">{{.desc}}</textarea></div>
+<p class="hg-meta">{{if .Repository.IsPrivate}}{{.i18n.Tr "repo.fork_private"}}{{else}}{{.i18n.Tr "repo.fork_public"}}{{end}}</p>
+<div class="hg-actions"><button class="hg-button hg-button-primary" type="submit">{{.i18n.Tr "repo.fork_action"}}</button><a class="hg-button" href="{{.RepoLink}}">{{.i18n.Tr "cancel"}}</a></div>
+</form>
+{{template "shared/end" .}}

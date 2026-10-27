@@ -18,7 +18,7 @@
 </p>
 </div>
 </details>
-{{if .IsSigned}}<form method="post" action="{{.RepoLink}}/action/{{if .IsWatchingRepo}}un{{end}}watch" data-prevent-duplicate>{{.CsrfTokenHtml}}<button type="submit" class="hg-button" aria-pressed="{{if .IsWatchingRepo}}true{{else}}false{{end}}">{{if .IsWatchingRepo}}{{.i18n.Tr "repo.unwatch"}}{{else}}{{.i18n.Tr "repo.watch"}}{{end}} <span>{{.Repository.NumWatches}}</span>
+{{if .IsSigned}}<a class="hg-button" href="{{.RepoLink}}/fork">{{.i18n.Tr "repo.fork_action"}}</a><form method="post" action="{{.RepoLink}}/action/{{if .IsWatchingRepo}}un{{end}}watch" data-prevent-duplicate>{{.CsrfTokenHtml}}<button type="submit" class="hg-button" aria-pressed="{{if .IsWatchingRepo}}true{{else}}false{{end}}">{{if .IsWatchingRepo}}{{.i18n.Tr "repo.unwatch"}}{{else}}{{.i18n.Tr "repo.watch"}}{{end}} <span>{{.Repository.NumWatches}}</span>
 </button>
 </form>
 <form method="post" action="{{.RepoLink}}/action/{{if .IsStaringRepo}}un{{end}}star" data-prevent-duplicate>{{.CsrfTokenHtml}}<button type="submit" class="hg-button" aria-pressed="{{if .IsStaringRepo}}true{{else}}false{{end}}">{{if .IsStaringRepo}}{{.i18n.Tr "repo.unstar"}}{{else}}{{.i18n.Tr "repo.star"}}{{end}} <span>{{.Repository.NumStars}}</span>

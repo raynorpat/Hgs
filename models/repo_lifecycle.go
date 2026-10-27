@@ -358,6 +358,12 @@ func setRepositoryState(e Engine, repoID int64, from, to RepositoryState) error 
 // discardProvisioning removes an allocation that never became ready.
 // Storage at its ID path that is not marked as this allocation's is left.
 func discardProvisioning(root string, repo *Repository) error {
+	if claimed, err := forkReserved(x, repo.Id); err != nil {
+		return err
+	} else if claimed {
+		return ErrForkPolicy
+	}
+
 	if err := removeStaging(root, repo); err != nil {
 		return err
 	}

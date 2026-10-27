@@ -188,6 +188,35 @@ func TransferOwnership(u *User, newOwner string, repo *Repository) error {
 		return err
 	}
 
+	defer sess.Rollback()
+	if err = lockReadyReviewRepository(sess, repo.Id); err != nil {
+		if errors.Is(err, ErrReviewReserved) {
+			return ErrRepoNotExist
+		}
+		return err
+	}
+	var current Repository
+	if ok, e := policyGet(sess, true, "repository", "id = ? AND state = ?", &current, repo.Id, RepositoryReady); e != nil {
+		return e
+	} else if !ok || current.OwnerId != repo.OwnerId || current.IsPrivate != repo.IsPrivate {
+		return ErrForkPolicy
+	}
+	if err = forkDependents(sess, repo.Id); err != nil {
+		return err
+	}
+	if reserved, e := forkReserved(sess, repo.Id); e != nil {
+		return e
+	} else if reserved {
+		return ErrReviewReserved
+	}
+	if reserved, e := sess.Id(repo.Id).Get(new(ReviewReservation)); e != nil {
+		return e
+	} else if reserved {
+		return ErrReviewReserved
+	}
+	if err = validateForkTransfer(sess, repo, newUser, t); err != nil {
+		return err
+	}
 	owner := repo.Owner
 	// Delete all access first if current owner is an organization.
 	if owner.IsOrganization() {
@@ -316,8 +345,58 @@ func UpdateRepository(repo *Repository) error {
 	if len(repo.Website) > 255 {
 		repo.Website = repo.Website[:255]
 	}
-	_, err := x.Id(repo.Id).Where("state = ?", RepositoryReady).AllCols().Update(repo)
-	return err
+	sess := x.NewSession()
+	defer sess.Close()
+	if err := sess.Begin(); err != nil {
+		return err
+	}
+	defer sess.Rollback()
+	if err := lockReadyReviewRepository(sess, repo.Id); err != nil {
+		return err
+	}
+	var current Repository
+	if _, err := policyGet(sess, true, "repository", "id = ?", &current, repo.Id); err != nil {
+		return err
+	}
+	if current.OwnerId != repo.OwnerId || current.State != repo.State || current.StorageNonce != repo.StorageNonce {
+		return ErrForkPolicy
+	}
+	if current.IsPrivate != repo.IsPrivate {
+		if err := forkDependents(sess, repo.Id); err != nil {
+			return err
+		}
+		if reserved, err := forkReserved(sess, repo.Id); err != nil {
+			return err
+		} else if reserved {
+			return ErrReviewReserved
+		}
+		if reserved, err := sess.Id(repo.Id).Get(new(ReviewReservation)); err != nil {
+			return err
+		} else if reserved {
+			return ErrReviewReserved
+		}
+		if !repo.IsPrivate {
+			ids, err := forkAncestors(sess, repo.Id, true)
+			if err != nil {
+				return err
+			}
+			for _, id := range ids {
+				var parent Repository
+				has, err := policyGet(sess, true, "repository", "id = ? AND state = ?", &parent, id, RepositoryReady)
+				if err != nil {
+					return err
+				}
+				if !has || parent.IsPrivate {
+					return ErrForkPolicy
+				}
+			}
+		}
+	}
+	// Storage identity, ownership and lifecycle never travel through metadata saves.
+	if _, err := sess.Id(repo.Id).Cols("name", "lower_name", "description", "website", "is_private").Update(repo); err != nil {
+		return err
+	}
+	return sess.Commit()
 }
 
 // DeleteRepository deletes the database rows of a repository for a user or
@@ -329,6 +408,12 @@ func DeleteRepository(uid, repoId int64, userName string) error {
 		return err
 	} else if !has {
 		return ErrRepoNotExist
+	}
+	if repo.State == RepositoryReady {
+		if err = tombstoneReviewSafe(repo.Id); err != nil {
+			return err
+		}
+		repo.State = RepositoryDeleting
 	}
 	return deleteRepositoryRows(repo)
 }
@@ -354,6 +439,21 @@ func deleteRepositoryRows(repo *Repository) error {
 		return err
 	}
 
+	if err = forkDependents(sess, repoId); err != nil {
+		sess.Rollback()
+		return err
+	}
+	if reserved, e := forkReserved(sess, repoId); e != nil {
+		sess.Rollback()
+		return e
+	} else if reserved {
+		sess.Rollback()
+		return ErrReviewReserved
+	}
+	if _, err = sess.Id(repoId).Delete(new(ForkRelation)); err != nil {
+		sess.Rollback()
+		return err
+	}
 	if _, err = sess.Delete(&Repository{Id: repoId}); err != nil {
 		sess.Rollback()
 		return err

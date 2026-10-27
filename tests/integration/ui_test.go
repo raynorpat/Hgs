@@ -240,7 +240,7 @@ func requireUI(t *testing.T, w *httptest.ResponseRecorder, active string) {
 	if active != "" && !regexp.MustCompile(`<a class="hg-nav-item" href="`+regexp.QuoteMeta(active)+`"[^>]*aria-current="page"`).MatchString(body) {
 		t.Errorf("missing navigation %s", active)
 	}
-	for _, old := range []string{"ng/css", "ng/js", "ZeroClipboard", "/fork", "/pulls", "git clone", "git init"} {
+	for _, old := range []string{"ng/css", "ng/js", "ZeroClipboard", "/pulls", "git clone", "git init"} {
 		if strings.Contains(body, old) {
 			t.Errorf("obsolete/unavailable UI %q", old)
 		}

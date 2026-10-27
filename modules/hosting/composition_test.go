@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -213,10 +214,10 @@ func TestHostingReadyIDStorageAndCredentials(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatalf("authorized request: %d %s", w.Code, w.Body)
 	}
-	repo.State = models.RepositoryDeleting
-	if err := models.UpdateRepository(repo); err != nil {
-		t.Fatal(err)
+	if err := models.DeleteHgRepository(context.Background(), s.RepositoryRoot(), repo.Id, func(context.Context, int64) error { return errors.New("test drain interrupted") }); err == nil {
+		t.Fatal("expected interrupted deletion")
 	}
+
 	if _, _, err = s.resolve(context.Background(), passwordPrincipal(t, user), "alice", "project"); err == nil {
 		t.Fatal("deleting repository resolved")
 	}
@@ -425,8 +426,7 @@ func TestHostingMonitorKeyAndOwnershipChanges(t *testing.T) {
 	if err = models.CreateUser(bob); err != nil {
 		t.Fatal(err)
 	}
-	repo.OwnerId = bob.Id
-	if err = models.UpdateRepository(repo); err != nil {
+	if err = models.TransferOwnership(alice, bob.Name, repo); err != nil {
 		t.Fatal(err)
 	}
 	s.sessions.check()

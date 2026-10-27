@@ -455,6 +455,8 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 
 	// Repository.
 	m.Group("/repo", func() {
+		m.Get("/forks/:id", repo.ForkProgress)
+		m.Get("/forks/:id/status", repo.ForkStatus)
 		m.Get("/create", repo.Create)
 		m.Post("/create", bindIgnErr(auth.CreateRepoForm{}), repo.CreatePost)
 
@@ -469,6 +471,8 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 	}, reqSignIn, middleware.RepoAssignment(true), reqTrueOwner)
 
 	m.Group("/:username/:reponame", func() {
+		m.Get("/fork", repo.Fork)
+		m.Post("/fork", bindIgnErr(auth.CreateRepoForm{}), repo.ForkPost)
 		m.Post("/action/:action", repo.Action)
 
 		m.Group("/issues", func() {

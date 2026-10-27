@@ -363,3 +363,203 @@ func (r *Runner) reviewOperationContext(ctx context.Context) (context.Context, c
 	}
 	return context.WithTimeout(ctx, limit)
 }
+
+// CloneVisible copies the selected local store's exchange-visible history and
+// supported references into an independent repository with no working checkout.
+// The caller fences source mutations and owns the output's parent allocation.
+// Repository configuration is suppressed on both sides of the local exchange.
+func (r *Runner) CloneVisible(ctx context.Context, sourcePath, outputPath string) error {
+	ctx, cancel := r.reviewOperationContext(ctx)
+	defer cancel()
+	if err := r.reviewCapability(ctx); err != nil {
+		return err
+	}
+	if err := reviewPath(sourcePath); err != nil {
+		return err
+	}
+	for _, part := range []string{filepath.Join(sourcePath, ".hg"), filepath.Join(sourcePath, ".hg", "store")} {
+		if err := reviewPath(part); err != nil {
+			return err
+		}
+	}
+
+	if !filepath.IsAbs(outputPath) || reviewContains(sourcePath, outputPath) || reviewContains(outputPath, sourcePath) {
+		return ErrUnsafeCheckout
+	}
+	if err := reviewPath(filepath.Dir(outputPath)); err != nil {
+		return err
+	}
+	if err := CheckReviewPublicationQuiescent(sourcePath); err != nil {
+		return err
+	}
+	// Exclusive allocation prevents cloning into or cleaning someone else's store.
+	if err := os.Mkdir(outputPath, 0700); err != nil {
+		return err
+	}
+	keep := false
+	defer func() {
+		if !keep {
+			_ = os.RemoveAll(outputPath)
+		}
+	}()
+	if err := r.reviewRun(ctx, "", []string{"clone", "--pull", "-U", "--", sourcePath, outputPath}, nil); err != nil {
+		return err
+	}
+	// Exchange transfers committed tags but not local tags. Copy only parsed,
+	// visible tag references, never raw localtags or arbitrary source metadata.
+	sourceRefs, err := r.reviewReferences(ctx, sourcePath)
+	if err != nil {
+		return err
+	}
+	copiedRefs, err := r.reviewReferences(ctx, outputPath)
+	if err != nil {
+		return err
+	}
+	desired := map[string]NodeID{}
+	copied := map[string]NodeID{}
+	for _, ref := range sourceRefs {
+		if ref.Kind == RefTag {
+			desired[ref.Name] = ref.Node
+		}
+	}
+	for _, ref := range copiedRefs {
+		if ref.Kind == RefTag {
+			copied[ref.Name] = ref.Node
+		}
+	}
+	var tags bytes.Buffer
+	if err = r.reviewRun(ctx, sourcePath, []string{"tags", "--verbose", "-T", "json"}, &tags); err != nil {
+		return err
+	}
+	var local []struct{ Tag, Node, Type string }
+	if err = json.Unmarshal(tags.Bytes(), &local); err != nil {
+		return err
+	}
+	for _, tag := range local {
+		if tag.Type != "local" {
+			continue
+		} // Never recreate untransferred global tag metadata.
+		node, err := ParseNodeID(tag.Node)
+		if err != nil || desired[tag.Tag] != node {
+			continue
+		} // Secret/hidden local targets stay out.
+		if copied[tag.Tag] == node {
+			continue
+		}
+		if err = CheckPath(tag.Tag); err != nil {
+			return err
+		}
+		if _, err = r.reviewChangeset(ctx, outputPath, node); err != nil {
+			return err
+		}
+		if err = r.reviewRun(ctx, outputPath, []string{"tag", "--local", "--force", "-r", string(node), "--", tag.Tag}, nil); err != nil {
+			return err
+		}
+	}
+	tombstones, err := localTagTombstones(sourcePath, copied)
+	if err != nil {
+		return err
+	}
+	for name := range tombstones {
+		if _, exists := desired[name]; exists {
+			continue
+		}
+		if err = CheckPath(name); err != nil {
+			return err
+		}
+		// Native removal requires a local entry, even when masking a global tag.
+		if err = r.reviewRun(ctx, outputPath, []string{"tag", "--local", "--force", "-r", string(copied[name]), "--", name}, nil); err != nil {
+			return err
+		}
+		if err = r.reviewRun(ctx, outputPath, []string{"tag", "--local", "--remove", "--", name}, nil); err != nil {
+			return err
+		}
+	}
+	if err := os.WriteFile(filepath.Join(outputPath, ".hg", "hgrc"), []byte("# Managed Hgs repository.\n"), 0600); err != nil {
+		return err
+	}
+	if err := r.reviewRun(ctx, outputPath, []string{"verify"}, nil); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(outputPath)
+	if err != nil {
+		return err
+	}
+	if len(entries) != 1 || entries[0].Name() != ".hg" {
+		return ErrUnsafeCheckout
+	}
+	for _, name := range []string{"sharedpath", "hgrc-not-shared"} {
+		if _, err := os.Lstat(filepath.Join(outputPath, ".hg", name)); !os.IsNotExist(err) {
+			return ErrUnsafeCheckout
+		}
+	}
+	keep = true
+	return nil
+}
+
+// localTagTombstones recognizes only validated null-node records for already
+// copied visible tag names. Native tags output supplies live local provenance;
+// this bounded metadata read handles deletions omitted from that output. It does
+// not copy sidecars or decode arbitrary names, and matches the runner's local
+// encoding. Mercurial's last valid record wins.
+func localTagTombstones(source string, candidates map[string]NodeID) (map[string]bool, error) {
+	result := map[string]bool{}
+	if err := reviewPath(filepath.Join(source, ".hg")); err != nil {
+		return nil, err
+	}
+	path := filepath.Join(source, ".hg", "localtags")
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return result, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() > 1024*1024 {
+		return nil, ErrUnsafeCheckout
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, 1024*1024+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > 1024*1024 {
+		return nil, ErrOutputLimit
+	}
+	names := map[string]string{}
+	for name := range candidates {
+		encoded, err := LocalBytes(name)
+		if err != nil {
+			return nil, err
+		}
+		names[string(encoded)] = name
+	}
+	null := strings.Repeat("0", 40)
+	for _, line := range bytes.Split(data, []byte{'\n'}) {
+		parts := bytes.SplitN(line, []byte{' '}, 2)
+		if len(parts) != 2 {
+			continue
+		}
+		name, ok := names[string(bytes.TrimSpace(parts[1]))]
+		if !ok {
+			continue
+		}
+		node := string(parts[0])
+		if node != null {
+			if _, err := ParseNodeID(node); err != nil {
+				continue
+			}
+		}
+		result[name] = node == null
+	}
+	for name, deleted := range result {
+		if !deleted {
+			delete(result, name)
+		}
+	}
+	return result, nil
+}

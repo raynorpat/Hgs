@@ -122,6 +122,16 @@ func New(ctx context.Context, cfg Config) (s *Service, err error) {
 	for _, reservation := range reservations {
 		s.sessions.reservations[reservation.RepoID] = reservation.OperationID
 	}
+	// Detect typed ownership collisions before any recovery can release a claim.
+	pendingForks, err := models.PendingForkProvisioning()
+	if err != nil {
+		return nil, err
+	}
+	for _, op := range pendingForks {
+		if op.SourceID <= 0 || op.RepositoryID <= 0 || s.sessions.reservations[op.SourceID] != "" {
+			return nil, errors.New("hosting: invalid or colliding fork reservation")
+		}
+	}
 	if err = s.runner.Check(ctx); err != nil {
 		return nil, err
 	}
@@ -130,6 +140,9 @@ func New(ctx context.Context, cfg Config) (s *Service, err error) {
 	}
 	signer, err := loadHostKey(cfg.HostKeyPath)
 	if err != nil {
+		return nil, err
+	}
+	if err = s.reconcileForksAtStartup(); err != nil {
 		return nil, err
 	}
 	if err = models.ReconcileHgRepositories(ctx, cfg.RepositoryRoot); err != nil {

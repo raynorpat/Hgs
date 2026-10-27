@@ -6,6 +6,7 @@ package repo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -84,6 +85,9 @@ func SettingsPost(ctx *middleware.Context, form auth.RepoSettingForm, provider h
 		ctx.Repo.Repository.Website = form.Website
 		ctx.Repo.Repository.IsPrivate = form.Private
 		if err := models.UpdateRepository(ctx.Repo.Repository); err != nil {
+			if renderForkLifecycleError(ctx, err) {
+				return
+			}
 			ctx.Handle(404, "UpdateRepository", err)
 			return
 		}
@@ -109,6 +113,9 @@ func SettingsPost(ctx *middleware.Context, form auth.RepoSettingForm, provider h
 			ctx.RenderWithErr(ctx.Tr("form.enterred_invalid_password"), SETTINGS_OPTIONS, nil)
 			return
 		} else if err = models.TransferOwnership(ctx.User, newOwner, ctx.Repo.Repository); err != nil {
+			if renderForkLifecycleError(ctx, err) {
+				return
+			}
 			if err == models.ErrRepoAlreadyExist {
 				ctx.RenderWithErr(ctx.Tr("repo.settings.new_owner_has_same_repo"), SETTINGS_OPTIONS, nil)
 			} else {
@@ -149,6 +156,9 @@ func SettingsPost(ctx *middleware.Context, form auth.RepoSettingForm, provider h
 		drainCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
 		if err := models.DeleteHgRepository(drainCtx, service.RepositoryRoot(), ctx.Repo.Repository.Id, service.DrainRepository); err != nil {
+			if renderForkLifecycleError(ctx, err) {
+				return
+			}
 			ctx.Handle(500, "DeleteRepository", err)
 			return
 		}
@@ -270,4 +280,20 @@ func SettingsCollaboration(ctx *middleware.Context) {
 	}
 	ctx.Data["Collaborators"] = collaborators
 	ctx.HTML(200, COLLABORATION)
+}
+
+func renderForkLifecycleError(ctx *middleware.Context, err error) bool {
+	key := ""
+	switch {
+	case errors.Is(err, models.ErrForkDependent):
+		key = "repo.fork_dependents"
+	case errors.Is(err, models.ErrForkPolicy):
+		key = "repo.fork_lifecycle_restricted"
+	case errors.Is(err, models.ErrReviewReserved), errors.Is(err, hosting.ErrMutationBusy):
+		key = "repo.fork_busy"
+	default:
+		return false
+	}
+	ctx.RenderWithErr(ctx.Tr(key), SETTINGS_OPTIONS, nil)
+	return true
 }
