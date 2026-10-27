@@ -2,7 +2,7 @@
 
 Date: 2026-10-26
 
-Status: Approved by the user on 2026-10-26, including the Issues coverage and shared design system. Implementation planning is authorized. The landing-page/logo work remains a follow-on phase whose composition needs a separate design review. Approval does not waive the transport or merge-feasibility prerequisites below.
+Status: Approved by the user on 2026-10-26, including the Issues coverage and shared design system. Implementation planning is authorized. The Hgs landing page and lab-coat/beaker Go Gopher artwork were also approved on 2026-10-26, with public-only landing Explore omitted when anonymous browsing is blocked. Approval does not waive the transport or merge-feasibility prerequisites below.
 
 Builder check: A fresh reviewer identified two consequential ambiguities: cross-named-branch ancestor merges and authority to assign reviewers/block merging. Both are resolved below as explicit author-proposed defaults, and the reviewer confirmed both questions are answered. This review checks design completeness, not implementation correctness or transport feasibility.
 
@@ -10,7 +10,7 @@ Builder check: A fresh reviewer identified two consequential ambiguities: cross-
 
 Give this self-hosted Mercurial service the navigation and visual character of the Bitbucket screenshots supplied by the user: a blue left navigation area, a narrow utility rail, white content surfaces, compact tables, and contextual repository navigation. Replace the two existing presentation systems with shared components while retaining the Go application. Include a working fork-based pull request workflow and apply the same design to administration.
 
-The screenshots and iterated mockup are the visual reference, rather than an attempt to reproduce an exact historical Bitbucket release. Keep the Gogs name and attribution unless separately changed.
+The screenshots and iterated mockup are the visual reference, rather than an attempt to reproduce an exact historical Bitbucket release. Use the subsequently approved Hgs product name; preserve existing legal attribution and internal import paths.
 
 ## Decisions made with the user
 
@@ -43,7 +43,7 @@ Neither option supplies the missing Mercurial fork and PR backend; that is subst
 
 ## Existing system and integration boundary
 
-Read this alongside [the Mercurial hosting design](2026-10-25-mercurial-hosting-design.md), [its implementation plan](../plans/2026-10-25-mercurial-hosting.md), and [transport evidence](../../mercurial/transport-evidence.md).
+Read this alongside [the Mercurial hosting design](2026-10-25-mercurial-hosting-design.md), [its implementation plan](../plans/2026-10-25-mercurial-hosting.md), and the historical transport evidence at prerequisite commit e01f391a97182b30c9adf23dad514f6f56b1f828 (read with `git show e01f391a97182b30c9adf23dad514f6f56b1f828:docs/mercurial/transport-evidence.md`). That prerequisite history is deliberately excluded from this documentation-only merge to master; revalidate its current implementation/evidence when resuming Task 0.
 
 Observed on 2026-10-26:
 
@@ -107,7 +107,7 @@ Create opens a menu with Create repository, linking to the real shared form. Off
 
 ### Page coverage and components
 
-Migrate workspace dashboard/list views; repository source/file/history/diff/branches, issues/comments/labels/milestones, create/fork/settings/collaborators; organization/team/member/settings pages; account profile/settings/security; and all existing Admin pages. Authentication, installer, and error pages use the same tokens/forms/alerts with a reduced layout appropriate to anonymous access. Mail templates are not part of the visual refactor.
+Migrate workspace dashboard/list views; repository source/file/history/diff/branches, issues/comments/labels/milestones, create/fork/settings/collaborators; organization/team/member/settings pages; account profile/settings/security; and all existing Admin pages. Authentication, installer, and error pages use the same tokens/forms/alerts with a reduced layout appropriate to anonymous access. Existing mail templates are included for Hgs branding and readability, preserving delivery behavior, action links, token lifetimes and legal attribution. New PR mail remains excluded.
 
 Issues coverage explicitly includes the global cross-repository Issues list, repository issue lists and existing filters/pagination, creation forms, issue detail/discussion, attachments, label management, and milestone pages. Reuse the shared page header, list/table, badges, Markdown editor, metadata controls, alerts, and discussion components. Preserve existing assignment, labeling, milestone, edit/comment, close/reopen, attachment permissions, and notification behavior. Global rows identify their repository; counts and filters exclude inaccessible data. Repository Issues stays immediately below Pull requests. No legacy Bootstrap issue-page shell remains at completion. This is a presentation refactor of existing issue workflows, not a new issue state machine or Kanban board.
 
@@ -243,9 +243,47 @@ Meaningful acceptance cases include:
 
 Choose concrete shared partial/module names, exact responsive breakpoints, compatible local icon implementation, query indexes, schema/migration mechanics within the fresh-database baseline, bounded artifact formats, job scheduling, and process/time/disk quotas. Tune typography and spacing against the visual reference. Choose exact Mercurial commands only after testing the supported versions and proving the transaction/safety contracts. These choices must not change the product behavior or weaken a prerequisite.
 
-## Requested follow-on phase
+## Approved landing-page and identity phase
 
-The user subsequently requested a public landing-page refactor and a Mercurial-focused replacement for `public/img/gogs-lg.png` after the application UI work. A beaver-and-beaker logo is a tentative concept, with composition still open. Record this phase in the implementation handoff, but design/review it separately once the shared UI work is complete; do not treat the existing application mockup as approval of new branding artwork. Preserve the Gogs name and attribution unless separately requested. [The design system](../../DESIGN.md#follow-on-landing-page-and-mercurial-identity) records the landing-page context and visual constraints.
+After the shared application UI work, implement the approved Hgs landing page and Go Gopher wearing a white laboratory coat and holding a beaker. The exact tagline is **A painless, self-hosted Mercurial service.** The approved [prototype and artwork](../../prototypes/landing-page/index.html) replace the earlier tentative beaver concept. Phase out Gogs in product copy in favor of Hgs or Mercurial service, preserving legal attribution and internal identifiers.
+
+Landing-page Explore links and any repository preview show public repositories only. Omit them entirely when app.ini blocks anonymous browsing; the current policy is [service] REQUIRE_SIGNIN_VIEW = true. Enforce public-only queries/counts/pagination and direct-route access on the server. Signed-in workspace Explore retains its accessible-repositories behavior. Preserve conditional registration, supported social sign-in, and existing authentication policy.
+
+Replace the main landing logo reference with a local Hgs asset based on the approved PNG, retaining the Go Gopher credit to Renee French and CC BY 4.0 attribution. Use the same beaker held by the approved Gopher as the favicon and navigation identity mark, with only small-size simplification and inverse contrast variants. [The design system](../../DESIGN.md#follow-on-landing-page-and-mercurial-identity) defines the composition, assets and public discovery rule; implementation plan Task 16 delivers this phase. Approval does not waive transport or backend acceptance gates.
+
+## Explicit account-creation and installer coverage
+
+Restyle the actual /user/sign_up and /install pages with the shared public layout, Hgs/beaker identity, labeled forms, validation/error feedback and responsive behavior. Registration includes disabled-registration, CAPTCHA, provider and activation states. Installation includes applicable database-specific fields, storage/service settings, supported mail/registration settings and first administrator, with real failure/success feedback and the installed/locked guard preserved. Passwords, database credentials and CAPTCHA answers are never echoed into returned HTML or captured by editor draft recovery. The [design system](../../DESIGN.md#account-creation-and-first-run-installation) defines the layout; Task 7 migrates the real forms and Task 16 verifies their final identity assets. Test installer submissions only against disposable configuration/databases.
+
+## Approved completion details
+
+Retain both Watch and Star in repository headers, preserving their distinct subscription/preference behavior and authorized counts. Convert their mutations to CSRF-protected POSTs and retain existing email behavior. Help opens a local shared-layout /help page with supported Mercurial workflows. Keep language selection in the shared footer, preserve operator-selected identity/links and legal notices, and replace obsolete Gogs/Git marketing/help destinations.
+
+The existing mail-template families join the visual/branding scope; no new notifications are introduced. The full Gopher remains the landing mascot; its beaker supplies the favicon and navigation mark.
+
+For issue/PR editors, recover unsaved work after session expiry only while the original page is still open. The user approved a cookie ID with temporary server-side draft storage. Bind recovery to the same account, authorized editor target and an unpredictable in-memory page capability; login in another tab preserves the editor. Navigation, reload, close, cancellation or successful submission discards recovery. A new visit or history restoration cannot resurrect it. Never auto-submit after recovery or overwrite newer in-page edits with an older saved version. Exclude credentials and attachment binaries.
+
+The [design system](../../DESIGN.md#draft-recovery-after-login-expiry) specifies timing, limits, cookie attributes, failure feedback and cleanup. Its 30-minute inactivity TTL removes unreachable records when unload cleanup cannot be delivered; it is not a cross-navigation draft history. Implement and test these details in Tasks 17–18 after the existing core/landing work. This scope addition does not change ownership or status of the Mercurial prerequisites.
+
+## Profile repositories and user avatars
+
+Support the requested special repository conventions: a user's same-name repository supplies root README.md; an organization's .github repository supplies profile/README.md. Display sanitized Markdown prominently below the identity and above repository/activity content. Use the normal Mercurial landing revision, immutable links, bounded reads, and current repository/ancestry authorization; inaccessible content must not leak through a public profile or cache. Missing content leaves the ordinary profile unchanged. Repository renames/transfers and permission changes re-evaluate eligibility without automatic renames or repository creation. .github is a naming convention, not Git support.
+
+Preserve and modernize the existing Gravatar path in shared user-avatar components. Uploaded avatars take precedence, then configured Gravatar, then local fallback; honor disabled/cached/source settings and avatar email selection. Use official-source HTTPS and normalized SHA-256 identifiers consistently, local failure fallbacks and centered stable geometry. No third-party profile import is added. [The design system](../../DESIGN.md#user-and-organization-profile-readmes) provides exact layout, file-path, size, permission and avatar rules; implementation Tasks 19–20 cover these additions.
+
+## Approved profiles and contribution activity
+
+On 2026-10-26 the user approved the [profile prototype](../../prototypes/profiles/index.html), including user/organization README sections, Gravatar presentation, contribution calendars, grouped activity, and organization People entries that navigate directly to individual profiles. Use real canonical profile URLs, shared templates and permission-filtered membership lists; keep the prototype's sample data and controls out of production.
+
+Count changesets, opened issues, opened PRs and first formal reviews per reviewer/PR. Deduplicate changeset nodes across readable forks and attribute changesets by explicitly verified author-email ownership, never by pusher or automatically activated email flags. Repository creation is timeline-only. Organization activity covers its current repositories rather than all activity by its members. Dates use UTC; year/day/category controls, summaries and paginated groups derive from the same authorized data set.
+
+The [approved design system](../../DESIGN.md#approved-profiles-and-contribution-tracking) defines attribution, confirmation, deduplication, visibility, rebuilding, lifecycle, pagination and accessible UI defaults. User-scope changesets require a unique verified email; organization totals may include unattributed authors without exposing their email. Public counts exclude private activity entirely. PR/review visibility requires both endpoints. Rebuildable indexing must not bypass the hosting gate or index unpublished comparison artifacts. Implementation Tasks 21–23 deliver this scope after README/Gravatar Tasks 19–20.
+
+## Final maintenance and error-page phase
+
+After the approved profiles/contribution work, deliver maintenance (HTTP 503), internal-error (HTTP 500) and not-found (HTTP 404) pages in the shared reduced Hgs style. The user requested a hardhat Gopher in a white lab coat for maintenance, a lab-coat Gopher reacting to an exploded experiment for 500, and a lab-coat Gopher searching with a magnifying glass for 404. Preserve mascot continuity, local assets and attribution; the user approved the exact artwork and all three page compositions in the [status-page prototype](../../prototypes/status-pages/index.html) on 2026-10-26. Reuse its hgs-maintenance.png, hgs-error.png and hgs-not-found.png assets in Tasks 24–25, preserving the hardhat Gopher's white lab coat. Do not regenerate or replace the artwork unless the user requests a change. Prototype controls and simulated behavior remain excluded from production.
+
+The [design system](../../DESIGN.md#final-phase-maintenance-and-error-pages) defines copy, actions, startup-only configuration, protocol-aware maintenance admission, true status codes, no-store responses, sensitive-detail suppression and dependency-free rendering/fallbacks. Maintenance blocks web/API/transport work rather than simply changing the landing page; it does not introduce live toggles or replace safe operator shutdown procedures. Tasks 24–25 are the final implementation phase and include final validation of all earlier changes.
 
 ## Technical references
 
