@@ -450,13 +450,25 @@ func (m *mozillaRun) record(s mozillaSample) {
 	}
 }
 
-// command streams unlimited native output to disk and hashes it; the application
-// keeps its production output limits. Credentials are redacted from receipts.
+// command retains and hashes native output by default. Hash-only consumers opt
+// out of retention explicitly; command arguments never decide whether a later
+// consumer can read stdout. The application keeps its production output limits.
+// Credentials are redacted from receipts.
+type mozillaCommandOptions struct {
+	Concurrency int
+	HashOnly    bool
+}
+
 func (m *mozillaRun) command(name, repo string, args ...string) mozillaSample {
 	return m.commandWithConcurrency(name, repo, 1, args...)
 }
 
 func (m *mozillaRun) commandWithConcurrency(name, repo string, concurrency int, args ...string) mozillaSample {
+	return m.commandWithOptions(name, repo, mozillaCommandOptions{Concurrency: concurrency}, args...)
+}
+
+func (m *mozillaRun) commandWithOptions(name, repo string, options mozillaCommandOptions, args ...string) mozillaSample {
+	concurrency := options.Concurrency
 	start := time.Now()
 	id := m.next.Add(1)
 	if strings.Contains(name, "verify") || strings.HasPrefix(name, "initial-push") || strings.HasPrefix(name, "full-clone") {
@@ -491,12 +503,9 @@ func (m *mozillaRun) commandWithConcurrency(name, repo string, concurrency int, 
 	defer cancel()
 	child, e := m.r.Start(ctx, repo, args, nil)
 	var output io.Writer = out
-	for _, arg := range args {
-		if arg == "cat" || arg == "manifest" || (strings.HasPrefix(arg, "sort(all()") && strings.HasSuffix(arg, ", node)")) {
-			output = io.Discard
-			s.HashOnly = true
-			break
-		}
+	if options.HashOnly {
+		output = io.Discard
+		s.HashOnly = true
 	}
 	w := &mozillaSink{w: output, h: sha256.New()}
 	if e == nil {
@@ -534,11 +543,147 @@ func (m *mozillaRun) commandWithConcurrency(name, repo string, concurrency int, 
 
 func (m *mozillaRun) must(name, repo string, args ...string) mozillaSample {
 	m.t.Helper()
-	s := m.command(name, repo, args...)
+	return m.mustWithOptions(name, repo, mozillaCommandOptions{Concurrency: 1}, args...)
+}
+
+func (m *mozillaRun) mustHashOnly(name, repo string, args ...string) mozillaSample {
+	m.t.Helper()
+	return m.mustWithOptions(name, repo, mozillaCommandOptions{Concurrency: 1, HashOnly: true}, args...)
+}
+
+func (m *mozillaRun) mustWithOptions(name, repo string, options mozillaCommandOptions, args ...string) mozillaSample {
+	m.t.Helper()
+	s := m.commandWithOptions(name, repo, options, args...)
 	if s.Error != "" {
 		m.t.Fatalf("%s: %s (stdout %s; stderr %s)", name, s.Error, s.Stdout, s.Stderr)
 	}
 	return s
+}
+
+func TestMozillaManifestSelectionRetainsInventory(t *testing.T) {
+	testMozillaManifestSelection(t, false)
+}
+
+func TestMozillaManifestSelectionPreservesNativePaths(t *testing.T) {
+	testMozillaManifestSelection(t, true)
+}
+
+func testMozillaManifestSelection(t *testing.T, nonASCII bool) {
+	t.Helper()
+	root := t.TempDir()
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		files, _ := filepath.Glob(filepath.Join(root, "*.stderr"))
+		for _, path := range files {
+			data, _ := os.ReadFile(path)
+			if len(data) != 0 {
+				t.Logf("native diagnostic %s: %q", filepath.Base(path), data)
+			}
+		}
+	})
+	r, err := hg.NewRunner(hg.Config{Executable: hgPath(t), ConfigPath: filepath.Join(root, "native", "hgrc"), SessionTimeout: 30 * time.Second, IdleTimeout: 30 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := filepath.Join(root, "repo")
+	m := &mozillaRun{t: t, root: root, raw: root, source: repo, r: r, deadline: 30 * time.Second}
+	m.must("init", "", "init", repo)
+	extra, media, copied := "extra.txt", "clip.webm", "copied.txt"
+	if nonASCII {
+		extra, media, copied = "café.txt", "vidéo.webm", "copié.txt"
+	}
+	for name, body := range map[string][]byte{"readme.txt": []byte("representative text"), "image.png": {0, 1, 2}, media: bytes.Repeat([]byte{3}, 64), extra: []byte("additional path")} {
+		if err := os.WriteFile(filepath.Join(repo, name), body, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m.must("add", repo, "add")
+	m.must("commit", repo, "commit", "-u", "test", "-m", "representative files")
+	m.must("copy", repo, "copy", "readme.txt", copied)
+	m.must("commit-copy", repo, "commit", "-u", "test", "-m", "copy")
+	m.browseNode = m.text("node", repo, "log", "-r", "tip", "-T", "{node}")
+	t.Run("hash-only-baseline-and-comparison", func(t *testing.T) {
+		retained := m.must("retained-manifest-control", repo, "manifest", "-r", m.browseNode)
+		baseline := m.commandWithOptions("baseline-manifest", repo, mozillaCommandOptions{Concurrency: 1, HashOnly: true}, "manifest", "-r", m.browseNode)
+		comparison := m.mustHashOnly("comparison-manifest", repo, "manifest", "-r", m.browseNode)
+		if retained.Bytes == 0 || retained.HashOnly {
+			t.Fatal("retained control is empty or discarded")
+		}
+		for _, sample := range []mozillaSample{baseline, comparison} {
+			discarded, err := os.ReadFile(sample.Stdout)
+			if err != nil || len(discarded) != 0 || !sample.HashOnly || sample.Error != "" || sample.Bytes != retained.Bytes || sample.SHA256 != retained.SHA256 {
+				t.Errorf("hash-only receipt differs from retained output: %+v read=%v retainedBytes=%d", sample, err, retained.Bytes)
+			}
+		}
+	})
+	// Zero HTTP samples exercises native command-to-selection and content checks
+	// without starting a hosting fixture or accessing the full dataset.
+	m.files(nil, repo, 0)
+	data, err := os.ReadFile(filepath.Join(root, "file-selection.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var selection struct {
+		ManifestCount      int
+		Selected           map[string]string
+		FollowCopyEvidence bool
+	}
+	if err := json.Unmarshal(data, &selection); err != nil {
+		t.Fatal(err)
+	}
+	if selection.ManifestCount != 5 {
+		t.Fatalf("manifest inventory lost: count=%d want 5", selection.ManifestCount)
+	}
+	kinds := []string{"text", "binary", "large"}
+	if nonASCII {
+		kinds = append(kinds, "non-ascii")
+	}
+	for _, kind := range kinds {
+		if selection.Selected[kind] == "" {
+			t.Errorf("missing representative %s", kind)
+		}
+	}
+	mediaBytes, err := hg.LocalBytes(media)
+	if err != nil {
+		t.Fatal(err)
+	}
+	copiedBytes, err := hg.LocalBytes(copied)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.largePath != string(mediaBytes) || m.largeBytes != 64 || m.followPath != string(copiedBytes) || !selection.FollowCopyEvidence {
+		t.Fatalf("selection did not reach content/history checks: large=%q bytes=%d follow=%q copy=%v", m.largePath, m.largeBytes, m.followPath, selection.FollowCopyEvidence)
+	}
+	follow := m.must("baseline-file-history", repo, "log", "--follow", "-r", m.browseNode, "-l", "30", "-T", "{node}\n", "--", m.nativePathPattern(m.followPath))
+	if follow.Bytes != 82 {
+		t.Fatalf("copy history lost: got %d bytes, want two node lines", follow.Bytes)
+	}
+	receipts, err := os.ReadFile(filepath.Join(root, "samples.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, line := range bytes.Split(receipts, []byte("\n")) {
+		var sample mozillaSample
+		if len(line) == 0 {
+			continue
+		}
+		if err := json.Unmarshal(line, &sample); err != nil {
+			t.Fatal(err)
+		}
+		if sample.Name == "code-manifest-paths" && sample.Kind == "native-hg" {
+			found = true
+			inventory, err := os.ReadFile(sample.Stdout)
+			if err != nil || len(inventory) == 0 || sample.HashOnly || int64(len(inventory)) != sample.Bytes {
+				t.Fatalf("selection manifest was not retained: bytes=%d hashOnly=%v read=%v", len(inventory), sample.HashOnly, err)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("missing selection manifest receipt")
+	}
 }
 
 func TestMozillaCommandRecordsNativeExitCode(t *testing.T) {
@@ -1188,8 +1333,8 @@ func (m *mozillaRun) compare(store, remote string, opts []string, label string) 
 func (m *mozillaRun) compareIdentity(store, remote string, opts []string, label string) {
 	nodes := m.must(label+"-nodes", store, "log", "-r", "sort(all(), rev)", "-T", "{node}\n")
 	// Revision order can differ between exchanges. Compare sorted full node sets.
-	want := m.must(label+"-source-set", m.source, "log", "-r", "sort(all(), node)", "-T", "{node}\n")
-	got := m.must(label+"-host-set", store, "log", "-r", "sort(all(), node)", "-T", "{node}\n")
+	want := m.mustHashOnly(label+"-source-set", m.source, "log", "-r", "sort(all(), node)", "-T", "{node}\n")
+	got := m.mustHashOnly(label+"-host-set", store, "log", "-r", "sort(all(), node)", "-T", "{node}\n")
 	if nodes.Bytes != m.identity.Changesets*41 || want.SHA256 != got.SHA256 {
 		m.t.Error(label + ": complete visible changeset sets differ")
 	}
@@ -1218,8 +1363,8 @@ func (m *mozillaRun) compareIdentity(store, remote string, opts []string, label 
 	}
 	for _, rev := range []string{"0", fmt.Sprint(m.identity.Changesets / 2), m.identity.Tip, m.browseNode} {
 		node := m.text(label+"-pin", m.source, "log", "-r", rev, "-T", "{node}")
-		want := m.must(label+"-source-manifest", m.source, "manifest", "--debug", "-r", node)
-		got := m.must(label+"-host-manifest", store, "manifest", "--debug", "-r", node)
+		want := m.mustHashOnly(label+"-source-manifest", m.source, "manifest", "--debug", "-r", node)
+		got := m.mustHashOnly(label+"-host-manifest", store, "manifest", "--debug", "-r", node)
 		if want.SHA256 != got.SHA256 {
 			m.t.Error(label + ": pinned manifest differs at " + node)
 		}
@@ -1315,7 +1460,7 @@ func (m *mozillaRun) workflows(a *application, transport, repo, remote string, o
 	m.must("workflow-add", writer, "add", "task16-workflow.txt")
 	m.must("workflow-commit", writer, "commit", "-u", "task16", "-m", "task16 disposable extra head")
 	m.must("workflow-bookmark", writer, "bookmark", "task16-disposable")
-	before := m.must("acl-before", store, "log", "-r", "sort(all(), node)", "-T", "{node}\n")
+	before := m.mustHashOnly("acl-before", store, "log", "-r", "sort(all(), node)", "-T", "{node}\n")
 	beforeStore := m.storeDigest("acl-store-before", store)
 	// Revoke before opening a new session. Already-open writer transactions are
 	// deliberately not asserted to roll back under the current authorization policy.
@@ -1342,7 +1487,7 @@ func (m *mozillaRun) workflows(a *application, transport, repo, remote string, o
 		if s.Error == "" {
 			m.t.Error("unauthorized full-history push succeeded")
 		}
-		after := m.must("acl-after", store, "log", "-r", "sort(all(), node)", "-T", "{node}\n")
+		after := m.mustHashOnly("acl-after", store, "log", "-r", "sort(all(), node)", "-T", "{node}\n")
 		if after.SHA256 != before.SHA256 {
 			m.t.Error("denied push changed changesets")
 		}
@@ -1454,8 +1599,8 @@ func (m *mozillaRun) workflows(a *application, transport, repo, remote string, o
 	}
 	m.must("pull-after-restart-"+transport, clone, append(append([]string{}, readopts...), "pull", reader)...)
 	m.must("workflow-final-verify", store, "verify")
-	original := m.must("workflow-original-node-set", m.source, "log", "-r", "sort(all(), node)", "-T", "{node}\n")
-	retained := m.must("workflow-retained-node-set", store, "log", "-r", "sort(all() - ancestors("+node+"), node)", "-T", "{node}\n")
+	original := m.mustHashOnly("workflow-original-node-set", m.source, "log", "-r", "sort(all(), node)", "-T", "{node}\n")
+	retained := m.mustHashOnly("workflow-retained-node-set", store, "log", "-r", "sort(all() - ancestors("+node+"), node)", "-T", "{node}\n")
 	if original.SHA256 != retained.SHA256 || original.Bytes != retained.Bytes {
 		m.t.Error("original full-history node set changed after workflow/restart")
 	}
@@ -1488,6 +1633,37 @@ func TestMozillaCentralCorrectness(t *testing.T) {
 	m.issues(a)
 }
 
+// nativePathPattern keeps manifest path bytes out of Windows argv recoding.
+// Like the production file/history readers, native Hg reads literal path:
+// patterns from a NUL-delimited file. Keep the pattern as raw evidence.
+func (m *mozillaRun) nativePathPattern(paths ...string) string {
+	m.t.Helper()
+	f, err := os.CreateTemp(m.raw, "native-path-*.list")
+	if err != nil {
+		m.t.Fatal(err)
+	}
+	for _, r := range f.Name() {
+		if r > 127 {
+			f.Close()
+			m.t.Fatal("native pattern filename must be ASCII")
+		}
+	}
+	for _, path := range paths {
+		if path == "" || strings.ContainsAny(path, "\x00\n\r") {
+			f.Close()
+			m.t.Fatal("invalid manifest path")
+		}
+		if _, err := f.Write([]byte("path:" + path + "\x00")); err != nil {
+			f.Close()
+			m.t.Fatal(err)
+		}
+	}
+	if err := f.Close(); err != nil {
+		m.t.Fatal(err)
+	}
+	return "listfile0:" + f.Name()
+}
+
 // files scans the immutable manifest once. Size probes are limited to 64
 // deterministic media candidates; "large" means largest among those candidates,
 // never the global largest file. This avoids reopening every historical filelog.
@@ -1503,7 +1679,7 @@ func (m *mozillaRun) files(a *application, store string, samples int) {
 			candidates[path] = true
 		}
 	}
-	inventory := m.must("code-manifest-paths", m.source, "manifest", "-r", m.browseNode)
+	inventory := m.mustWithOptions("code-manifest-paths", m.source, mozillaCommandOptions{Concurrency: 1, HashOnly: false}, "manifest", "-r", m.browseNode)
 	f, e := os.Open(inventory.Stdout)
 	if e != nil {
 		m.t.Fatal(e)
@@ -1549,10 +1725,7 @@ func (m *mozillaRun) files(a *application, store string, samples int) {
 	}
 	var largest int64
 	if len(sizePaths) > 0 {
-		args := []string{"files", "-r", m.browseNode, "-T", "{size}\t{path}\n", "--"}
-		for _, path := range sizePaths {
-			args = append(args, "path:"+path)
-		}
+		args := []string{"files", "-r", m.browseNode, "-T", "{size}\t{path}\n", "--", m.nativePathPattern(sizePaths...)}
 		sizes := m.command("representative-size-inventory-max64", m.source, args...)
 		if sizes.Error == "" {
 			data, err := os.ReadFile(sizes.Stdout)
@@ -1590,11 +1763,12 @@ func (m *mozillaRun) files(a *application, store string, samples int) {
 		if kind == "large" {
 			m.largePath = path
 		}
-		want := m.must("source-file-"+kind, m.source, "cat", "-r", m.browseNode, "--", path)
+		pattern := m.nativePathPattern(path)
+		want := m.mustHashOnly("source-file-"+kind, m.source, "cat", "-r", m.browseNode, "--", pattern)
 		if kind == "large" {
 			m.largeBytes = want.Bytes
 		}
-		got := m.must("host-file-"+kind, store, "cat", "-r", m.browseNode, "--", path)
+		got := m.mustHashOnly("host-file-"+kind, store, "cat", "-r", m.browseNode, "--", pattern)
 		if want.SHA256 != got.SHA256 || want.Bytes != got.Bytes {
 			m.t.Errorf("%s native file identity differs", kind)
 		}
@@ -1692,12 +1866,13 @@ func TestMozillaCentralNativeBaseline(t *testing.T) {
 		for _, query := range []struct {
 			name, repo string
 			args       []string
+			hashOnly   bool
 		}{
-			{"source-baseline-startup", "", []string{"version", "-T", "json"}},
-			{"source-baseline-code-manifest", m.source, []string{"manifest", "-r", m.browseNode}},
-			{"source-baseline-global-history", m.source, []string{"log", "-l", "30", "-T", "json"}},
+			{"source-baseline-startup", "", []string{"version", "-T", "json"}, false},
+			{"source-baseline-code-manifest", m.source, []string{"manifest", "-r", m.browseNode}, true},
+			{"source-baseline-global-history", m.source, []string{"log", "-l", "30", "-T", "json"}, false},
 		} {
-			result := m.command(query.name, query.repo, query.args...)
+			result := m.commandWithOptions(query.name, query.repo, mozillaCommandOptions{Concurrency: 1, HashOnly: query.hashOnly}, query.args...)
 			if result.Error != "" {
 				t.Errorf("%s sample%d failed: %s", query.name, i, result.Error)
 			}
@@ -1744,11 +1919,12 @@ func (m *mozillaRun) performance(a *application, store string) {
 	}
 	// Native costs use the same frozen dataset and streaming output, separately
 	// from Go/database/proxy/rendering. They are not subtracted as causal proof.
+	followPattern := m.nativePathPattern(m.followPath)
 	for i := 0; i < 5; i++ {
 		m.command("baseline-process-startup", "", "version", "-T", "json")
-		m.command("baseline-manifest", store, "manifest", "-r", node)
+		m.commandWithOptions("baseline-manifest", store, mozillaCommandOptions{Concurrency: 1, HashOnly: true}, "manifest", "-r", node)
 		m.command("baseline-history", store, "log", "-l", "30", "-T", "json")
-		m.command("baseline-file-history", store, "log", "--follow", "-r", node, "-l", "30", "--", m.followPath)
+		m.command("baseline-file-history", store, "log", "--follow", "-r", node, "-l", "30", "--", followPattern)
 	}
 	for _, n := range []int{1, 4, 8, 12} {
 		var wg sync.WaitGroup
