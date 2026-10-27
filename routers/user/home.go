@@ -6,7 +6,6 @@ package user
 
 import (
 	"bytes"
-	"fmt"
 	"github.com/gogits/gogs/modules/setting"
 	"strings"
 
@@ -14,7 +13,6 @@ import (
 
 	"github.com/gogits/gogs/models"
 	"github.com/gogits/gogs/modules/base"
-	"github.com/gogits/gogs/modules/log"
 	"github.com/gogits/gogs/modules/middleware"
 	"github.com/gogits/gogs/modules/ui"
 )
@@ -265,129 +263,32 @@ func Email2User(ctx *middleware.Context) {
 }
 
 func Issues(ctx *middleware.Context) {
-	ctx.Data["Title"] = "Your Issues"
-
-	viewType := ctx.Query("type")
-	types := []string{"assigned", "created_by"}
-	if !com.IsSliceContainsStr(types, viewType) {
-		viewType = "all"
+	ctx.Data["Title"] = ctx.Tr("ui.issues")
+	ui.BuildShell(ctx, ui.Workspace, "issues")
+	view := ctx.Query("type")
+	if view != "assigned" && view != "created_by" {
+		view = "all"
 	}
-
-	isShowClosed := ctx.Query("state") == "closed"
-
-	var filterMode int
-	switch viewType {
-	case "assigned":
-		filterMode = models.FM_ASSIGN
-	case "created_by":
-		filterMode = models.FM_CREATE
+	rid := com.StrTo(ctx.Query("repoid")).MustInt64()
+	page := com.StrTo(ctx.Query("page")).MustInt()
+	if page < 1 {
+		page = 1
 	}
-
-	repoId, _ := com.StrTo(ctx.Query("repoid")).Int64()
-	issueStats := models.GetUserIssueStats(ctx.User.Id, filterMode)
-
-	// Get all repositories.
-	repos, err := models.GetRepositories(ctx.User.Id, true)
+	if page > 1000000 {
+		page = 1000000
+	}
+	result, err := models.ListUIIssues(ctx.Req.Request.Context(), models.UIIssueQuery{ActorID: ctx.User.Id, RepositoryID: rid, Global: true, Closed: ctx.Query("state") == "closed", View: view, Page: page})
 	if err != nil {
-		ctx.Handle(500, "user.Issues(GetRepositories)", err)
+		ctx.Handle(500, "ListUIIssues", err)
 		return
 	}
-
-	repoIds := make([]int64, 0, len(repos))
-	showRepos := make([]*models.Repository, 0, len(repos))
-	for _, repo := range repos {
-		if repo.NumIssues == 0 {
-			continue
-		}
-
-		repoIds = append(repoIds, repo.Id)
-		repo.NumOpenIssues = repo.NumIssues - repo.NumClosedIssues
-		issueStats.AllCount += int64(repo.NumOpenIssues)
-
-		if isShowClosed {
-			if repo.NumClosedIssues > 0 {
-				if filterMode == models.FM_CREATE {
-					repo.NumClosedIssues = int(models.GetIssueCountByPoster(ctx.User.Id, repo.Id, isShowClosed))
-				}
-				showRepos = append(showRepos, repo)
-			}
-		} else {
-			if repo.NumOpenIssues > 0 {
-				if filterMode == models.FM_CREATE {
-					repo.NumOpenIssues = int(models.GetIssueCountByPoster(ctx.User.Id, repo.Id, isShowClosed))
-				}
-				showRepos = append(showRepos, repo)
-			}
-		}
-	}
-
-	if repoId > 0 {
-		repoIds = []int64{repoId}
-	}
-
-	page, _ := com.StrTo(ctx.Query("page")).Int()
-
-	// Get all issues.
-	var ius []*models.IssueUser
-	switch viewType {
-	case "assigned":
-		fallthrough
-	case "created_by":
-		ius, err = models.GetIssueUserPairsByMode(ctx.User.Id, repoId, isShowClosed, page, filterMode)
-	default:
-		ius, err = models.GetIssueUserPairsByRepoIds(repoIds, isShowClosed, page)
-	}
-	if err != nil {
-		ctx.Handle(500, "user.Issues(GetAllIssueUserPairs)", err)
-		return
-	}
-
-	issues := make([]*models.Issue, len(ius))
-	for i := range ius {
-		issues[i], err = models.GetIssueById(ius[i].IssueId)
-		if err != nil {
-			if err == models.ErrIssueNotExist {
-				log.Warn("user.Issues(GetIssueById #%d): issue not exist", ius[i].IssueId)
-				continue
-			} else {
-				ctx.Handle(500, fmt.Sprintf("user.Issues(GetIssueById #%d)", ius[i].IssueId), err)
-				return
-			}
-		}
-
-		issues[i].Repo, err = models.GetRepositoryById(issues[i].RepoId)
-		if err != nil {
-			if err == models.ErrRepoNotExist {
-				log.Warn("user.Issues(GetRepositoryById #%d): repository not exist", issues[i].RepoId)
-				continue
-			} else {
-				ctx.Handle(500, fmt.Sprintf("user.Issues(GetRepositoryById #%d)", issues[i].RepoId), err)
-				return
-			}
-		}
-
-		if err = issues[i].Repo.GetOwner(); err != nil {
-			ctx.Handle(500, "user.Issues(GetOwner)", err)
-			return
-		}
-
-		if err = issues[i].GetPoster(); err != nil {
-			ctx.Handle(500, "user.Issues(GetUserById)", err)
-			return
-		}
-	}
-
-	ctx.Data["RepoId"] = repoId
-	ctx.Data["Repos"] = showRepos
-	ctx.Data["Issues"] = issues
-	ctx.Data["ViewType"] = viewType
-	ctx.Data["IssueStats"] = issueStats
-	ctx.Data["IsShowClosed"] = isShowClosed
-	if isShowClosed {
-		ctx.Data["State"] = "closed"
-		ctx.Data["ShowCount"] = issueStats.ClosedCount
-	} else {
-		ctx.Data["ShowCount"] = issueStats.OpenCount
-	}
+	ctx.Data["RepoId"] = rid
+	ctx.Data["Repos"] = result.Repositories
+	ctx.Data["Issues"] = result.Issues
+	ctx.Data["ViewType"] = view
+	ctx.Data["IssueStats"] = &result.Stats
+	ctx.Data["IsShowClosed"] = ctx.Query("state") == "closed"
+	ctx.Data["State"] = ctx.Query("state")
+	ui.IssuePagination(ctx, page, result.Total)
 	ctx.HTML(200, ISSUES)
 }

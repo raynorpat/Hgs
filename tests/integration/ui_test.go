@@ -164,7 +164,7 @@ func newUIFixture(t *testing.T, prefix string) *uiFixture {
 	m.MapTo(uiProvider{service}, (*hosting.Provider)(nil))
 	m.Use(macaron.Static("../../public"))
 	m.Use(macaron.Renderer(macaron.RenderOptions{Directory: "../../templates", Funcs: []htmltemplate.FuncMap{base.TemplateFuncs}}))
-	m.Use(i18n.I18n(i18n.Options{Directory: "../../conf/locale", Langs: []string{"en-US"}, Names: []string{"English"}}))
+	m.Use(middleware.Localization(i18n.Options{Directory: "../../conf/locale", Langs: []string{"en-US", "de-DE"}, Names: []string{"English", "Deutsch"}}))
 	m.Use(cache.Cacher())
 	m.Use(session.Sessioner(session.Options{Provider: "memory", CookieName: "ui_fixture", CookiePath: prefix}))
 	m.Use(csrf.Csrfer(csrf.Options{Secret: "disposable-ui-fixture", CookiePath: prefix, SetCookie: true}))

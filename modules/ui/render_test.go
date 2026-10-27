@@ -24,7 +24,7 @@ func shellFixture(t *testing.T, sub string, kind ContextKind, user *models.User,
 	m := macaron.New()
 	m.SetURLPrefix(sub)
 	m.Use(macaron.Renderer(macaron.RenderOptions{Directory: "../../templates", Funcs: []template.FuncMap{base.TemplateFuncs}}))
-	m.Use(i18n.I18n(i18n.Options{Directory: "../../conf/locale", Langs: []string{"en-US"}, Names: []string{"English"}}))
+	m.Use(middleware.Localization(i18n.Options{Directory: "../../conf/locale", Langs: []string{"en-US"}, Names: []string{"English"}}))
 	var shell Shell
 	m.Get("/", func(c *macaron.Context) {
 		ctx := &middleware.Context{Context: c, User: user, IsSigned: user != nil}

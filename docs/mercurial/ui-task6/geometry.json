@@ -1,0 +1,176 @@
+{
+  "fixture": "127.0.0.1:43136/code; synthetic accounts/disposable SQLite/native Hg7.2.4",
+  "viewports": [
+    {
+      "nominal": [
+        1440,
+        1000
+      ],
+      "observed_document_scroll_and_client_widths": [
+        1440,
+        1440
+      ]
+    },
+    {
+      "nominal": [
+        390,
+        844
+      ],
+      "observed_document_scroll_and_client_widths": [
+        375,
+        375
+      ],
+      "note": "15px vertical scrollbar; one drawer measurement390/390"
+    }
+  ],
+  "horizontal_overflow_observed": false,
+  "mode_styling": {
+    "selected": "rgb(0,82,204) bottom border and text",
+    "pressed_state_preserved": true
+  },
+  "label_colors": [
+    {
+      "background": "#f0d2ab",
+      "foreground": "#000000"
+    },
+    {
+      "background": "#123456",
+      "foreground": "#ffffff"
+    }
+  ],
+  "browser_cleanup": {
+    "viewport_reset": true,
+    "owned_tab_closed": true,
+    "owned_tab_list_after_cleanup": [],
+    "server_shutdown": "fixture stop endpoint; go test fixture PASS"
+  },
+  "capture_note": "Native viewport captures or viewport-sized desktop captures only; tall fullPage composites omitted because provider fixed-position/scrollbar artifacts were observed. Scrolled metadata is separately labeled. Different disposable restarts naturally have different timestamps and issue contents.",
+  "images": [
+    {
+      "file": "global-1440.jpg",
+      "pixels": [
+        1440,
+        1000
+      ]
+    },
+    {
+      "file": "global-390.jpg",
+      "pixels": [
+        375,
+        812
+      ]
+    },
+    {
+      "file": "global-empty-1440.jpg",
+      "pixels": [
+        1440,
+        1000
+      ]
+    },
+    {
+      "file": "repository-list-1440.jpg",
+      "pixels": [
+        1440,
+        1000
+      ]
+    },
+    {
+      "file": "repository-list-390.jpg",
+      "pixels": [
+        375,
+        812
+      ]
+    },
+    {
+      "file": "create-preview-1440.jpg",
+      "pixels": [
+        1440,
+        1000
+      ]
+    },
+    {
+      "file": "create-write-1440.jpg",
+      "pixels": [
+        1440,
+        1000
+      ]
+    },
+    {
+      "file": "create-de-1440.jpg",
+      "pixels": [
+        1440,
+        1000
+      ]
+    },
+    {
+      "file": "create-de-390.jpg",
+      "pixels": [
+        375,
+        812
+      ]
+    },
+    {
+      "file": "discussion-1440.jpg",
+      "pixels": [
+        1425,
+        990
+      ]
+    },
+    {
+      "file": "discussion-390.jpg",
+      "pixels": [
+        375,
+        812
+      ]
+    },
+    {
+      "file": "discussion-metadata-390.jpg",
+      "pixels": [
+        375,
+        812
+      ]
+    },
+    {
+      "file": "labels-1440.jpg",
+      "pixels": [
+        1440,
+        1000
+      ]
+    },
+    {
+      "file": "labels-390.jpg",
+      "pixels": [
+        375,
+        812
+      ]
+    },
+    {
+      "file": "milestone-edit-1440.jpg",
+      "pixels": [
+        1440,
+        1000
+      ]
+    },
+    {
+      "file": "milestone-new-390.jpg",
+      "pixels": [
+        375,
+        812
+      ]
+    },
+    {
+      "file": "milestones-1440.jpg",
+      "pixels": [
+        1440,
+        1000
+      ]
+    },
+    {
+      "file": "milestones-390.jpg",
+      "pixels": [
+        375,
+        812
+      ]
+    }
+  ]
+}

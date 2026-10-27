@@ -1,5 +1,0 @@
-<div id="repo-toolbar"><div class="container"><nav class="navbar navbar-toolbar navbar-default"><ul class="nav navbar-nav">
- <li><a href="{{.RepoLink}}">{{.i18n.Tr "repo.hg_source"}}</a></li><li><a href="{{.RepoLink}}/commits">{{.i18n.Tr "repo.commits"}}</a></li><li><a href="{{.RepoLink}}/branches">{{.i18n.Tr "repo.hg_references"}}</a></li><li><a href="{{.RepoLink}}/issues">{{.i18n.Tr "repo.issues"}}</a></li>
- {{if .IsRepoToolbarIssues}}<li><a href="{{.RepoLink}}/issues/new">{{.i18n.Tr "repo.issues.new"}}</a></li><li><a href="{{.RepoLink}}/issues/milestones">{{.i18n.Tr "repo.milestones"}}</a></li>{{end}}
- {{if .IsRepositoryTrueOwner}}<li><a href="{{.RepoLink}}/settings">{{.i18n.Tr "repo.settings"}}</a></li>{{end}}
-</ul></nav></div></div>

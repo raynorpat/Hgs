@@ -1,43 +1,8 @@
-{{template "base/head" .}}
-{{template "base/navbar" .}}
-{{template "repo/nav" .}}
-{{template "repo/toolbar" .}}
-<div id="body" class="container">
-    <div id="issue">
-        <div class="col-md-3 filter-list">
-            <ul class="list-unstyled">
-                <li><a href="{{.RepoLink}}/issues/milestones"{{if eq .State "open"}} class="active"{{end}}>Open Milestones <strong class="pull-right">{{.Repository.NumOpenMilestones}}</strong></a></li>
-                <li><a href="{{.RepoLink}}/issues/milestones?state=closed"{{if eq .State "closed"}} class="active"{{end}}>Close Milestones <strong class="pull-right">{{.Repository.NumClosedMilestones}}</strong></a></li>
-            </ul>
-            <hr/>
-            <a href="{{.RepoLink}}/issues/milestones/new" class="text-center">
-                <button class="btn btn-default btn-block">Create new milestone</button>
-            </a>
-        </div>
-        <div class="col-md-9">
-            <div class="milestones list-group">
-                {{range .Milestones}}
-                <div class="list-group-item milestone-item">
-                    <h4 class="title pull-left"><a href="{{$.RepoLink}}/issues?milestone={{.Index}}{{if .IsClosed}}&state=closed{{end}}">{{.Name}}</a></h4>
-                    <span class="issue-open label label-success">{{.NumOpenIssues}}</span>
-                    <span class="issue-close label label-warning">{{.NumClosedIssues}}</span>
-                    <p class="actions pull-right">
-                        <a href="{{$.RepoLink}}/issues/milestones/{{.Index}}/edit">Edit</a>
-                        {{if .IsClosed}}
-                        <a href="{{$.RepoLink}}/issues/milestones/{{.Index}}/open">Open</a>
-                        {{else}}
-                        <a href="{{$.RepoLink}}/issues/milestones/{{.Index}}/close">Close</a>
-                        {{end}}
-                        <a class="text-danger" href="{{$.RepoLink}}/issues/milestones/{{.Index}}/delete">Delete</a>
-                        <a href="{{$.RepoLink}}/issues?milestone={{.Index}}{{if .IsClosed}}&state=closed{{end}}">Issues</a>
-                    </p>
-                    <hr/>
-                    <p class="description">{{.RenderedContent | Str2html}}</p>
-                </div>
-                {{end}}
-            </div>
-        </div>
-    </div>
-</div>
-</div>
-{{template "base/footer" .}}
+{{template "shared/start" .}}
+{{template "repo/header" .}}
+{{if .IssueUIError}}<p role="alert" class="hg-alert hg-alert-danger">{{.IssueUIError}}</p>{{end}}
+<nav class="hg-tabs" aria-label="{{.i18n.Tr "ui.issues"}}"><a href="{{.RepoLink}}/issues">{{.i18n.Tr "ui.issues"}}</a><a href="{{.RepoLink}}/issues/milestones">{{.i18n.Tr "ui.milestones"}}</a></nav>
+<header class="hg-page-header"><h2>{{.i18n.Tr "ui.milestones"}}</h2>{{if .IsRepositoryOwner}}<a class="hg-button hg-button-primary" href="{{.RepoLink}}/issues/milestones/new">{{.i18n.Tr "ui.new_milestone"}}</a>{{end}}</header><nav class="hg-tabs"><a href="{{.RepoLink}}/issues/milestones"{{if eq .State "open"}} aria-current="page"{{end}}>{{.i18n.Tr "ui.open"}} {{.Repository.NumOpenMilestones}}</a><a href="{{.RepoLink}}/issues/milestones?state=closed"{{if eq .State "closed"}} aria-current="page"{{end}}>{{.i18n.Tr "ui.closed"}} {{.Repository.NumClosedMilestones}}</a></nav>
+{{range .Milestones}}<article class="hg-panel"><header class="hg-panel-heading hg-page-header"><h3><a href="{{$.RepoLink}}/issues?milestone={{.Index}}{{if .IsClosed}}&state=closed{{end}}">{{.Name}}</a></h3><span class="hg-meta">{{.NumOpenIssues}} {{$.i18n.Tr "ui.open"}} &middot; {{.NumClosedIssues}} {{$.i18n.Tr "ui.closed"}}</span></header><div class="hg-markdown">{{Str2html .RenderedContent}}</div><progress value="{{.Completeness}}" max="100">{{.Completeness}}%</progress>{{if $.IsRepositoryOwner}}<div class="hg-actions"><a class="hg-button" href="{{$.RepoLink}}/issues/milestones/{{.Index}}/edit">{{$.i18n.Tr "ui.edit"}}</a><form method="post" action="{{$.RepoLink}}/issues/milestones/{{.Index}}/{{if .IsClosed}}open{{else}}close{{end}}" data-prevent-duplicate>{{$.CsrfTokenHtml}}<button class="hg-button">{{if .IsClosed}}{{$.i18n.Tr "ui.reopen"}}{{else}}{{$.i18n.Tr "ui.close"}}{{end}}</button></form><form method="post" action="{{$.RepoLink}}/issues/milestones/{{.Index}}/delete" data-prevent-duplicate>{{$.CsrfTokenHtml}}<button class="hg-button hg-button-danger">{{$.i18n.Tr "ui.delete"}}</button></form></div>{{end}}</article>{{else}}<p class="hg-empty">{{.i18n.Tr "ui.no_milestones"}}</p>{{end}}
+<script defer src="{{AppSubUrl}}/js/app/issues.js"></script>
+{{template "shared/end" .}}

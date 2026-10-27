@@ -32,7 +32,7 @@ func TestSharedShellBrowserFixture(t *testing.T) {
 	m.SetURLPrefix("/code")
 	m.Use(macaron.Static("../../public", macaron.StaticOptions{}))
 	m.Use(macaron.Renderer(macaron.RenderOptions{Directory: "../../templates", Funcs: []template.FuncMap{base.TemplateFuncs}}))
-	m.Use(i18n.I18n(i18n.Options{Directory: "../../conf/locale", Langs: []string{"en-US"}, Names: []string{"English"}}))
+	m.Use(middleware.Localization(i18n.Options{Directory: "../../conf/locale", Langs: []string{"en-US"}, Names: []string{"English"}}))
 	m.Get("/", func(c *macaron.Context) {
 		user := &models.User{Name: "alexandria-research-and-development-laboratory", UseCustomAvatar: true, Id: 42, IsAdmin: true}
 		ctx := &middleware.Context{Context: c, User: user, IsSigned: true}

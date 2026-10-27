@@ -39,3 +39,6 @@ type PageLink struct {
 	Label, URL        string
 	Current, Disabled bool
 }
+
+// MarkdownEditor is the shared sanitized preview contract for one editor instance.
+type MarkdownEditor struct{ ID, Value, Context, Label, Write, Preview, Error, URL string }

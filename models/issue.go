@@ -688,7 +688,7 @@ func GetMilestones(repoId int64, isClosed bool) ([]*Milestone, error) {
 
 // UpdateMilestone updates information of given milestone.
 func UpdateMilestone(m *Milestone) error {
-	_, err := x.Id(m.Id).Update(m)
+	_, err := x.Id(m.Id).AllCols().Update(m)
 	return err
 }
 
@@ -716,7 +716,7 @@ func ChangeMilestoneStatus(m *Milestone, isClosed bool) (err error) {
 	} else {
 		repo.NumClosedMilestones--
 	}
-	if _, err = sess.Id(repo.Id).Where("state = ?", RepositoryReady).Update(repo); err != nil {
+	if _, err = sess.Id(repo.Id).Where("state = ?", RepositoryReady).Cols("num_closed_milestones").Update(repo); err != nil {
 		sess.Rollback()
 		return err
 	}
@@ -773,7 +773,7 @@ func ChangeMilestoneAssign(oldMid, mid int64, issue *Issue) (err error) {
 			m.Completeness = 0
 		}
 
-		if _, err = sess.Id(m.Id).Cols("num_issues,num_completeness,num_closed_issues").Update(m); err != nil {
+		if _, err = sess.Id(m.Id).Cols("num_issues", "completeness", "num_closed_issues").Update(m); err != nil {
 			sess.Rollback()
 			return err
 		}
@@ -801,7 +801,7 @@ func ChangeMilestoneAssign(oldMid, mid int64, issue *Issue) (err error) {
 		}
 
 		m.Completeness = m.NumClosedIssues * 100 / m.NumIssues
-		if _, err = sess.Id(m.Id).Cols("num_issues,num_completeness,num_closed_issues").Update(m); err != nil {
+		if _, err = sess.Id(m.Id).Cols("num_issues", "completeness", "num_closed_issues").Update(m); err != nil {
 			sess.Rollback()
 			return err
 		}

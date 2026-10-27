@@ -125,7 +125,7 @@ func newMacaron() *macaron.Macaron {
 		Funcs:      []template.FuncMap{base.TemplateFuncs},
 		IndentJSON: macaron.Env != macaron.PROD,
 	}))
-	m.Use(i18n.I18n(i18n.Options{
+	m.Use(middleware.Localization(i18n.Options{
 		SubURL:          setting.AppSubUrl,
 		Directory:       path.Join(setting.ConfRootPath, "locale"),
 		CustomDirectory: path.Join(setting.CustomPath, "conf/locale"),
@@ -478,7 +478,7 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 			m.Post("/milestones/new", bindIgnErr(auth.CreateMilestoneForm{}), repo.NewMilestonePost)
 			m.Get("/milestones/:index/edit", repo.UpdateMilestone)
 			m.Post("/milestones/:index/edit", bindIgnErr(auth.CreateMilestoneForm{}), repo.UpdateMilestonePost)
-			m.Get("/milestones/:index/:action", repo.UpdateMilestone)
+			m.Post("/milestones/:index/:action", repo.UpdateMilestone)
 		})
 
 		m.Post("/comment/:action", repo.Comment)
