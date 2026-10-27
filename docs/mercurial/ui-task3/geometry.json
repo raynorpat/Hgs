@@ -1,0 +1,167 @@
+[
+  {
+    "avatar": [
+      28,
+      28
+    ],
+    "button": [
+      40,
+      40
+    ],
+    "centerOffset": [
+      0,
+      0
+    ],
+    "clientWidth": 1440,
+    "image": [
+      true,
+      200
+    ],
+    "menu": "none",
+    "nav": 208,
+    "pageWidth": 1440,
+    "rail": 56,
+    "scenario": "1440-real",
+    "viewport": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "avatar": [
+      28,
+      28
+    ],
+    "button": [
+      40,
+      40
+    ],
+    "centerOffset": [
+      0,
+      0
+    ],
+    "clientWidth": 1009,
+    "focus": "Account",
+    "outline": [
+      "3px",
+      "rgb(255, 171, 0)"
+    ],
+    "pageWidth": 1009,
+    "scenario": "1024-fallback-keyboard",
+    "viewport": [
+      1024,
+      900
+    ]
+  },
+  {
+    "avatar": [
+      28,
+      28
+    ],
+    "brokenHidden": true,
+    "button": [
+      40,
+      40
+    ],
+    "centerOffset": [
+      0,
+      0
+    ],
+    "clientWidth": 785,
+    "imageNaturalWidth": 0,
+    "menu": "inline-flex",
+    "nav": "none",
+    "pageWidth": 785,
+    "scenario": "800-broken-repository",
+    "viewport": [
+      800,
+      900
+    ]
+  },
+  {
+    "clientWidth": 390,
+    "drawer": {
+      "bottom": 844,
+      "height": 844,
+      "left": 56,
+      "right": 336,
+      "top": 0,
+      "width": 280,
+      "x": 56,
+      "y": 0
+    },
+    "focus": "Close",
+    "outline": "rgb(255, 171, 0)",
+    "pageWidth": 390,
+    "scenario": "390-drawer",
+    "viewport": [
+      390,
+      844
+    ]
+  },
+  {
+    "avatar": [
+      28,
+      28
+    ],
+    "bodyText": "28px",
+    "button": [
+      40,
+      40
+    ],
+    "centerOffset": [
+      0,
+      0
+    ],
+    "clientWidth": 1425,
+    "pageWidth": 1425,
+    "scenario": "1440-200pct-text-real",
+    "titleText": "56px",
+    "viewport": [
+      1440,
+      1000
+    ]
+  },
+  {
+    "avatar": [
+      28,
+      28
+    ],
+    "bodyText": "28px",
+    "button": [
+      40,
+      40
+    ],
+    "centerOffset": [
+      0,
+      0
+    ],
+    "clientWidth": 375,
+    "pageWidth": 375,
+    "scenario": "390-200pct-text-real",
+    "titleText": "48px",
+    "viewport": [
+      390,
+      844
+    ]
+  },
+  {
+    "focus": "hg-search-input",
+    "open": 1,
+    "panel": {
+      "bottom": 227,
+      "height": 171,
+      "left": 64,
+      "right": 374,
+      "top": 56,
+      "width": 310,
+      "x": 64,
+      "y": 56
+    },
+    "scenario": "390-search-popout",
+    "viewport": [
+      390,
+      844
+    ]
+  }
+]

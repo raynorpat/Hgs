@@ -1,0 +1,1 @@
+<nav class="hg-pagination" aria-label="{{.Label}}">{{range .Pages}}{{if or .Disabled .Current}}<span{{if .Current}} aria-current="page"{{else}} aria-disabled="true"{{end}}>{{.Label}}</span>{{else}}<a href="{{.URL}}">{{.Label}}</a>{{end}}{{end}}</nav>

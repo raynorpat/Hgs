@@ -103,3 +103,44 @@ For original hosting Task 13, the old `TestGitAndDeferredRoutesAbsent` instructi
 - [x] Save useful evidence; commit this note independently of product work.
 
 Task 0 must remain incomplete until both unchecked prerequisites pass. No runtime code, transport remedy, original-checkout edit, remote operation, or invented passing evidence is part of this audit.
+
+## Task 3 — shared application shell (2026-10-27)
+
+Shared infrastructure is implemented on `codex/shared-ui-implementation` after the local Tasks 1–2 development review gates. Actual page-family migration remains Tasks 5–7; these are disposable, visibly labeled synthetic fixtures, not production workflow acceptance. Existing release/native validation debt above is unchanged.
+
+The real Macaron renderer, `base.TemplateFuncs`, i18n middleware, request context and `SetURLPrefix` are exercised by `modules/ui/render_test.go`. `BuildShell` consumes existing repository authority and performs no database queries. The reduced anonymous shell has no app navigation. Future Search/Recents/PR/Help/sign-out links require explicit server composition after their handlers exist; there are no placeholder production routes.
+
+### Visual and keyboard receipts
+
+Isolated loopback fixture: `UI_FIXTURE_ADDR=127.0.0.1:43127 go test ./modules/ui -run TestSharedShellBrowserFixture -v -timeout 30m`. It serves only synthetic fixture data and invokes the actual Markdown API handler. Its owned server was stopped and viewport override reset after QA. No user server, original prototype, installer or admin mutation was touched.
+
+[Raw DOM geometry](ui-task3/geometry.json) records actual measurements. Desktop rail = 56px, context navigation = 208px. Real, broken and initials avatars = 28×28 inside 40×40 controls; horizontal and vertical center offsets = 0px, including enlarged text. Broken images are hidden while centered initials remain. No measured page has `scrollWidth` larger than `clientWidth`; vertical scrollbars account for client width below the nominal viewport.
+
+| Nominal viewport | State | Actual measurements | Screenshot pixels |
+| --- | --- | --- | --- |
+| 1440×1000 | Real local avatar, workspace | rail 56; nav 208; control 40×40; avatar 28×28; offsets 0,0; page/client 1440/1440 | 1440×1000 |
+| 1024×900 | Fallback, keyboard account focus | offsets 0,0; page/client 1009/1009; inverse outline 3px | 1009×887 |
+| 800×900 | Broken avatar, repository | image width 0, hidden; Menu shown; context hidden; page/client 785/785 | 785×883 |
+| 390×844 | Expanded repository drawer | drawer x56, width280; page/client 390/390; Close keyboard outline 3px, rgb(255,171,0) | 390×844 |
+| 390×844 | Search popout | x64,y56,width310,height171,right374; search input focused; one open popout | 375×812 |
+| 1440×1000 | 200% text enlargement | body 28px; title 56px; offsets 0,0; page/client 1425/1425 | 1425×990 |
+| 390×844 | 200% text enlargement | body 28px; title 48px; offsets 0,0; page/client 375/375 | 375×812 |
+
+IAB did not apply browser chrome zoom shortcuts (viewport/DPR/visual scale stayed unchanged). The explicitly labeled `text=200` fixture doubles body, heading, caption, table and helper font sizes and line heights; this is text enlargement stress evidence, not a claim of native browser zoom. The controller accepted this method. It has no production effect.
+
+- [Desktop shared shell](ui-task3/1440-real.jpg), [fallback account focus](ui-task3/1024-fallback-focus.jpg), [800px broken avatar](ui-task3/800-broken.jpg).
+- [390px shell](ui-task3/390-broken.jpg), [keyboard drawer](ui-task3/390-drawer-focus.jpg), [narrow search](ui-task3/390-search-popout.jpg).
+- [Desktop enlarged text](ui-task3/1440-text200.jpg), [narrow enlarged text](ui-task3/390-text200.jpg), [Admin shell](ui-task3/1024-admin.jpg), [reduced anonymous shell](ui-task3/390-reduced.jpg).
+- [Sanitized Markdown preview](ui-task3/390-markdown-preview.jpg).
+
+Keyboard checks passed: Search focuses its field; Escape closes and returns focus; opening Recents closes Search; outside click closes; ordinary popouts do not trap Tab; drawer Shift+Tab wraps Close→Settings and Tab wraps Settings→Close; Escape restores Menu. All other body children become inert while the modal drawer is open and their prior inert state is restored. Keyboard utility tooltips use `aria-describedby`; account focus and drawer focus have visible 3px inverse rings. Reduced-motion rules remove motion and smooth scrolling.
+
+Malicious Markdown containing script, image onerror and javascript links was submitted through the shared client to the actual API. The client explicitly uses `mode=gfm`; DOM checks found 0 script elements, 0 event-handler attributes and 0 executable javascript links. Write restores the unchanged original input. The API's default raw mode is not a sanitization boundary and must not be used by migrated editors.
+
+A real `/code` language-link click produced `/code/?lang=en-US&page=2&q=hg`, retaining safe filters once and dropping the synthetic token parameter. The shared destination uses Macaron's stripped URL.Path rather than the legacy RequestURI-based Link.
+
+### Verification
+
+Required shell RED: missing ContextKind/Shell/BuildShell; GREEN: `go test ./modules/ui -run 'TestSharedShell' -count=1` passed, 3.596s. Later mount and alert regression RED/GREEN receipts are in the Task 3 implementation report.
+
+Whole ordinary `go test ./...` passed: cmd 114.871s, models 31.052s, hg 33.173s, hosting 99.483s, ui 3.437s; all other packages passed/cached or had no tests. `go vet ./...` and `go build ./...` exited 0. After the final language/alert refinements, `go test ./modules/ui -count=1` passed (3.200s), `go vet ./modules/ui ./modules/base` passed, and all three shared scripts passed `node --check`. Tagged native acceptance and unresolved cross-platform release rows were not rerun or promoted.

@@ -8,6 +8,7 @@ import (
 	"container/list"
 	"fmt"
 	"html/template"
+	"net/url"
 	"runtime"
 	"strings"
 	"time"
@@ -115,6 +116,18 @@ var TemplateFuncs template.FuncMap = map[string]interface{}{
 	},
 	"LoadTimes": func(startTime time.Time) string {
 		return fmt.Sprint(time.Since(startTime).Nanoseconds()/1e6) + "ms"
+	},
+	"RequireSignInView": func() bool { return setting.Service.RequireSignInView },
+	"UILanguageURL": func(link, language string) string {
+		// Contexter supplies an already-prefixed local path. Keep its existing query.
+		u, err := url.Parse(link)
+		if err != nil || u.IsAbs() || u.Host != "" || !strings.HasPrefix(u.Path, "/") || strings.HasPrefix(u.Path, "//") {
+			u = &url.URL{Path: setting.AppSubUrl + "/"}
+		}
+		q := u.Query()
+		q.Set("lang", language)
+		u.RawQuery = q.Encode()
+		return u.String()
 	},
 	"AvatarLink": AvatarLink,
 	"Str2html":   Str2html,
