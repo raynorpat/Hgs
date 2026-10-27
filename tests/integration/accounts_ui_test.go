@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -29,6 +30,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	"html"
 	htmltemplate "html/template"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -113,6 +115,7 @@ func accountApp(t *testing.T, installed bool) *accountFixture {
 	m.Post("/user/reset_password", protected, user.ResetPasswdPost)
 	m.Get("/user/activate", user.Activate)
 	m.Post("/user/activate", protected, user.Activate)
+	m.Post("/user/settings/avatar", signed, binding.BindIgnErr(auth.UploadAvatarForm{}), user.SettingsAvatar)
 	m.Get("/user/settings", signed, user.Settings)
 	m.Post("/user/settings", signed, binding.BindIgnErr(auth.UpdateProfileForm{}), user.SettingsPost)
 	m.Get("/fixture/social/:id", func(ctx *middleware.Context) {
@@ -135,6 +138,8 @@ func accountApp(t *testing.T, installed bool) *accountFixture {
 		m.Post("/teams/:team/action/repo/:action", org.TeamsRepoAction)
 	}, signed, middleware.OrgAssignment(true, true))
 	m.Group("/org/:org", func() {
+		m.Get("/teams/:team/edit", org.EditTeam)
+		m.Post("/teams/:team/edit", binding.BindIgnErr(auth.CreateTeamForm{}), org.EditTeamPost)
 		m.Get("/teams/new", org.NewTeam)
 		m.Post("/teams/new", binding.BindIgnErr(auth.CreateTeamForm{}), org.NewTeamPost)
 		m.Get("/settings", org.Settings)
@@ -154,11 +159,13 @@ func accountApp(t *testing.T, installed bool) *accountFixture {
 	m.Get("/admin/repos", admins, admin.Repositories)
 	m.Get("/admin/monitor", admins, admin.Monitor)
 	m.Get("/admin/notices", admins, admin.Notices)
+	m.Post("/admin/users/:userid/delete", admins, admin.DeleteUser)
 	m.Get("/admin/users/:userid", admins, admin.EditUser)
 	m.Post("/admin/users/:userid", admins, binding.BindIgnErr(auth.AdminEditUserForm{}), admin.EditUserPost)
 	m.Get("/admin/auths", admins, admin.Authentications)
 	m.Get("/admin/auths/new", admins, admin.NewAuthSource)
 	m.Post("/admin/auths/new", admins, binding.BindIgnErr(auth.AuthenticationForm{}), admin.NewAuthSourcePost)
+	m.Post("/admin/auths/:authid/delete", admins, admin.DeleteAuthSource)
 	m.Get("/admin/auths/:authid", admins, admin.EditAuthSource)
 	m.Post("/admin/auths/:authid", admins, binding.BindIgnErr(auth.AuthenticationForm{}), admin.EditAuthSourcePost)
 	m.Get("/user/settings/password", signed, user.SettingsPassword)
@@ -790,5 +797,225 @@ func TestSharedUIAccountsLocalesAndInstallerOptions(t *testing.T) {
 		if strings.Contains(w.Body.String(), "hidden-mail-password") {
 			t.Fatal("mail password reflected")
 		}
+	}
+}
+
+// Inspect the real rendered control, without depending on attribute ordering.
+func accountControl(t *testing.T, body, name string) string {
+	t.Helper()
+	for _, input := range regexp.MustCompile(`<input\b[^>]*>`).FindAllString(body, -1) {
+		if strings.Contains(input, `name="`+name+`"`) {
+			return input
+		}
+	}
+	t.Fatalf("missing input %q", name)
+	return ""
+}
+func accountValue(t *testing.T, body, name, want string) {
+	t.Helper()
+	input := accountControl(t, body, name)
+	if !strings.Contains(input, `value="`+html.EscapeString(want)+`"`) {
+		t.Errorf("%s lost value %q: %s", name, want, input)
+	}
+}
+func accountChecked(t *testing.T, body, name string, want bool) {
+	t.Helper()
+	if got := strings.Contains(accountControl(t, body, name), "checked"); got != want {
+		t.Errorf("%s checked=%v, want %v", name, got, want)
+	}
+}
+func accountPermission(t *testing.T, body string) string {
+	t.Helper()
+	selected := ""
+	for _, input := range regexp.MustCompile(`<input\b[^>]*>`).FindAllString(body, -1) {
+		if strings.Contains(input, `name="permission"`) && strings.Contains(input, "checked") {
+			if selected != "" {
+				t.Fatal("multiple permission radios checked")
+			}
+			match := regexp.MustCompile(`value="([^"]+)"`).FindStringSubmatch(input)
+			if len(match) != 2 {
+				t.Fatal("permission without value")
+			}
+			selected = match[1]
+		}
+	}
+	return selected
+}
+func TestSharedUIAccountsRedirectFlashState(t *testing.T) {
+	f := accountApp(t, true)
+	f.member.FullName, f.member.Website, f.member.Location = "Saved Profile", "https://profile.example.invalid", "Saved Location"
+	f.member.AvatarEmail = "avatar@example.invalid"
+	f.member.IsAdmin = true
+	if err := models.UpdateUser(f.member); err != nil {
+		t.Fatal(err)
+	}
+	f.request(t, "GET", "/user/settings", "member", nil, false)
+	var upload bytes.Buffer
+	writer := multipart.NewWriter(&upload)
+	if err := writer.WriteField("_csrf", f.token); err != nil {
+		t.Fatal(err)
+	}
+	file, err := writer.CreateFormFile("avatar", "not-an-image.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = file.Write([]byte("This is not an image.")); err != nil {
+		t.Fatal(err)
+	}
+	if err = writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest("POST", "/code/user/settings/avatar", &upload)
+	r.Header.Set("Content-Type", writer.FormDataContentType())
+	r.SetBasicAuth("member", "password")
+	for _, c := range f.cookies {
+		r.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	f.m.ServeHTTP(w, r)
+	for _, c := range w.Result().Cookies() {
+		f.cookies[c.Name] = c
+	}
+	if w.Code != 302 || w.Header().Get("Location") != "/code/user/settings" {
+		t.Fatalf("avatar redirect: %d %s", w.Code, w.Body.String())
+	}
+	w = f.request(t, "GET", "/user/settings", "member", nil, false)
+	sharedAccountPage(t, w, false)
+	if !strings.Contains(w.Body.String(), "hg-alert-danger") {
+		t.Error("avatar error flash missing")
+	}
+	for name, value := range map[string]string{"uname": "member", "fullname": "Saved Profile", "email": f.member.Email, "website": f.member.Website, "location": f.member.Location, "avatar": f.member.AvatarEmail} {
+		accountValue(t, w.Body.String(), name, value)
+	}
+	// A current-request RenderWithErr must still show submitted safe fields.
+	w = f.request(t, "POST", "/user/settings", "member", url.Values{"uname": {"administrator"}, "fullname": {"Submitted Profile"}, "email": {"submitted@example.invalid"}, "website": {"https://submitted.example.invalid"}, "location": {"Submitted Location"}}, true)
+	sharedAccountPage(t, w, false)
+	accountValue(t, w.Body.String(), "fullname", "Submitted Profile")
+	accountValue(t, w.Body.String(), "email", "submitted@example.invalid")
+	if !strings.Contains(w.Body.String(), "hg-alert-danger") {
+		t.Error("current form error missing")
+	}
+
+	// The member owns an organization, so the real protected deletion must reject it.
+	if _, err = models.CreateOrganization(&models.User{Name: "retained-org", Email: "org@example.invalid", Type: models.ORGANIZATION, IsActive: true}, f.member); err != nil {
+		t.Fatal(err)
+	}
+	path := fmt.Sprintf("/admin/users/%d", f.member.Id)
+	f.request(t, "GET", path, "administrator", nil, false)
+	w = f.request(t, "POST", path+"/delete", "administrator", nil, true)
+	if w.Code != 302 || w.Header().Get("Location") != "/code"+path {
+		t.Fatalf("user delete redirect: %d", w.Code)
+	}
+	w = f.request(t, "GET", path, "administrator", nil, false)
+	sharedAccountPage(t, w, false)
+	if !strings.Contains(w.Body.String(), "hg-alert-danger") {
+		t.Error("user deletion error missing")
+	}
+	for name, value := range map[string]string{"email": f.member.Email, "website": f.member.Website, "location": f.member.Location, "avatar": f.member.AvatarEmail} {
+		accountValue(t, w.Body.String(), name, value)
+	}
+	accountChecked(t, w.Body.String(), "active", true)
+	accountChecked(t, w.Body.String(), "admin", true)
+
+	source := &models.LoginSource{Type: models.SMTP, Name: "Retained Source", IsActived: true, AllowAutoRegister: true, Cfg: &models.SMTPConfig{Host: "retained.example.invalid", Port: 587, Auth: "PLAIN", TLS: true}}
+	if err = models.CreateSource(source); err != nil {
+		t.Fatal(err)
+	}
+	f.member.LoginSource = source.Id
+	if err = models.UpdateUser(f.member); err != nil {
+		t.Fatal(err)
+	}
+	path = fmt.Sprintf("/admin/auths/%d", source.Id)
+	f.request(t, "GET", path, "administrator", nil, false)
+	w = f.request(t, "POST", path+"/delete", "administrator", nil, true)
+	if w.Code != 302 || w.Header().Get("Location") != "/code"+path {
+		t.Fatalf("source delete redirect: %d", w.Code)
+	}
+	w = f.request(t, "GET", path, "administrator", nil, false)
+	sharedAccountPage(t, w, false)
+	if !strings.Contains(w.Body.String(), "hg-alert-danger") {
+		t.Error("source deletion error missing")
+	}
+	accountValue(t, w.Body.String(), "name", "Retained Source")
+	accountValue(t, w.Body.String(), "smtphost", "retained.example.invalid")
+	accountValue(t, w.Body.String(), "smtpport", "587")
+	for _, name := range []string{"tls", "allowautoregister", "is_actived"} {
+		accountChecked(t, w.Body.String(), name, true)
+	}
+	if _, err = models.GetUserById(f.member.Id); err != nil {
+		t.Fatal("protected account deleted", err)
+	}
+	if _, err = models.GetLoginSourceById(source.Id); err != nil {
+		t.Fatal("protected source deleted", err)
+	}
+}
+
+func TestSharedUIAccountsTeamPermissionRetry(t *testing.T) {
+	f := accountApp(t, true)
+	organization, err := models.CreateOrganization(&models.User{Name: "permission-org", Email: "permissions@example.invalid", Type: models.ORGANIZATION, IsActive: true}, f.admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := "/org/permission-org/teams"
+	for _, permission := range []string{"write", "admin"} {
+		w := f.request(t, "GET", base+"/new", "administrator", nil, false)
+		if got := accountPermission(t, w.Body.String()); got != "read" {
+			t.Fatalf("initial default = %s", got)
+		}
+		w = f.request(t, "POST", base+"/new", "administrator", url.Values{"team_name": {""}, "desc": {"Keep this description"}, "permission": {permission}}, true)
+		sharedAccountPage(t, w, false)
+		accountValue(t, w.Body.String(), "desc", "Keep this description")
+		selected := accountPermission(t, w.Body.String())
+		if selected != permission {
+			t.Errorf("new team retained %q, want %q", selected, permission)
+		}
+		// Retry exactly the authority rendered to the user after correcting the name.
+		w = f.request(t, "POST", base+"/new", "administrator", url.Values{"team_name": {"team-" + permission}, "desc": {"Keep this description"}, "permission": {selected}}, true)
+		if w.Code != 302 {
+			t.Fatalf("new team retry %d", w.Code)
+		}
+		team, err := models.GetTeam(organization.Id, "team-"+permission)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := models.ORG_WRITABLE
+		if permission == "admin" {
+			want = models.ORG_ADMIN
+		}
+		if team.Authorize != want {
+			t.Errorf("new team persisted %v, want %v", team.Authorize, want)
+		}
+	}
+	if err := models.NewTeam(&models.Team{OrgId: organization.Id, Name: "reduction-team", Authorize: models.ORG_ADMIN}); err != nil {
+		t.Fatal(err)
+	}
+	path := base + "/reduction-team/edit"
+	w := f.request(t, "GET", path, "administrator", nil, false)
+	if got := accountPermission(t, w.Body.String()); got != "admin" {
+		t.Fatalf("initial edit = %s", got)
+	}
+	w = f.request(t, "POST", path, "administrator", url.Values{"team_name": {"reduction-team"}, "desc": {strings.Repeat("x", 256)}, "permission": {"read"}}, true)
+	sharedAccountPage(t, w, false)
+	selected := accountPermission(t, w.Body.String())
+	if selected != "read" {
+		t.Errorf("permission reduction retained %q, want read", selected)
+	}
+	team, err := models.GetTeam(organization.Id, "reduction-team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if team.Authorize != models.ORG_ADMIN {
+		t.Error("invalid edit changed persisted permission")
+	}
+	w = f.request(t, "POST", path, "administrator", url.Values{"team_name": {"reduction-team"}, "desc": {"Corrected description"}, "permission": {selected}}, true)
+	if w.Code != 302 {
+		t.Fatalf("edit retry %d", w.Code)
+	}
+	team, err = models.GetTeam(organization.Id, "reduction-team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if team.Authorize != models.ORG_READABLE {
+		t.Errorf("retry persisted %v, want read", team.Authorize)
 	}
 }

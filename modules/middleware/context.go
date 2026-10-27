@@ -133,6 +133,9 @@ func (ctx *Context) HTML(status int, name base.TplName) {
 func (ctx *Context) RenderWithErr(msg string, tpl base.TplName, form interface{}) {
 	if form != nil {
 		auth.AssignForm(form, ctx.Data)
+		// Submitted values belong to this response, independently of incoming flashes.
+		ctx.Data["HasError"] = true
+		ctx.Data["ErrorMsg"] = msg
 	}
 	ctx.Flash.ErrorMsg = msg
 	ctx.Data["Flash"] = ctx.Flash

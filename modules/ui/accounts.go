@@ -15,9 +15,6 @@ func PrepareAccountPage(ctx *middleware.Context, name base.TplName) {
 	}
 	page := string(name)
 	ctx.Data["UIAccountPage"] = strings.HasPrefix(page, "admin/") || strings.HasPrefix(page, "org/") || strings.HasPrefix(page, "user/settings/") || strings.HasPrefix(page, "user/auth/") || page == "user/profile" || page == "install"
-	if ctx.Data["UIAccountPage"] == true && ctx.Flash != nil && ctx.Flash.ErrorMsg != "" {
-		ctx.Data["HasError"] = true
-	}
 	switch {
 	case page == "install" || strings.HasPrefix(page, "user/auth/"):
 		BuildShell(ctx, Anonymous, "")
