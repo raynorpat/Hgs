@@ -58,6 +58,9 @@ func Dashboard(ctx *middleware.Context) {
 		readable := collaborates[:0]
 		for _, r := range collaborates {
 			access, err := models.RepositoryAccessFor(ctx.User.Id, r.Id)
+			if err == models.ErrRepoNotExist {
+				continue
+			}
 			if err != nil {
 				ctx.Handle(500, "Repository access", err)
 				return
@@ -86,6 +89,9 @@ func Dashboard(ctx *middleware.Context) {
 	readable := repos[:0]
 	for _, r := range repos {
 		access, err := models.RepositoryAccessFor(ctx.User.Id, r.Id)
+		if err == models.ErrRepoNotExist {
+			continue
+		}
 		if err != nil {
 			ctx.Handle(500, "Repository access", err)
 			return
@@ -108,6 +114,9 @@ func Dashboard(ctx *middleware.Context) {
 	for _, act := range actions {
 		// Historical privacy flags cannot authorize current repository activity.
 		access, err := models.RepositoryAccessFor(ctx.User.Id, act.RepoId)
+		if err == models.ErrRepoNotExist {
+			continue
+		}
 		if err != nil {
 			ctx.Handle(500, "Activity repository access", err)
 			return
