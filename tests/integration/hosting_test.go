@@ -59,6 +59,12 @@ func freeAddress(t *testing.T) string {
 }
 
 func newApplication(t *testing.T, v versions) *application {
+	return newConfiguredApplication(t, v, nil, 30*time.Minute)
+}
+
+// newConfiguredApplication permits test-only workload settings before startup.
+// Existing acceptance callers retain their original limits.
+func newConfiguredApplication(t *testing.T, v versions, editConfig func(string) string, supervisorDeadline time.Duration) *application {
 	t.Helper()
 	a := &application{t: t, root: t.TempDir(), users: map[string]*models.User{}, keys: map[string]string{}, keyIDs: map[string]int64{}, repos: map[string]*models.Repository{}}
 	a.address, a.sshAddress = freeAddress(t), freeAddress(t)
@@ -199,11 +205,14 @@ ROOT_PATH = %s
 	if a.direct {
 		config = strings.Replace(config, "PROVIDER = memory", "PROVIDER = file\nPROVIDER_CONFIG = "+filepath.ToSlash(filepath.Join(a.root, "sessions")), 1)
 	}
+	if editConfig != nil {
+		config = editConfig(config)
+	}
 	if err = os.WriteFile(a.config, []byte(config), 0600); err != nil {
 		t.Fatal(err)
 	}
 	helper, _ := os.Executable()
-	a.server, err = hg.NewRunner(hg.Config{Executable: helper, ConfigPath: filepath.Join(a.root, "supervisor", "hgrc"), SessionTimeout: 30 * time.Minute, IdleTimeout: 30 * time.Minute})
+	a.server, err = hg.NewRunner(hg.Config{Executable: helper, ConfigPath: filepath.Join(a.root, "supervisor", "hgrc"), SessionTimeout: supervisorDeadline, IdleTimeout: supervisorDeadline})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -327,10 +336,12 @@ func (a *application) stop() {
 	cancel()
 	a.output.Wait()
 	a.child = nil
-	if killed, err := reapApplicationOrphans(a.binary, a.repoRoot); err != nil || len(killed) != 0 {
+	// Direct package fixtures may share an executable. Only this fixture's
+	// unique state paths identify its remaining application and native workers.
+	if killed, err := reapApplicationOrphans(a.config, a.repoRoot); err != nil || len(killed) != 0 {
 		a.t.Errorf("application required orphan cleanup: %v %v", killed, err)
 	}
-	if left := waitNoProcesses(a.binary, a.repoRoot); len(left) != 0 {
+	if left := waitNoProcesses(a.config, a.repoRoot); len(left) != 0 {
 		a.t.Errorf("owned process tree survived: %v", left)
 	}
 }
