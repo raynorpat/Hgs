@@ -171,17 +171,16 @@ func TransferOwnership(u *User, newOwner string, repo *Repository) error {
 		return ErrRepoAlreadyExist
 	}
 
-	// Read the owner team before the transaction: SQLite would block these
-	// reads behind the transaction's own writes.
+	// Resolve the owner-team identity here. Its mutable metadata and members
+	// are reloaded under the transaction's team lock before use.
 	var t *Team
 	if newUser.IsOrganization() {
 		if t, err = newUser.GetOwnerTeam(); err != nil {
 			return err
-		} else if err = t.GetMembers(); err != nil {
-			return err
 		}
 	}
 
+	lifecycleStage("transfer-before-transaction")
 	sess := x.NewSession()
 	defer sess.Close()
 	if err = sess.Begin(); err != nil {
@@ -217,6 +216,7 @@ func TransferOwnership(u *User, newOwner string, repo *Repository) error {
 	if err = validateForkTransfer(sess, repo, newUser, t); err != nil {
 		return err
 	}
+	lifecycleStage("transfer-authorized")
 	owner := repo.Owner
 	// Delete all access first if current owner is an organization.
 	if owner.IsOrganization() {
@@ -282,7 +282,7 @@ func TransferOwnership(u *User, newOwner string, repo *Repository) error {
 		// Update owner team info and count.
 		t.RepoIds += "$" + com.ToStr(repo.Id) + "|"
 		t.NumRepos++
-		if _, err = sess.Id(t.Id).AllCols().Update(t); err != nil {
+		if _, err = sess.Id(t.Id).Cols("repo_ids", "num_repos").Update(t); err != nil {
 			sess.Rollback()
 			return err
 		}

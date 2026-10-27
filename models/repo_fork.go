@@ -81,9 +81,6 @@ func validateForkTransfer(sess *xorm.Session, repo *Repository, owner *User, tea
 	if err != nil {
 		return err
 	}
-	if len(ids) == 0 {
-		return nil
-	}
 	readers := map[int64]bool{}
 	if !owner.IsOrganization() {
 		readers[owner.Id] = true
@@ -124,6 +121,10 @@ func validateForkTransfer(sess *xorm.Session, repo *Repository, owner *User, tea
 			readers[m.Uid] = true
 		}
 		*team = current
+	}
+	// Ordinary transfers must also use the current team snapshot.
+	if len(ids) == 0 {
+		return nil
 	}
 	ordered := make([]int64, 0, len(readers))
 	for id := range readers {

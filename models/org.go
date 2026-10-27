@@ -441,7 +441,9 @@ func (t *Team) IsMember(uid int64) bool {
 }
 
 // GetRepositories returns all repositories in team of organization.
-func (t *Team) GetRepositories() error {
+func (t *Team) GetRepositories() error { return t.getRepositories(x) }
+
+func (t *Team) getRepositories(e Engine) error {
 	idStrs := strings.Split(t.RepoIds, "|")
 	t.Repos = make([]*Repository, 0, len(idStrs))
 	for _, str := range idStrs {
@@ -452,13 +454,14 @@ func (t *Team) GetRepositories() error {
 		if id == 0 {
 			continue
 		}
-		repo, err := GetRepositoryById(id)
-		if err == ErrRepoNotExist {
-			continue
-		} else if err != nil {
+		repo := new(Repository)
+		has, err := e.Id(id).Where("state = ?", RepositoryReady).Get(repo)
+		if err != nil {
 			return err
 		}
-		t.Repos = append(t.Repos, repo)
+		if has {
+			t.Repos = append(t.Repos, repo)
+		}
 	}
 	return nil
 }
@@ -910,28 +913,47 @@ func AddTeamMember(orgId, teamId, uid int64) error {
 		return err
 	}
 
-	// Get team and its repositories.
-	t, err := GetTeamById(teamId)
-	if err != nil {
-		return err
-	}
-	t.NumMembers++
-
-	if err = t.GetRepositories(); err != nil {
-		return err
-	}
-
 	// Get user.
 	u, err := GetUserById(uid)
 	if err != nil {
 		return err
 	}
 
+	lifecycleStage("team-member-before-transaction")
 	sess := x.NewSession()
 	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
 	}
+	defer sess.Rollback()
+	// Serialize with transfers before loading the team snapshot. Membership
+	// takes no repository row locks: transfers lock repository, then team.
+	// SQLite needs its writer lock before any transactional snapshot read.
+	if DbCfg.Type == "sqlite3" {
+		if _, err = sess.Exec("UPDATE team SET id = id WHERE id = ? AND org_id = ?", teamId, orgId); err != nil {
+			return err
+		}
+	}
+	t := new(Team)
+	has, err := policyGet(sess, true, "team", "id = ? AND org_id = ?", t, teamId, orgId)
+	if err != nil {
+		return err
+	}
+	if !has {
+		return ErrTeamNotExist
+	}
+	var existing TeamUser
+	has, err = policyGet(sess, true, "team_user", "org_id = ? AND team_id = ? AND uid = ?", &existing, orgId, teamId, uid)
+	if err != nil {
+		return err
+	}
+	if has {
+		return nil
+	}
+	if err = t.getRepositories(sess); err != nil {
+		return err
+	}
+	t.NumMembers++
 
 	tu := &TeamUser{
 		Uid:    uid,
@@ -942,7 +964,7 @@ func AddTeamMember(orgId, teamId, uid int64) error {
 	if _, err = sess.Insert(tu); err != nil {
 		sess.Rollback()
 		return err
-	} else if _, err = sess.Id(t.Id).Update(t); err != nil {
+	} else if _, err = sess.Id(t.Id).Cols("num_members").Update(t); err != nil {
 		sess.Rollback()
 		return err
 	}
@@ -970,16 +992,19 @@ func AddTeamMember(orgId, teamId, uid int64) error {
 
 	// We make sure it exists before.
 	ou := new(OrgUser)
-	_, err = sess.Where("uid=?", uid).And("org_id=?", orgId).Get(ou)
+	has, err = policyGet(sess, true, "org_user", "uid = ? AND org_id = ?", ou, uid, orgId)
 	if err != nil {
 		sess.Rollback()
 		return err
+	}
+	if !has {
+		return ErrUserNotExist
 	}
 	ou.NumTeams++
 	if t.IsOwnerTeam() {
 		ou.IsOwner = true
 	}
-	if _, err = sess.Id(ou.Id).AllCols().Update(ou); err != nil {
+	if _, err = sess.Id(ou.Id).Cols("num_teams", "is_owner").Update(ou); err != nil {
 		sess.Rollback()
 		return err
 	}
