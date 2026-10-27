@@ -41,6 +41,9 @@ Wrap the existing Bootstrap and custom LESS templates in similar-looking navigat
 
 Neither option supplies the missing Mercurial fork and PR backend; that is substantive work under either approach. A new SPA framework was not proposed or selected.
 
+## Implementation handoff update — 2026-10-26
+
+The user explicitly requested branching from `mercurial-hosting` and starting the approved UI implementation. Baseline `096df57` includes ID-based access/storage/lifecycle, composed hosting and Mercurial browsing. The hosting design has since adopted transaction-open/key-mutation writer authorization with best-effort cancellation; it no longer promises a transaction-close revocation veto. Development may continue under that approved policy. Linux/macOS, legacy-version and remaining full native acceptance gaps are still release requirements, not passing evidence. The historical observations below describe the earlier audit and are superseded for development readiness by [the current integration evidence](../../mercurial/shared-ui-evidence.md). The local snapshot, merge and publication feasibility requirements remain binding.
 ## Existing system and integration boundary
 
 Read this alongside [the Mercurial hosting design](2026-10-25-mercurial-hosting-design.md), [its implementation plan](../plans/2026-10-25-mercurial-hosting.md), and the historical transport evidence at prerequisite commit e01f391a97182b30c9adf23dad514f6f56b1f828 (read with `git show e01f391a97182b30c9adf23dad514f6f56b1f828:docs/mercurial/transport-evidence.md`). That prerequisite history is deliberately excluded from this documentation-only merge to master; revalidate its current implementation/evidence when resuming Task 0.

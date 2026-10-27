@@ -1,5 +1,33 @@
 # Shared UI integration prerequisite evidence
 
+## Current development handoff — 2026-10-26
+
+**Task 0: development baseline ready under the explicit user direction to branch from mercurial-hosting and start. Release/native matrix acceptance is not complete.**
+
+- Isolated worktree: `C:/Users/raynorpat/.codex/worktrees/shared-ui-implementation/gogs`; branch `codex/shared-ui-implementation`; baseline `096df57` (`packager: remove dead packager dir`). Initial status clean.
+- The source checkout is concurrently running hosting Task 16 benchmark work. Its uncommitted compatibility, home-template and integration-test changes were not copied. The older UI design/prototype worktree is preserved.
+- Fresh exact-worktree verification: `go test ./models ./modules/hg ./modules/hgbridge ./modules/hosting ./routers/repo -count=1` passed (26.802s, 22.678s, 17.702s, 62.407s, 1.611s respectively); `go build ./...` passed, exit 0.
+- The hosting plan records Tasks 7–15 implemented/reviewed. Its recorded extracted-package acceptance exercised real HTTPS/SSH clone/push/pull, account/issue workflow, restart and SQLite restore. Those are historical receipts, not tests rerun in this audit.
+- `docs/mercurial/compatibility.md` retains two unresolved Windows filesystem-lock failures in the full native run; isolated rechecks passed without an identified root-cause fix. Linux/macOS, Hg 5.0.2/2.0.2, race and network-database acceptance remain unverified. Configured CI is not execution evidence. No native release gate is marked passed here.
+- The stream-bundle close-veto issue was resolved by an explicitly approved policy change: writers are authorized at `pretxnopen`/`prepushkey`; already-open transactions may complete, and cancellation guarantees neither completion nor rollback. No writer close-time authorization is reintroduced by this handoff.
+
+### Available application contracts
+
+- `models.RepositoryAccessFor(userID, repoID int64) (RepositoryAccess,error)` and `ValidateRepositoryCredential(userID,keyID,tokenID int64) error` provide current ID-based authorization.
+- `models.RepositoryStoragePath(root string,repoID int64) (string,error)` resolves ID storage; lifecycle states are `provisioning`, `ready`, `deleting`. Hosted stores have no checkout. Repository deletion drains registered operations.
+- `hosting.New(context.Context,Config) (*Service,error)` composes runner, controller, HTTPS and embedded SSH. `hosting.Provider.Service() *Service` supports the cmd-owned install/startup holder. Use this actual provider when wiring new handlers, rather than an obsolete assumed singleton injection.
+- `Service.Runner()`, `RepositoryRoot()`, `RegisterBrowserRead(...)`, `DrainRepository(...)` and the existing registry/authority monitor are available. Task 2 must extend actual native writer coordination, not invent a web-only mutex.
+- `hg.NodeID`, `RefSelection`, `Reference` and runner `References`, `Resolve`, `Landing`, `Manifest`, `ReadFile`, `Changeset`, `History`, `Diff` exist. `ReadFile(ctx,path,node,file,out)` streams to an `io.Writer`; `History` accepts `HistoryQuery` and returns `HistoryPage`; existing `Diff` compares one changeset to a parent. Review comparisons need their own bounded between-node operation.
+- `Resolve` chooses a preferred branch head for browsing; Task 1 must reject ambiguity for review instead. `Controller.Issue` requires its existing `touch func()` argument.
+
+### Scope and ordering
+
+The approved UI plan supersedes only the earlier broad-UI/fork/PR exclusions. Keep other deferred/Git routes absent and update fork/PR absence assertions only when real Mercurial routes are implemented. Preserve the selected Go/managed-Mercurial architecture and permission policy. Tasks 1–2 must prove isolated snapshots, safe merge preparation and guarded publication before broad UI work. Cross-platform validation remains required before release.
+
+---
+
+## Historical initial audit (superseded for development readiness)
+
 Audit date: 2026-10-26. **Task 0: BLOCKED / incomplete.** Neither the transport gate nor the required Mercurial application baseline passes. This note authorizes no product implementation or architectural remedy.
 
 ## Baseline and provenance
