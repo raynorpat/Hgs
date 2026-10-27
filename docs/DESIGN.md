@@ -2,7 +2,7 @@
 
 Status: Shared UI, Hgs landing-page composition, lab-coat/beaker Go Gopher artwork, profile pages, contribution tracking, and maintenance/500/404 pages with their Gopher illustrations approved on 2026-10-26. The public-only, configuration-controlled landing Explore rule below is part of that approval. Production implementation remains subject to the existing prerequisite gate.
 
-Updated: 2026-10-26
+Updated: 2026-10-27
 
 ## Purpose and references
 
@@ -12,6 +12,7 @@ The visual direction comes from the user's Bitbucket screenshots: blue navigatio
 
 - [Project design and behavior](superpowers/specs/2026-10-26-shared-ui-and-pull-requests-design.md)
 - [Saved interactive layout study](superpowers/specs/references/2026-10-26-bitbucket-layout-study.html)
+- [Hgs design system artifact](https://claude.ai/artifact/ECMF3DDZwm2bijjktqfPJ6): the tokens, shared `hg-` component stylesheet, live component previews, icons and approved Gopher artwork from this document. When the two disagree, this document wins; update the artifact to match.
 
 This document defines the shared design system. The project design defines scope, permissions, Mercurial behavior, and implementation prerequisites. The layout study illustrates appearance; its sample data and placeholder controls are not production requirements. Token names and values below are the implementation baseline, not a claim that the application already uses them.
 
@@ -61,6 +62,7 @@ Use semantic CSS custom properties. Do not scatter literal colors through page t
 | `--color-rail` | `#064299` | Narrow utility rail |
 | `--color-nav-active` | `#003884` | Active/hover item on blue navigation |
 | `--color-nav-text` | `#DEEBFF` | Navigation text and icons |
+| `--color-nav-caption` | `#B3D4FF` | Small context captions on blue navigation |
 | `--color-on-strong` | `#FFFFFF` | Active navigation and primary-button text |
 | `--color-primary` | `#0052CC` | Primary buttons, links, selected light-surface tabs |
 | `--color-primary-hover` | `#0747A6` | Primary-button hover |
@@ -80,23 +82,34 @@ Use semantic CSS custom properties. Do not scatter literal colors through page t
 | `--color-danger-text` / `--color-danger-bg` | `#BF2600` / `#FFEBE6` | Errors, failure, destructive-action context |
 | `--color-info-text` / `--color-info-bg` | `#0747A6` / `#DEEBFF` | Informational and open states |
 | `--color-neutral-text` / `--color-neutral-bg` | `#42526E` / `#EBECF0` | Neutral labels and closed items |
+| `--color-merged-text` / `--color-merged-bg` | `#403294` / `#EAE6FF` | Merged pull-request state |
+| `--color-backdrop` | `#091E4266` | Scrim behind the navigation drawer and modal dialogs |
+| `--color-contribution-0` … `-4` | `#EBECF0`, `#C6E8DB`, `#79D2AD`, `#36B37E`, `#00875A` | Contribution-calendar levels, none to highest |
 
 Require readable contrast for each actual foreground/background pairing, including hover and selected states. Use at least 4.5:1 for ordinary text and 3:1 for essential control boundaries/focus indicators. Subtle decorative dividers need not substitute for a visible control boundary. Do not communicate status through color alone.
+
+`--color-text-subtle` passes on `--color-surface`, `--color-surface-subtle` and `--color-surface-muted` but not on `--color-selected` (4.4:1); metadata inside selected items uses `--color-text-secondary` (6.5:1). `--color-focus-inverse` is for blue navigation only (1.9:1 on white). Contribution levels 0–3 are below 3:1 on white, which is acceptable only because every day also carries its date and count in text.
+
+State mapping: Issues Open uses info and Closed uses neutral. Pull requests Open uses info, Merged uses merged, and Declined uses neutral. Success, warning and danger describe checks, conditions and errors, not issue or PR lifecycle.
 
 Repository-specific issue-label colors remain supported. Choose a readable foreground for each label and preserve its text; do not map every user label into a fixed status palette.
 
 ## Typography
 
-| Role | Size / line height | Weight |
-| --- | --- | --- |
-| Page title | 28px / 36px; 24px on narrow screens | 500 |
-| Section heading | 20px / 28px | 500–600 |
-| Subheading | 16px / 24px | 600 |
-| Body and navigation | 14px / 21px | 400; active/emphasized 600 |
-| Dense table text | 13px / 20px | 400 |
-| Metadata and helper text | 12px / 18px | 400 |
-| Compact status label | 11px / 16px | 600 |
-| Source, hashes, clone commands | 13px / 20px monospace | 400 |
+| Role | Style | Size / line height | Weight |
+| --- | --- | --- | --- |
+| Page title | `page-title`, `page-title-narrow` | 28px / 36px; 24px / 32px on narrow screens | 500 |
+| Section heading | `section-heading` | 20px / 28px | 600 |
+| Subheading | `subheading` | 16px / 24px | 600 |
+| Body and navigation | `body`, `body-strong` | 14px / 21px | 400; active/emphasized 600 |
+| Dense table text | `table` | 13px / 20px | 400 |
+| Metadata and helper text | `meta` | 12px / 18px | 400 |
+| Compact status label | `status-label` | 11px / 16px | 600 |
+| Source, hashes, clone commands | `code` | 13px / 20px monospace | 400 |
+| Public wordmark | `wordmark` | 30px / 36px, −1.4px tracking | 750 |
+| Landing headline and lead | `landing-headline`, `landing-lead` | 58px / 65px (38–42px on narrow screens), −2.2px tracking; 18px / 30px | 650; 400 |
+
+The public rows come from the approved landing prototype and apply only to the reduced public layout.
 
 Use `-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif` for interface text and `ui-monospace, SFMono-Regular, Consolas, monospace` for code. Prefer normal sentence case. Reserve uppercase for short status labels, not ordinary navigation or instructions. Do not require downloaded fonts.
 
@@ -108,10 +121,11 @@ Long repository/issue titles wrap in primary content. Truncate only constrained 
 | --- | --- |
 | Spacing | `--space-1: 4px`, `--space-2: 8px`, `--space-3: 12px`, `--space-4: 16px`, `--space-5: 24px`, `--space-6: 32px`, `--space-7: 40px`, `--space-8: 48px` |
 | Radius | `--radius-control: 3px`, `--radius-panel: 4px`, `--radius-popout: 6px`, `--radius-round: 50%` |
-| Borders | 1px ordinary divider; 2px selected-tab indicator |
-| Popout shadow | `0 8px 28px rgb(9 30 66 / 25%)` |
-| Focus | 2–3px outline with 2px offset; inverse focus color on the rail |
-| Layers | Content 0, sticky navigation 10, popouts 20, drawer backdrop 30, drawer/dialog 40, notices 50 |
+| Borders | `--border-divider: 1px` ordinary divider; `--border-selected: 2px` selected-tab indicator |
+| Popout shadow | `--shadow-popout: 0 8px 28px rgb(9 30 66 / 25%)` |
+| Focus | `--focus-width: 3px` outline with `--focus-offset: 2px`; inverse focus color on the rail and context navigation |
+| Sizes | `--control-height: 36px` buttons/inputs/selects; `--utility-target: 40px`, `--utility-target-coarse: 44px`; `--icon-size: 20px`, `--icon-size-inline: 16px` |
+| Layers | `--z-content: 0`, `--z-sticky: 10`, `--z-popout: 20`, `--z-backdrop: 30`, `--z-dialog: 40`, `--z-notice: 50` |
 
 Use flat surfaces for ordinary lists and forms. Reserve elevation for floating surfaces. Keep table cells around 12px vertical and 12–16px horizontal padding; allow rows to grow for multiline information.
 
@@ -121,7 +135,7 @@ Use one local outline icon family with consistent 1.5–2px stroke weight. Defau
 
 Icon-only controls need accessible names and hover/focus tooltips. Decorative icons use `aria-hidden="true"`. The icon is not the hit target: utility buttons have a common 40px square target, expanded to at least 44px for coarse pointers where practical.
 
-The account image or fallback initials must share the same centered geometry. Use a circular 28px image inside the square button, with grid/flex centering, zero internal offset, and `object-fit: cover`. Hover/focus background belongs to the button, not the image. A fallback initial must not shift when replaced by an image. Test both axes, image loading/failure, browser zoom, and focus/hover states.
+The account image or fallback initials must share the same centered geometry. Use a circular 28px image inside the square button, with grid/flex centering, zero internal offset, and `object-fit: cover`. Hover/focus background belongs to the button, not the image. Fallback initials use `--color-info-text` on `--color-selected`. A fallback initial must not shift when replaced by an image. Test both axes, image loading/failure, browser zoom, and focus/hover states.
 
 ## Shared components
 
@@ -141,14 +155,14 @@ The account image or fallback initials must share the same centered geometry. Us
 | Pagination | Preserve filters and context in URLs; announce current page and disabled controls |
 | Markdown editor | Shared Write/Preview behavior, labeled textarea, safe rendered preview, preserved draft on errors |
 | Discussion | Author/avatar/time, readable body, attachments, permitted actions, separate status-event rows |
-| Diff viewer | Monospace lines, explicit old/new sides, binary/truncation notices, safe immutable anchors |
+| Diff viewer | Monospace lines, explicit old/new sides, `+`/`−` markers on `--color-success-bg`/`--color-danger-bg` lines and hunk headers on `--color-info-bg`, binary/truncation notices, safe immutable anchors |
 
 Prefer real navigation links for page transitions and buttons for actions. Menus/popouts do not require JavaScript to emulate ordinary links. Do not use tables for non-tabular page layout. Do not copy legacy global selectors into the shared stylesheet.
 
 ### Utility interactions
 
 - **Search:** opens and focuses a repository/owner search field; show authorized matches, a no-results state, and a path to the full Explore results. Prevent stale responses replacing a newer search.
-- **Explore:** navigates to the full accessible-repositories page; it is not a popout or a public-only catalog.
+- **Explore:** navigates to the full accessible-repositories page; it is not a popout or a public-only catalog. The anonymous landing page's public-only catalog is a separate destination; see Public repository discovery.
 - **Recents:** opens the account's latest accessible repository visits; deduplicate by repository ID and resolve current names. Include Clear recents. The project design specifies retention and permission rules.
 - **Create:** opens a Create repository action leading to the real form. Fork creation has its own source-aware action.
 - **Account:** opens profile, settings, and sign-out actions; center its image inside the same hit-target geometry as the other utilities.
@@ -256,7 +270,7 @@ Store a rebuildable event index using immutable IDs and per-repository node memb
 
 Year selection updates the calendar, summary and timeline together. Day selection and category filters narrow the same underlying event set; Clear restores the yearly view. Summary totals reconcile with calendar totals and fully paginated activity; repository creation is separately identified as timeline-only. Group rows by UTC month, category and repository, with issue/PR/review status cards and accessible links to the actual event. Use deterministic newest-first cursor pagination, 25 groups by default and 50 maximum; Show more does not repeat/skip entries in a stable index snapshot. Revalidate visibility on every page and linked destination.
 
-Use shared light-theme tokens, five green intensity levels and a Less/More legend. Provide dates/counts through text and focus/hover details, keyboard day selection or an equivalent labeled date field, visible focus and an accessible list alternative. Do not rely on color alone or introduce hundreds of mandatory tab stops. On mobile the calendar scrolls within its own region; the document stays within the viewport. Keep calendar controls, clickable People rows and empty/loading/error states usable with keyboard, touch and text zoom.
+Use shared light-theme tokens, the five `--color-contribution-0` … `-4` levels and a Less/More legend. Provide dates/counts through text and focus/hover details, keyboard day selection or an equivalent labeled date field, visible focus and an accessible list alternative. Do not rely on color alone or introduce hundreds of mandatory tab stops. On mobile the calendar scrolls within its own region; the document stays within the viewport. Keep calendar controls, clickable People rows and empty/loading/error states usable with keyboard, touch and text zoom.
 
 Tasks 19–20 supply READMEs/avatars; Tasks 21–23 supply verified attribution, event indexing, authorized aggregates and production profile presentation. Existing prerequisite gates and execution ownership remain unchanged.
 
