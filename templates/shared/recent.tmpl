@@ -1,0 +1,2 @@
+<ul class="hg-repository-results">{{range .UIRecentRepositories}}<li><a href="{{.URL}}">{{.Label}}</a></li>{{else}}<li>{{.i18n.Tr "ui.no_recents"}}</li>{{end}}</ul>
+<form method="post" action="{{.UIRecentsURL}}/clear">{{.CsrfTokenHtml}}<button type="submit" class="hg-button">{{.i18n.Tr "ui.clear_recents"}}</button></form>

@@ -164,6 +164,7 @@ func newMacaron() *macaron.Macaron {
 		}
 	}
 	m.Use(middleware.Contexter())
+	m.Use(func(ctx *middleware.Context) { ctx.PrepareHTML = user.PrepareDiscovery })
 	return m
 }
 
@@ -277,7 +278,10 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 
 	// Routers.
 	m.Get("/", ignSignIn, routers.Home)
-	m.Get("/explore", ignSignIn, routers.Explore)
+	m.Get("/explore", middleware.Toggle(&middleware.ToggleOptions{}), routers.Explore)
+	m.Get("/explore/search", middleware.Toggle(&middleware.ToggleOptions{}), routers.ExploreSearch)
+	m.Get("/user/recent", reqSignIn, user.Recent)
+	m.Post("/user/recent/clear", reqSignIn, user.ClearRecent)
 	m.Combo("/install", routers.InstallInit).
 		Get(routers.Install).
 		Post(bindIgnErr(auth.InstallForm{}), routers.InstallPost)

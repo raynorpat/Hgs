@@ -1,24 +1,12 @@
-{{template "ng/base/head" .}}
-{{template "ng/base/header" .}}
-<div id="setting-wrapper" class="main-wrapper">
-    <div id="org-setting" class="container clear">
-	    {{template "explore/nav" .}}
-        <div class="grid-4-5 left">
-            <div class="setting-content">
-            	<div id="org-repo-list">
-					{{range .Repos}}
-					<div class="org-repo-item">
-			            <ul class="org-repo-status right">
-			                <li><i class="octicon octicon-star"></i> {{.NumStars}}</li>
-			            </ul>
-						<h2><a href="{{AppSubUrl}}/{{.Owner.Name}}/{{.Name}}">{{.Name}}</a></h2>
-						<p class="org-repo-description">{{.Description}}</p>
-						<p class="org-repo-updated">{{$.i18n.Tr "org.repo_updated"}} {{TimeSince .Updated $.i18n.Lang}}</p>
-					</div>
-					{{end}}
-            	</div>
-			</div>
-        </div>
-    </div>
-</div>
-{{template "ng/base/footer" .}}
+{{template "shared/start" .}}
+<h1>{{.i18n.Tr "ui.explore"}}</h1>
+<form method="get" action="{{AppSubUrl}}/explore" class="hg-catalog-filter">
+{{if .CatalogQuery.OwnerID}}<input type="hidden" name="owner_id" value="{{.CatalogQuery.OwnerID}}">{{end}}
+<input type="hidden" name="page_size" value="{{.CatalogQuery.PageSize}}">
+<div class="hg-field"><label for="catalog-query">{{.i18n.Tr "ui.search_repositories"}}</label><input type="search" name="q" id="catalog-query" maxlength="200" value="{{.CatalogQuery.Text}}"></div>
+{{if .IsSigned}}<div class="hg-field"><label for="catalog-visibility">{{.i18n.Tr "ui.visibility"}}</label><select id="catalog-visibility" name="visibility"><option value="all"{{if eq .CatalogQuery.Visibility "all"}} selected{{end}}>{{.i18n.Tr "ui.all"}}</option><option value="public"{{if eq .CatalogQuery.Visibility "public"}} selected{{end}}>{{.i18n.Tr "ui.public"}}</option><option value="private"{{if eq .CatalogQuery.Visibility "private"}} selected{{end}}>{{.i18n.Tr "ui.private"}}</option></select></div>
+<div class="hg-field"><label for="catalog-scope">{{.i18n.Tr "ui.scope"}}</label><select id="catalog-scope" name="scope"><option value="accessible">{{.i18n.Tr "ui.accessible"}}</option><option value="mine"{{if eq .CatalogQuery.Scope "mine"}} selected{{end}}>{{.i18n.Tr "ui.mine"}}</option></select></div>{{end}}
+<button type="submit" class="hg-button hg-button-primary">{{.i18n.Tr "ui.search"}}</button></form>
+{{template "explore/repo_results" .}}
+{{if .CatalogPagination.Pages}}{{template "shared/pagination" .CatalogPagination}}{{end}}
+{{template "shared/end" .}}

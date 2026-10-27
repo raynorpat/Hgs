@@ -144,3 +144,20 @@ A real `/code` language-link click produced `/code/?lang=en-US&page=2&q=hg`, ret
 Required shell RED: missing ContextKind/Shell/BuildShell; GREEN: `go test ./modules/ui -run 'TestSharedShell' -count=1` passed, 3.596s. Later mount and alert regression RED/GREEN receipts are in the Task 3 implementation report.
 
 Whole ordinary `go test ./...` passed: cmd 114.871s, models 31.052s, hg 33.173s, hosting 99.483s, ui 3.437s; all other packages passed/cached or had no tests. `go vet ./...` and `go build ./...` exited 0. After the final language/alert refinements, `go test ./modules/ui -count=1` passed (3.200s), `go vet ./modules/ui ./modules/base` passed, and all three shared scripts passed `node --check`. Tagged native acceptance and unresolved cross-platform release rows were not rerun or promoted.
+
+## Task 4: authorized discovery and account Recents
+
+Verified in the real IAB browser at `/code`, against an opt-in loopback-only server on `127.0.0.1:43128` with a fresh temporary SQLite database and visibly synthetic `fixturealice`/`fixturebob` accounts. No user server, repository storage, configuration, installation or production account was used. The browser tab was closed and the owned listener stopped after QA.
+
+- [Anonymous Explore](ui-task4/anonymous-explore.png) contains only `fixturealice / public-lab` and no private count or rail.
+- [Alice search](ui-task4/alice-search.png) returns only Alice's private match; [Bob search](ui-task4/bob-search.png) returns only Bob's private match after switching accounts in the same browser session.
+- A successful authorized foreground fixture repository visit appears in [Alice Recents](ui-task4/alice-recents.png). [Bob Recents](ui-task4/bob-recents.png) stays empty. [Cleared Recents](ui-task4/cleared-recents.png) shows the empty state after a real CSRF form submission from the popout and its 303 redirect.
+- [Create form](ui-task4/create-form.png) is the existing authorized repository creation handler at `/code/repo/create`; it was opened without submitting. Its legacy layout is retained for the downstream Task 5 migration.
+
+Search and Recents are mutually exclusive popouts. Real browser checks confirmed Escape dismissal and outside-click dismissal after the pointer-focus fix. Browser QA discovered that pointer activation could dismiss a popout before its form received the click; the shell now preserves focus transitions during pointer interaction inside the panel. The executable Node regression covers null and transient outside focus, genuine outside-click and Escape dismissal, and trigger focus restoration.
+
+`node --test public/js/app/shell_test.cjs`: 3/3 passed. It executes the production shell script with controlled input events, timers and delayed responses: 200ms debounce, cancellation on new input, stale responses arriving both during debounce and after newer results, stale failures, redirected HTML refusal, native submit and subURL query encoding.
+
+Model/route tests cover current read authorization before totals and pagination, ready lifecycle, anonymous public-only filters, RequireSignInView at query and route boundaries, no global-admin private bypass, enabled accounts, owner search, 200 Unicode characters, page-size default 30/max 100, account isolation, unique ID retention 20/display 10, renames, revocation, deletion, CSRF clear/303 and foreground success-only visits. Assets, polling, errors, failed templates and redirects do not create visits. Actual production registration retains its installation guard.
+
+Whole ordinary `go test ./...` passed (cmd 115.961s, models 41.350s, hosting 103.488s, ui 4.803s, routers/user 11.018s; other packages passed/cached or had no tests). Final amended-code checks passed: actual install-route regression, models/routers/user/modules/ui focused tests, three Node tests, focused `go vet` and `node --check`. No tagged native acceptance or cross-platform release status was promoted.

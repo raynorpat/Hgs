@@ -28,3 +28,4 @@
 
 .hg-tooltip{position:fixed;left:64px;max-width:calc(100vw - 80px);padding:var(--space-1) var(--space-2);border-radius:var(--radius-control);background:var(--color-text);color:var(--color-on-strong);font-size:12px;line-height:18px;z-index:var(--z-popout);pointer-events:none}
 .hg-repository-identity{margin-top:var(--space-4)}.hg-brand .hg-icon{width:24px;height:24px}
+.hg-catalog-filter{display:flex;flex-wrap:wrap;align-items:end;gap:var(--space-4);margin-bottom:var(--space-5)}.hg-catalog-filter .hg-field{flex:1 1 160px;margin:0}.hg-repository-results{list-style:none;padding:0;margin:var(--space-4) 0}.hg-repository-results>li{padding:var(--space-3) 0;border-bottom:1px solid var(--color-border)}.hg-repository-results a{display:inline-block;padding:var(--space-1) 0}.hg-repository-results p{margin:var(--space-1) 0;color:var(--color-text-subtle)}

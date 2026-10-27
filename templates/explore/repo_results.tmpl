@@ -1,0 +1,4 @@
+{{if .CatalogError}}<p class="hg-alert hg-alert-danger" role="alert">{{.CatalogError}}</p>{{else}}
+<p class="hg-meta">{{.i18n.Tr "ui.repository_results" .CatalogPage.Total}}</p>
+<ul class="hg-repository-results">{{range .Repos}}<li><a href="{{AppSubUrl}}/{{.Owner.Name}}/{{.Name}}">{{.Owner.Name}} / {{.Name}}</a>{{if .IsPrivate}} <span class="hg-meta">{{$.i18n.Tr "ui.private"}}</span>{{end}}{{if .Description}}<p>{{.Description}}</p>{{end}}</li>{{else}}<li>{{.i18n.Tr "ui.no_repositories"}}</li>{{end}}</ul>
+{{end}}

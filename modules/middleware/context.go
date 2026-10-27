@@ -39,6 +39,9 @@ type Context struct {
 	IsSigned    bool
 	IsBasicAuth bool
 
+	// PrepareHTML composes optional page utilities only after request authority exists.
+	PrepareHTML func(*Context) error
+
 	Repo struct {
 		HgContext   context.Context
 		HgRunner    *hg.Runner
@@ -99,7 +102,26 @@ func (ctx *Context) HTML(status int, name base.TplName) {
 	if ctx.Repo.FinishRead != nil {
 		ctx.Repo.FinishRead()
 	}
+	if status == 200 && ctx.PrepareHTML != nil {
+		if err := ctx.PrepareHTML(ctx); err != nil {
+			log.Error(4, "PrepareHTML: %v", err)
+			ctx.Error(500)
+			return
+		}
+	}
 	ctx.Context.HTML(status, string(name))
+	// Record only successful foreground HTML navigation, after the renderer has
+	// succeeded. Assets, native traffic, polling, redirects and errors never count.
+	if status == 200 && ctx.Resp.Status() == 200 && ctx.IsSigned && ctx.User != nil &&
+		ctx.Repo.HasAccess && ctx.Repo.Repository != nil && ctx.Req.Method == "GET" &&
+		strings.Contains(ctx.Req.Header.Get("Accept"), "text/html") &&
+		ctx.Req.Header.Get("X-Requested-With") == "" &&
+		(ctx.Req.Header.Get("Sec-Fetch-Mode") == "" || ctx.Req.Header.Get("Sec-Fetch-Mode") == "navigate") &&
+		(ctx.Req.Header.Get("Sec-Fetch-Dest") == "" || ctx.Req.Header.Get("Sec-Fetch-Dest") == "document") {
+		if err := models.RecordRepositoryVisit(ctx.Req.Request.Context(), ctx.User.Id, ctx.Repo.Repository.Id, time.Now()); err != nil {
+			log.Error(4, "RecordRepositoryVisit: %v", err)
+		}
+	}
 }
 
 // RenderWithErr used for page has form validation but need to prompt error to users.

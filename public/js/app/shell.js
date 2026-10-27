@@ -4,6 +4,7 @@
   if (!root || root.dataset.shellReady) return;
   root.dataset.shellReady = 'true';
   let opened = null;
+  let pointerInPanel = false;
   let inertSiblings = [];
   let previousOverflow = '';
   const backdrop = root.querySelector('[data-drawer-backdrop]');
@@ -123,15 +124,72 @@
       }
     }
   });
-  root.addEventListener('focusout', () => {
+  root.addEventListener('pointerdown', event => {
+    pointerInPanel = !!opened && opened.panel.contains(event.target);
+  });
+  document.addEventListener('pointerup', () => { pointerInPanel = false; });
+  document.addEventListener('pointercancel', () => { pointerInPanel = false; });
+  root.addEventListener('focusout', event => {
+    // Pointer activation can blur to the document before the form receives its click.
+    // The outside-click handler owns null destinations; real focus moves still dismiss.
+    if (!event.relatedTarget || pointerInPanel) return;
     queueMicrotask(() => {
-      if (opened && !opened.drawer && !opened.panel.contains(document.activeElement) && document.activeElement !== opened.trigger) close();
+      if (!pointerInPanel && opened && !opened.drawer && !opened.panel.contains(document.activeElement) && document.activeElement !== opened.trigger) close();
     });
   });
   root.querySelectorAll('[data-avatar]').forEach(img => {
     const fail = () => { img.hidden = true; };
     img.addEventListener('error', fail);
     if (img.complete && !img.naturalWidth) fail();
+  });
+  root.querySelectorAll('[data-repository-search]').forEach(form => {
+    const input = form.querySelector('[name="q"]');
+    const results = form.querySelector('[data-search-results]');
+    const status = form.querySelector('[data-search-status]');
+    if (!input || !results) return;
+    let timer = null, request = null, sequence = 0;
+    function invalidate() {
+      clearTimeout(timer);
+      request?.abort();
+      sequence++;
+      results.replaceChildren();
+      results.removeAttribute('aria-busy');
+      if (status) status.textContent = '';
+    }
+    async function search() {
+      const current = sequence;
+      request = new AbortController();
+      const controller = request;
+      results.setAttribute('aria-busy', 'true');
+      try {
+        const url = new URL(form.dataset.searchUrl, location.href);
+        if (url.origin !== location.origin) throw new Error('Invalid search URL');
+        url.searchParams.set('q', input.value);
+        const response = await fetch(url, {
+          credentials: 'same-origin', cache: 'no-store',
+          headers: { Accept: 'text/html', 'X-Requested-With': 'XMLHttpRequest' },
+          signal: controller.signal
+        });
+        if (!response.ok || response.redirected || !response.headers.get('Content-Type')?.includes('text/html')) throw new Error('Search failed');
+        const html = await response.text();
+        if (current !== sequence || controller.signal.aborted) return;
+        // Only the authorized, server-rendered repository partial supplies HTML.
+        results.innerHTML = html;
+      } catch (error) {
+        if (current === sequence && !controller.signal.aborted && status) status.textContent = form.dataset.searchError;
+      } finally {
+        if (current === sequence) results.removeAttribute('aria-busy');
+      }
+    }
+    form.addEventListener('input', () => {
+      invalidate();
+      timer = setTimeout(search, 200);
+    });
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      invalidate();
+      search();
+    });
   });
   matchMedia('(max-width:800px)').addEventListener('change', () => close(true));
 })();
