@@ -15,14 +15,16 @@ type trackedSession struct {
 	valid  func() bool
 }
 type registry struct {
-	mu       sync.Mutex
-	closed   bool
-	blocked  map[int64]bool
-	sessions map[*trackedSession]struct{}
+	mu               sync.Mutex
+	closed           bool
+	blocked          map[int64]bool
+	reservations     map[int64]string
+	activeOperations map[string]bool
+	sessions         map[*trackedSession]struct{}
 }
 
 func newRegistry() *registry {
-	return &registry{blocked: map[int64]bool{}, sessions: map[*trackedSession]struct{}{}}
+	return &registry{blocked: map[int64]bool{}, reservations: map[int64]string{}, activeOperations: map[string]bool{}, sessions: map[*trackedSession]struct{}{}}
 }
 func (r *registry) Register(g hgbridge.Grant, cancel context.CancelFunc) (func(), error) {
 	return r.register(g, cancel, nil)
@@ -30,7 +32,7 @@ func (r *registry) Register(g hgbridge.Grant, cancel context.CancelFunc) (func()
 func (r *registry) register(g hgbridge.Grant, cancel context.CancelFunc, valid func() bool) (func(), error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.closed || r.blocked[g.RepoID] {
+	if r.closed || r.blocked[g.RepoID] || r.reservations[g.RepoID] != "" {
 		return nil, errors.New("hosting: repository unavailable")
 	}
 	s := &trackedSession{grant: g, cancel: cancel, done: make(chan struct{}), valid: valid}
@@ -40,6 +42,10 @@ func (r *registry) register(g hgbridge.Grant, cancel context.CancelFunc, valid f
 }
 func (r *registry) drain(ctx context.Context, id int64) error {
 	r.mu.Lock()
+	if r.reservations[id] != "" {
+		r.mu.Unlock()
+		return ErrMutationBusy
+	}
 	if id == 0 {
 		r.closed = true
 	} else {

@@ -15,9 +15,10 @@ import (
 // The session environment of a write-capable Mercurial process. Hook
 // processes inherit it from Mercurial.
 const (
-	EnvCapability = "GOGS_HG_CAPABILITY"
-	EnvControl    = "GOGS_HG_CONTROL"
-	EnvRepoID     = "GOGS_HG_REPO_ID"
+	EnvCapability  = "GOGS_HG_CAPABILITY"
+	EnvControl     = "GOGS_HG_CONTROL"
+	EnvRepoID      = "GOGS_HG_REPO_ID"
+	EnvOperationID = "GOGS_HG_OPERATION_ID"
 )
 
 const (
@@ -34,8 +35,9 @@ const (
 // HookRequest is the whole callback body. The actor and rights come from the
 // stored session, never from the request.
 type HookRequest struct {
-	Hook   string `json:"hook"`
-	RepoID int64  `json:"repo_id"`
+	OperationID string `json:"operation_id,omitempty"`
+	Hook        string `json:"hook"`
+	RepoID      int64  `json:"repo_id"`
 }
 
 func (c *Controller) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -62,7 +64,7 @@ func (c *Controller) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), CallbackTimeout)
 	defer cancel()
-	if c.Check(ctx, capability, req.RepoID, req.Hook) != nil {
+	if c.CheckOperation(ctx, capability, req.RepoID, req.Hook, req.OperationID) != nil {
 		http.Error(w, "write not authorized", http.StatusForbidden)
 		return
 	}

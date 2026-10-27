@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"regexp"
 	"strconv"
 	"sync"
 	"time"
@@ -61,9 +62,11 @@ type Controller struct {
 }
 
 type session struct {
-	grant   Grant
-	expires time.Time
-	touch   func()
+	operationID string
+	grant       Grant
+	expires     time.Time
+	touch       func()
+	authorize   func(context.Context, Grant) error
 }
 
 // NewController starts the loopback control endpoint. ttl bounds every
@@ -155,6 +158,11 @@ func (c *Controller) lookup(key [sha256.Size]byte) (session, bool) {
 // capability belongs to a live session for that repository and the
 // authorizer confirms the session's current rights.
 func (c *Controller) Check(ctx context.Context, capability string, repoID int64, hook string) error {
+	return c.CheckOperation(ctx, capability, repoID, hook, "")
+}
+
+// CheckOperation binds the hook envelope to the immutable server-held identity.
+func (c *Controller) CheckOperation(ctx context.Context, capability string, repoID int64, hook, operationID string) error {
 	if !isHook(hook) {
 		return fmt.Errorf("%w: unknown hook %q", ErrDenied, hook)
 	}
@@ -163,10 +171,17 @@ func (c *Controller) Check(ctx context.Context, capability string, repoID int64,
 	if !ok {
 		return fmt.Errorf("%w: unknown or expired session", ErrDenied)
 	}
+	if s.operationID != operationID || (operationID != "" && hook != "pretxnopen") {
+		return ErrDenied
+	}
 	if s.grant.RepoID != repoID {
 		return fmt.Errorf("%w: session is for another repository", ErrDenied)
 	}
-	if err := c.authorize(ctx, s.grant); err != nil {
+	authorize := c.authorize
+	if s.authorize != nil {
+		authorize = s.authorize
+	}
+	if err := authorize(ctx, s.grant); err != nil {
 		return fmt.Errorf("%w: %v", ErrDenied, err)
 	}
 	// The session may have been revoked, or the callback abandoned, while
@@ -192,3 +207,31 @@ func (c *Controller) Close(ctx context.Context) error {
 	c.ln.Close()
 	return err
 }
+
+// IssueOperation binds one short-lived capability to a server-owned operation
+// check. It is never called by transport clients and does not reuse a grant.
+func (c *Controller) IssueOperation(operationID string, g Grant, check Authorize) (map[string]string, func(), error) {
+	if check == nil || !validOperationID.MatchString(operationID) {
+		return nil, nil, ErrDenied
+	}
+	token, env, revoke, err := c.Issue(g, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	key := sha256.Sum256([]byte(token))
+	c.mu.Lock()
+	s, ok := c.grants[key]
+	if !ok || c.closed {
+		c.mu.Unlock()
+		revoke()
+		return nil, nil, ErrDenied
+	}
+	s.authorize = check
+	s.operationID = operationID
+	env[EnvOperationID] = operationID
+	c.grants[key] = s
+	c.mu.Unlock()
+	return env, revoke, nil
+}
+
+var validOperationID = regexp.MustCompile(`^[a-zA-Z0-9_-]{16,64}$`)

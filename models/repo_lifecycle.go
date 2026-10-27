@@ -388,7 +388,7 @@ func DeleteHgRepository(ctx context.Context, root string, repoID int64, drain Dr
 	lifecycleStage("loaded")
 	switch repo.State {
 	case RepositoryReady:
-		if err := setRepositoryState(x, repoID, RepositoryReady, RepositoryDeleting); err != nil {
+		if err := tombstoneReviewSafe(repoID); err != nil {
 			return err
 		}
 	case RepositoryDeleting:
@@ -406,6 +406,11 @@ func DeleteHgRepository(ctx context.Context, root string, repoID int64, drain Dr
 }
 
 func finishDeletion(root string, repoID int64) error {
+	if reserved, err := RepositoryReviewReserved(repoID); err != nil {
+		return err
+	} else if reserved {
+		return ErrReviewReserved
+	}
 	// Re-read after the tombstone: a transfer may have committed after the
 	// caller loaded the row, and none can commit once it is deleting.
 	repo := new(Repository)

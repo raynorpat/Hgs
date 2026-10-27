@@ -47,8 +47,9 @@ var inheritedEnv = []string{"PATH"}
 // Runner starts Mercurial processes. Hook processes that Mercurial itself
 // launches are not runner starts and never take a slot.
 type Runner struct {
-	cfg   Config
-	slots chan struct{}
+	cfg                          Config
+	slots                        chan struct{}
+	publicationIsolationVerified atomic.Bool
 
 	// Tests shorten these; production uses the package constants.
 	queueTimeout, idleTimeout time.Duration

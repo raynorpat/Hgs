@@ -77,7 +77,7 @@ func RunHGHook(ctx context.Context, hook string, env []string) error {
 		return errors.New("session control endpoint is not on loopback")
 	}
 
-	body, err := json.Marshal(hgbridge.HookRequest{Hook: hook, RepoID: repoID})
+	body, err := json.Marshal(hgbridge.HookRequest{Hook: hook, RepoID: repoID, OperationID: vars[hgbridge.EnvOperationID]})
 	if err != nil {
 		return err
 	}

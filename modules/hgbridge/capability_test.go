@@ -226,3 +226,32 @@ func TestAllowedCheckTouchesSession(t *testing.T) {
 		t.Errorf("denied checks touched the session: %d touches", touches)
 	}
 }
+
+func TestReviewPublicationCapabilityBoundToOperation(t *testing.T) {
+	c, _ := newTestController(t, &fakeAuth{err: ErrDenied})
+	operation := "0123456789abcdef0123456789abcdef"
+	env, revoke, err := c.IssueOperation(operation, writer, func(context.Context, Grant) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer revoke()
+	token := env[EnvCapability]
+	if err = c.Check(context.Background(), token, writer.RepoID, "pretxnopen"); err == nil {
+		t.Fatal("operation capability became generic writer")
+	}
+	for _, wrong := range []string{"", "different-operation"} {
+		if err = c.CheckOperation(context.Background(), token, writer.RepoID, "pretxnopen", wrong); err == nil {
+			t.Fatal("operation identity not bound")
+		}
+	}
+	if err = c.CheckOperation(context.Background(), token, writer.RepoID, "pretxnopen", operation); err != nil {
+		t.Fatal(err)
+	}
+	if err = c.CheckOperation(context.Background(), token, writer.RepoID, "pretxnclose", operation); err == nil {
+		t.Fatal("operation accepted close-time authority")
+	}
+	revoke()
+	if err = c.CheckOperation(context.Background(), token, writer.RepoID, "pretxnopen", operation); err == nil {
+		t.Fatal("revoked operation capability accepted")
+	}
+}

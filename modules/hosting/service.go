@@ -35,18 +35,20 @@ type Config struct {
 }
 
 type Service struct {
-	cfg         Config
-	runner      *hg.Runner
-	controller  *hgbridge.Controller
-	http        *hgbridge.HTTPBridge
-	stdio       *hgbridge.StdioBridge
-	ssh         *ssh.Server
-	sessions    *registry
-	proxies     []*net.IPNet
-	cancel      context.CancelFunc
-	monitorDone chan struct{}
-	shutdown    sync.Once
-	shutdownErr error
+	cfg            Config
+	runner         *hg.Runner
+	inspector      *hg.Runner
+	hookExecutable string
+	controller     *hgbridge.Controller
+	http           *hgbridge.HTTPBridge
+	stdio          *hgbridge.StdioBridge
+	ssh            *ssh.Server
+	sessions       *registry
+	proxies        []*net.IPNet
+	cancel         context.CancelFunc
+	monitorDone    chan struct{}
+	shutdown       sync.Once
+	shutdownErr    error
 }
 
 func (s *Service) configure(cfg Config) error {
@@ -107,7 +109,23 @@ func New(ctx context.Context, cfg Config) (s *Service, err error) {
 	if s.runner, err = hg.NewRunner(cfg.Mercurial); err != nil {
 		return nil, err
 	}
+	inspectionConfig := cfg.Mercurial
+	inspectionConfig.ConfigPath = filepath.Join(filepath.Dir(cfg.Mercurial.ConfigPath), "review-inspection", "hgrc")
+	inspectionConfig.MaxProcesses = 1
+	if s.inspector, err = hg.NewRunner(inspectionConfig); err != nil {
+		return nil, err
+	}
+	reservations, err := models.PendingReviewReservations()
+	if err != nil {
+		return nil, err
+	}
+	for _, reservation := range reservations {
+		s.sessions.reservations[reservation.RepoID] = reservation.OperationID
+	}
 	if err = s.runner.Check(ctx); err != nil {
+		return nil, err
+	}
+	if err = s.reconcileRevokedPublicationsAtStartup(ctx); err != nil {
 		return nil, err
 	}
 	signer, err := loadHostKey(cfg.HostKeyPath)
@@ -140,6 +158,7 @@ func New(ctx context.Context, cfg Config) (s *Service, err error) {
 	if err != nil {
 		return nil, err
 	}
+	s.hookExecutable = executable
 	if s.http, err = hgbridge.NewHTTPBridge(s.runner, s.controller, executable); err != nil {
 		return nil, err
 	}
@@ -232,6 +251,12 @@ func (s *Service) Shutdown(ctx context.Context) error {
 	return s.shutdownErr
 }
 func (s *Service) authorize(ctx context.Context, g hgbridge.Grant) error {
+	s.sessions.mu.Lock()
+	reserved := s.sessions.reservations[g.RepoID] != ""
+	s.sessions.mu.Unlock()
+	if reserved {
+		return hgbridge.ErrDenied
+	}
 	if !g.CanWrite || s.validatePrincipal(g.Principal) != nil {
 		return hgbridge.ErrDenied
 	}
