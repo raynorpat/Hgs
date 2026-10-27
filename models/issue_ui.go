@@ -19,10 +19,20 @@ type UIIssuePage struct {
 	Repositories []*Repository
 	Stats        IssueStats
 	Total        int
+	HasIssues    bool
 }
 
 func ListUIIssues(ctx context.Context, q UIIssueQuery) (UIIssuePage, error) {
 	out := UIIssuePage{Issues: []*Issue{}, Repositories: []*Repository{}}
+	if q.RepositoryID > 0 {
+		access, err := RepositoryAccessFor(q.ActorID, q.RepositoryID)
+		if err != nil {
+			return out, err
+		}
+		if !access.Read {
+			return out, ErrRepoNotExist
+		}
+	}
 	if q.Page < 1 {
 		q.Page = 1
 	}
@@ -95,6 +105,9 @@ func ListUIIssues(ctx context.Context, q UIIssueQuery) (UIIssuePage, error) {
 				}
 				repositories[r.Id] = r
 			}
+			if !q.Global || q.View != "all" || r.OwnerId == q.ActorID {
+				out.HasIssues = true
+			}
 			if q.MilestoneID > 0 && issue.MilestoneId != q.MilestoneID {
 				continue
 			}
@@ -155,6 +168,19 @@ func ListUIIssues(ctx context.Context, q UIIssueQuery) (UIIssuePage, error) {
 				}
 				if err := issue.GetLabels(); err != nil {
 					return out, err
+				}
+				if err := issue.GetAssignee(); err != nil {
+					return out, err
+				}
+				issue.LastActivity = issue.Created
+				if issue.Updated.After(issue.LastActivity) {
+					issue.LastActivity = issue.Updated
+				}
+				latest := new(Comment)
+				if found, err := x.Where("issue_id=?", issue.Id).Desc("created", "id").Get(latest); err != nil {
+					return out, err
+				} else if found && latest.Created.After(issue.LastActivity) {
+					issue.LastActivity = latest.Created
 				}
 				out.Issues = append(out.Issues, issue)
 			}

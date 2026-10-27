@@ -53,6 +53,7 @@ type Issue struct {
 	Deadline        time.Time
 	Created         time.Time `xorm:"CREATED"`
 	Updated         time.Time `xorm:"UPDATED"`
+	LastActivity    time.Time `xorm:"-"`
 }
 
 func (i *Issue) GetPoster() (err error) {
@@ -565,6 +566,35 @@ func GetLabels(repoId int64) ([]*Label, error) {
 func UpdateLabel(l *Label) error {
 	_, err := x.Id(l.Id).Update(l)
 	return err
+}
+
+// UpdateLabelIssueStats accepts the loaded association counters and explicitly
+// persists zeros. UpdateLabel retains partial name/color edit semantics.
+func UpdateLabelIssueStats(l *Label) error {
+	_, err := x.Id(l.Id).Cols("num_issues", "num_closed_issues").Update(l)
+	return err
+}
+
+// ChangeIssueLabelStats follows a persisted close/reopen without rewriting label
+// identity or display fields. Label IDs are scoped to their owning repository.
+func ChangeIssueLabelStats(issue *Issue) error {
+	if err := issue.GetLabels(); err != nil {
+		return err
+	}
+	for _, label := range issue.Labels {
+		if label.RepoId != issue.RepoId {
+			continue
+		}
+		if issue.IsClosed {
+			label.NumClosedIssues++
+		} else if label.NumClosedIssues > 0 {
+			label.NumClosedIssues--
+		}
+		if err := UpdateLabelIssueStats(label); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // DeleteLabel delete a label of given repository.

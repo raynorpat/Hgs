@@ -6,11 +6,15 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/Unknwon/macaron"
 	apiv1 "github.com/gogits/gogs/modules/auth/apiv1"
 	"github.com/gogits/gogs/modules/mailer"
 	"github.com/gogits/gogs/modules/setting"
 	v1 "github.com/gogits/gogs/routers/api/v1"
 	"html"
+	"image"
+	"image/color"
+	"image/png"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -32,6 +36,10 @@ import (
 
 func issueFixture(t *testing.T) *uiFixture {
 	f := newUIFixture(t, "/code")
+	oldAvatarPath := setting.AvatarUploadPath
+	setting.AvatarUploadPath = filepath.Join(f.root, "avatars")
+	t.Cleanup(func() { setting.AvatarUploadPath = oldAvatarPath })
+	f.m.Use(macaron.Static(setting.AvatarUploadPath, macaron.StaticOptions{Prefix: "avatars"}))
 	guard := middleware.Toggle(&middleware.ToggleOptions{SignInRequire: true})
 	f.m.Get("/issues", guard, user.Issues)
 	f.m.Post("/api/v1/markdown", binding.BindIgnErr(apiv1.MarkdownForm{}), v1.Markdown)
@@ -388,6 +396,12 @@ func TestSharedUIIssueGlobalFilters(t *testing.T) {
 	}
 	for _, query := range []string{"?type=assigned", "?type=created_by", fmt.Sprintf("?repoid=%d", f.private.Id)} {
 		w := f.get(t, "/issues"+query, "reader")
+		if strings.HasPrefix(query, "?repoid=") {
+			if w.Code != 404 {
+				t.Errorf("unavailable explicit filter status=%d", w.Code)
+			}
+			continue
+		}
 		requireUI(t, w, f.prefix+"/issues")
 		if strings.Contains(w.Body.String(), issue.Name) {
 			t.Fatal("global list disclosed revoked issue")
@@ -462,6 +476,10 @@ func TestSharedUIIssueBrowserFixture(t *testing.T) {
 		t.Skip("opt-in disposable Issues browser fixture")
 	}
 	f := issueFixture(t)
+	issueFixtureUploadedAvatar(t, f)
+	if err := models.AddAccess(&models.Access{UserId: f.reader.Id, RepoId: f.public.Id, Mode: models.READABLE}); err != nil {
+		t.Fatal(err)
+	}
 	oldEnabled, oldPath, oldTypes, oldCount := setting.AttachmentEnabled, setting.AttachmentPath, setting.AttachmentAllowedTypes, setting.AttachmentMaxFiles
 	setting.AttachmentEnabled = true
 	setting.AttachmentPath = filepath.Join(f.root, "attachments")
@@ -471,16 +489,21 @@ func TestSharedUIIssueBrowserFixture(t *testing.T) {
 		setting.AttachmentEnabled, setting.AttachmentPath, setting.AttachmentAllowedTypes, setting.AttachmentMaxFiles = oldEnabled, oldPath, oldTypes, oldCount
 	})
 	os.MkdirAll(setting.AttachmentPath, 0700)
-	for _, r := range []*models.Repository{f.public, f.private, f.empty} {
+	for _, r := range []*models.Repository{f.public, f.private} {
 		if w := f.post(t, "/fixtureowner/"+r.Name+"/issues/new", "owner", url.Values{"ui": {"1"}, "title": {"Investigate a long issue title across narrow screens and metadata controls"}, "content": {"# Discussion\nA **real** issue with a long paragraph.\n\n<script>window.fixtureUnsafe=true</script>\n\n" + strings.Repeat("Long discussion content ", 60)}}, true); w.Code != 303 {
 			t.Fatal(w.Code, w.Body.String())
 		}
 	}
 	root := "/fixtureowner/" + f.public.Name
+	issue, _ := models.GetIssueByIndex(f.public.Id, 1)
+	if w := f.post(t, root+"/issues/1/assignee", "owner", url.Values{"ui": {"1"}, "issue": {fmt.Sprint(issue.Id)}, "assigneeid": {fmt.Sprint(f.reader.Id)}}, true); w.Code != 303 {
+		t.Fatal("browser assignment", w.Code)
+	}
 	f.post(t, root+"/issues/labels/new", "owner", url.Values{"title": {"A label with a long readable name"}, "color": {"#f0d2ab"}}, true)
 	f.post(t, root+"/issues/milestones/new", "owner", url.Values{"title": {"First delivery"}, "content": {"A **real** milestone"}, "due_date": {"2027-04-03"}}, true)
 	f.post(t, root+"/comment/new", "owner", url.Values{"ui": {"1"}, "issueIndex": {"1"}, "content": {"A real **comment**"}, "change_status": {"Close"}}, true)
 	f.post(t, root+"/comment/new", "owner", url.Values{"ui": {"1"}, "issueIndex": {"1"}, "content": {"Reopened for browser checks"}, "change_status": {"Reopen"}}, true)
+	f.post(t, root+"/comment/new", "reader", url.Values{"ui": {"1"}, "issueIndex": {"1"}, "content": {"Later comment by the reader with a local fallback avatar."}}, true)
 	server := &http.Server{Addr: addr, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.m.ServeHTTP(w, middleware.WithBrowserResponseController(r, w))
 	})}
@@ -490,6 +513,286 @@ func TestSharedUIIssueBrowserFixture(t *testing.T) {
 	})
 	t.Logf("disposable Issues fixture http://%s/code/fixture/account/owner", addr)
 	if err := server.ListenAndServe(); err != http.ErrServerClosed {
+		t.Fatal(err)
+	}
+}
+
+func TestSharedUIIssueSaveFailureRecovery(t *testing.T) {
+	f := issueFixture(t)
+	root := "/fixtureowner/empty-lab"
+	oldEnabled, oldPath, oldTypes, oldCount, oldSize := setting.AttachmentEnabled, setting.AttachmentPath, setting.AttachmentAllowedTypes, setting.AttachmentMaxFiles, setting.AttachmentMaxSize
+	setting.AttachmentEnabled = true
+	setting.AttachmentPath = filepath.Join(f.root, "missing-upload-directory")
+	setting.AttachmentAllowedTypes = "*/*"
+	setting.AttachmentMaxFiles = 10
+	setting.AttachmentMaxSize = 32
+	defer func() {
+		setting.AttachmentEnabled, setting.AttachmentPath, setting.AttachmentAllowedTypes, setting.AttachmentMaxFiles, setting.AttachmentMaxSize = oldEnabled, oldPath, oldTypes, oldCount, oldSize
+	}()
+	checkSaved := func(w *httptest.ResponseRecorder, kind, canonical, content string) {
+		t.Helper()
+		b := w.Body.String()
+		if w.Code != 500 {
+			t.Errorf("%s post-save status=%d want500", kind, w.Code)
+		}
+		if !strings.Contains(b, `data-issue-saved-result`) || !strings.Contains(b, `href="`+f.prefix+canonical+`"`) {
+			t.Errorf("%s missing truthful canonical saved result", kind)
+		}
+		if strings.Contains(b, `action="`+f.prefix+root+`/issues/new"`) {
+			t.Errorf("%s offers duplicate issue submission", kind)
+		}
+		reply := regexp.MustCompile(`(?s)<textarea[^>]*id="reply-body"[^>]*>(.*?)</textarea>`).FindStringSubmatch(b)
+		if len(reply) != 2 || reply[1] != "" {
+			t.Errorf("%s retained already posted text in reply: %v", kind, reply)
+		}
+		if strings.Contains(b, setting.AttachmentPath) {
+			t.Error("storage path leaked")
+		}
+		if content != "" && !strings.Contains(b, content) {
+			t.Errorf("%s saved body absent", kind)
+		}
+	}
+	w := f.issueUpload(t, root+"/issues/new", url.Values{"ui": {"1"}, "title": {"Saved issue after attachment error"}, "content": {"Persisted issue body"}}, "valid.txt", "valid attachment")
+	issue, err := models.GetIssueByIndex(f.empty.Id, 1)
+	if err != nil {
+		t.Fatal("issue should already exist", err)
+	}
+	checkSaved(w, "issue upload", root+"/issues/1", "Persisted issue body")
+	if !strings.Contains(w.Body.String(), "files that are missing") {
+		t.Error("missing safe attachment recovery guidance")
+	}
+	w = f.issueUpload(t, root+"/comment/new", url.Values{"ui": {"1"}, "issueIndex": {"1"}, "content": {"Persisted comment body"}}, "valid.txt", "valid attachment")
+	comments, err := models.GetIssueComments(issue.Id)
+	if err != nil || len(comments) != 1 {
+		t.Fatal("one persisted comment expected", len(comments), err)
+	}
+	checkSaved(w, "comment upload", fmt.Sprintf("%s/issues/1#issue-comment-%d", root, comments[0].Id), "Persisted comment body")
+	// A safe GET recovery never replays creation or the submitted comment.
+	requireUI(t, f.get(t, root+"/issues/1", "owner"), "")
+	count, err := f.db.Where("repo_id=?", f.empty.Id).Count(new(models.Issue))
+	if err != nil || count != 1 {
+		t.Fatal("recovery duplicated issue", count, err)
+	}
+	comments, _ = models.GetIssueComments(issue.Id)
+	if len(comments) != 1 {
+		t.Fatal("recovery duplicated comment")
+	}
+	for _, tc := range []struct {
+		name, types, content, want string
+		max                        int
+		size                       int64
+	}{
+		{"count", "*/*", "small", "Select at most 0 attachments", 0, 32},
+		{"type", "image/png", "text", "Allowed attachment types", 10, 32},
+		{"size", "*/*", strings.Repeat("x", 1024*1024+1), "no larger than 1 MB", 10, 1},
+	} {
+		setting.AttachmentAllowedTypes = tc.types
+		setting.AttachmentMaxFiles = tc.max
+		setting.AttachmentMaxSize = tc.size
+		w = f.issueUpload(t, root+"/comment/new", url.Values{"ui": {"1"}, "issueIndex": {"1"}, "content": {"Unsaved " + tc.name}}, "bad.txt", tc.content)
+		if w.Code != 400 || !strings.Contains(w.Body.String(), tc.want) || !strings.Contains(w.Body.String(), "Unsaved "+tc.name) {
+			t.Errorf("%s rejection status=%d lacks actionable reason/preserved input", tc.name, w.Code)
+		}
+	}
+	setting.AttachmentAllowedTypes = "*/*"
+	setting.AttachmentMaxFiles = 10
+	setting.AttachmentMaxSize = 32
+	// If status persists but comment insertion fails, only the unsaved text
+	// remains, and Comment can recover it without toggling the saved status.
+	if _, err := f.db.Exec("CREATE TRIGGER fail_text_comment BEFORE INSERT ON comment WHEN NEW.type=0 BEGIN SELECT RAISE(ABORT,'fixture comment fault'); END"); err != nil {
+		t.Fatal(err)
+	}
+	w = f.post(t, root+"/comment/new", "owner", url.Values{"ui": {"1"}, "issueIndex": {"1"}, "change_status": {"Close"}, "content": {"Unsaved after status change"}}, true)
+	if w.Code != 500 || !strings.Contains(w.Body.String(), "status was changed, but your comment was not saved") || !strings.Contains(w.Body.String(), `>Unsaved after status change</textarea>`) {
+		t.Error("status-only persistence lost/misrepresented unsaved comment", w.Code)
+	}
+	if _, err := f.db.Exec("DROP TRIGGER fail_text_comment"); err != nil {
+		t.Fatal(err)
+	}
+	w = f.post(t, root+"/comment/new", "owner", url.Values{"ui": {"1"}, "issueIndex": {"1"}, "content": {"Unsaved after status change"}}, true)
+	if w.Code != 303 {
+		t.Fatal("safe comment-only recovery failed", w.Code)
+	}
+	current, _ := models.GetIssueById(issue.Id)
+	if !current.IsClosed {
+		t.Fatal("comment recovery changed saved status")
+	}
+	beforeNotification, _ := models.GetIssueComments(issue.Id)
+	recoveryCount := 0
+	for _, c := range beforeNotification {
+		if c.Type == 0 && c.Content == "Unsaved after status change" {
+			recoveryCount++
+		}
+	}
+	if recoveryCount != 1 {
+		t.Fatal("recovery duplicated unsaved comment", recoveryCount)
+	}
+	// Real synchronous notification preparation fault, confined to this disposable DB.
+	if _, err := f.db.Exec("DROP TABLE watch"); err != nil {
+		t.Fatal(err)
+	}
+	w = f.post(t, root+"/issues/new", "owner", url.Values{"ui": {"1"}, "title": {"Saved issue before notification error"}, "content": {"Notification saved issue body"}}, true)
+	checkSaved(w, "issue notification", root+"/issues/2", "Notification saved issue body")
+	if !strings.Contains(w.Body.String(), "notifications") {
+		t.Error("notification failure not explained")
+	}
+	w = f.post(t, root+"/comment/new", "owner", url.Values{"ui": {"1"}, "issueIndex": {"1"}, "content": {"Notification saved comment body"}}, true)
+	comments, err = models.GetIssueComments(issue.Id)
+	if err != nil || len(comments) != len(beforeNotification)+1 {
+		t.Fatal("notification error duplicated/lost comment", len(comments), err)
+	}
+	checkSaved(w, "comment notification", fmt.Sprintf("%s/issues/1#issue-comment-%d", root, comments[len(comments)-1].Id), "Notification saved comment body")
+}
+
+func TestSharedUIIssueLabelZeroCounters(t *testing.T) {
+	f := issueFixture(t)
+	root := "/fixtureowner/empty-lab"
+	w := f.post(t, root+"/issues/new", "owner", url.Values{"ui": {"1"}, "title": {"Label counters"}}, true)
+	if w.Code != 303 {
+		t.Fatal(w.Code)
+	}
+	w = f.post(t, root+"/issues/labels/new", "owner", url.Values{"title": {"Stable label"}, "color": {"#123456"}}, true)
+	if w.Code != 302 {
+		t.Fatal(w.Code)
+	}
+	labels, _ := models.GetLabels(f.empty.Id)
+	if len(labels) != 1 {
+		t.Fatal("label missing")
+	}
+	id := labels[0].Id
+	check := func(total, closed int) {
+		t.Helper()
+		l, err := models.GetLabelById(id)
+		if err != nil || l.NumIssues != total || l.NumClosedIssues != closed || l.RepoId != f.empty.Id {
+			t.Errorf("label counts got %#v err=%v want%d/%d", l, err, total, closed)
+		}
+	}
+	mutate := func(action string) {
+		t.Helper()
+		w := f.post(t, root+"/issues/1/label", "owner", url.Values{"ui": {"1"}, "id": {fmt.Sprint(id)}, "action": {action}}, true)
+		if w.Code != 303 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+	}
+	mutate("attach")
+	check(1, 0)
+	mutate("detach")
+	check(0, 0)
+	mutate("attach")
+	check(1, 0)
+	w = f.post(t, root+"/comment/new", "owner", url.Values{"ui": {"1"}, "issueIndex": {"1"}, "change_status": {"Close"}}, true)
+	if w.Code != 303 {
+		t.Fatal(w.Code)
+	}
+	check(1, 1)
+	mutate("detach")
+	check(0, 0)
+	mutate("attach")
+	check(1, 1)
+	// The retained edit submits a partial label object: it must not reset counters.
+	w = f.post(t, root+"/issues/labels/edit", "owner", url.Values{"id": {fmt.Sprint(id)}, "title": {"Renamed label"}, "color": {"#abcdef"}}, true)
+	if w.Code != 302 {
+		t.Fatal(w.Code)
+	}
+	check(1, 1)
+	l, _ := models.GetLabelById(id)
+	if l.Name != "Renamed label" || l.Color != "#abcdef" {
+		t.Fatal("label edit lost")
+	}
+	w = f.post(t, root+"/comment/new", "owner", url.Values{"ui": {"1"}, "issueIndex": {"1"}, "change_status": {"Reopen"}}, true)
+	if w.Code != 303 {
+		t.Fatal(w.Code)
+	}
+	check(1, 0)
+	mutate("detach")
+	check(0, 0)
+}
+
+func TestSharedUIIssueIdentityAndEmptyStates(t *testing.T) {
+	f := issueFixture(t)
+	root := "/fixtureowner/empty-lab"
+	for _, path := range []string{root + "/issues", "/issues"} {
+		w := f.get(t, path, "owner")
+		if w.Code != 200 || !strings.Contains(w.Body.String(), `data-issue-empty="empty"`) {
+			t.Errorf("%s lacks genuine empty state", path)
+		}
+	}
+	if err := models.AddAccess(&models.Access{UserId: f.reader.Id, RepoId: f.empty.Id, Mode: models.READABLE}); err != nil {
+		t.Fatal(err)
+	}
+	w := f.post(t, root+"/issues/new", "owner", url.Values{"ui": {"1"}, "title": {"Assigned with later activity"}, "content": {"Description identity"}, "assigneeid": {fmt.Sprint(f.reader.Id)}}, true)
+	if w.Code != 303 {
+		t.Fatal(w.Code)
+	}
+	issue, err := models.GetIssueByIndex(f.empty.Id, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	older := time.Now().UTC().Add(-48 * time.Hour)
+	if _, err := f.db.Exec("UPDATE issue SET created=?, updated=? WHERE id=?", older, older, issue.Id); err != nil {
+		t.Fatal(err)
+	}
+	issueFixtureUploadedAvatar(t, f)
+	if w := f.get(t, "/avatars/"+fmt.Sprint(f.owner.Id), "owner"); w.Code != 200 || !strings.HasPrefix(w.Header().Get("Content-Type"), "image/") {
+		t.Fatal("actual uploaded avatar unavailable", w.Code)
+	}
+	w = f.post(t, root+"/comment/new", "reader", url.Values{"ui": {"1"}, "issueIndex": {"1"}, "content": {"Later comment identity"}}, true)
+	if w.Code != 303 {
+		t.Fatal(w.Code)
+	}
+	comments, _ := models.GetIssueComments(issue.Id)
+	if len(comments) != 1 {
+		t.Fatal("comment missing")
+	}
+	stamp := comments[0].Created.UTC().Format(time.RFC3339)
+	for _, path := range []string{root + "/issues", "/issues"} {
+		w := f.get(t, path, "owner")
+		b := w.Body.String()
+		if !strings.Contains(b, `data-issue-assignee`) || !strings.Contains(b, f.reader.Name) || !strings.Contains(b, `datetime="`+stamp+`"`) {
+			t.Errorf("%s missing actual assignee/latest comment activity", path)
+		}
+	}
+	b := f.get(t, root+"/issues/1", "owner").Body.String()
+	for _, want := range []string{`src="/code/avatars/` + fmt.Sprint(f.owner.Id) + `"`, `src="/code/img/avatar_default.jpg"`} {
+		if !strings.Contains(b, want) {
+			t.Errorf("discussion lost avatar %s", want)
+		}
+	}
+	for _, path := range []string{root + "/issues?labels=999999", "/issues?type=assigned"} {
+		w := f.get(t, path, "owner")
+		if w.Code != 200 || !strings.Contains(w.Body.String(), `data-issue-empty="filtered"`) || !strings.Contains(w.Body.String(), "Clear filters") {
+			t.Errorf("%s lacks actionable filtered state", path)
+		}
+	}
+	if err := models.DeleteAccess(&models.Access{UserId: f.reader.Id, RepoId: f.private.Id}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []int64{f.private.Id, 999999} {
+		w := f.get(t, fmt.Sprintf("/issues?repoid=%d", id), "reader")
+		if w.Code != 404 || strings.Contains(w.Body.String(), f.private.Name) {
+			t.Errorf("unavailable target status/disclosure=%d", w.Code)
+		}
+	}
+}
+
+// Use the real upload implementation and only disposable avatar storage.
+func issueFixtureUploadedAvatar(t *testing.T, f *uiFixture) {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, 48, 48))
+	for y := 0; y < 48; y++ {
+		for x := 0; x < 48; x++ {
+			c := color.RGBA{R: 0, G: 82, B: 204, A: 255}
+			if x > 12 && x < 36 && y > 12 && y < 36 {
+				c = color.RGBA{R: 255, G: 171, B: 0, A: 255}
+			}
+			img.SetRGBA(x, y, c)
+		}
+	}
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, img); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.owner.UploadAvatar(encoded.Bytes()); err != nil {
 		t.Fatal(err)
 	}
 }

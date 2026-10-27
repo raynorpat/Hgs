@@ -1,6 +1,6 @@
 {{template "shared/start" .}}
 {{template "repo/header" .}}
-{{if .IssueUIError}}<p role="alert" class="hg-alert hg-alert-danger">{{.IssueUIError}}</p>{{end}}
+{{if .IssueUIError}}<div role="alert" class="hg-alert hg-alert-danger"{{if .IssueSavedResult}} data-issue-saved-result{{end}}><p>{{.IssueUIError}}</p>{{if .IssueRecoveryHint}}<p>{{.IssueRecoveryHint}}</p>{{end}}{{if .IssueSavedResult}}<a class="hg-button" href="{{.IssueSavedResult}}">{{.i18n.Tr "ui.view_saved_result"}}</a>{{end}}</div>{{end}}
 <nav class="hg-tabs" aria-label="{{.i18n.Tr "ui.issues"}}"><a href="{{.RepoLink}}/issues">{{.i18n.Tr "ui.issues"}}</a><a href="{{.RepoLink}}/issues/milestones">{{.i18n.Tr "ui.milestones"}}</a></nav>
 <header class="hg-page-header"><div><h2>{{.Issue.Name}} <span class="hg-meta">#{{.Issue.Index}}</span></h2><p class="hg-meta"><span class="hg-badge {{if .Issue.IsClosed}}hg-status-closed{{else}}hg-status-open{{end}}">{{if .Issue.IsClosed}}{{.i18n.Tr "ui.closed"}}{{else}}{{.i18n.Tr "ui.open"}}{{end}}</span> <a href="{{AppSubUrl}}/{{.Issue.Poster.Name}}">{{.Issue.Poster.Name}}</a> {{.i18n.Tr "ui.opened_issue"}} &middot; {{.Issue.NumComments}} {{.i18n.Tr "ui.comments"}}</p></div><a class="hg-button" href="{{.RepoLink}}/issues/new">{{.i18n.Tr "ui.new_issue"}}</a></header>
 <div class="hg-issue-layout"><div>

@@ -278,6 +278,10 @@ func Issues(ctx *middleware.Context) {
 		page = 1000000
 	}
 	result, err := models.ListUIIssues(ctx.Req.Request.Context(), models.UIIssueQuery{ActorID: ctx.User.Id, RepositoryID: rid, Global: true, Closed: ctx.Query("state") == "closed", View: view, Page: page})
+	if err == models.ErrRepoNotExist {
+		ctx.Error(404)
+		return
+	}
 	if err != nil {
 		ctx.Handle(500, "ListUIIssues", err)
 		return
@@ -290,5 +294,6 @@ func Issues(ctx *middleware.Context) {
 	ctx.Data["IsShowClosed"] = ctx.Query("state") == "closed"
 	ctx.Data["State"] = ctx.Query("state")
 	ui.IssuePagination(ctx, page, result.Total)
+	ui.IssueEmpty(ctx, result.HasIssues, "")
 	ctx.HTML(200, ISSUES)
 }

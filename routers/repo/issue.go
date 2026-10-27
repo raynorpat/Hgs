@@ -36,8 +36,9 @@ const (
 )
 
 var (
-	ErrFileTypeForbidden = errors.New("File type is not allowed")
-	ErrTooManyFiles      = errors.New("Maximum number of files to upload exceeded")
+	ErrFileTypeForbidden  = errors.New("File type is not allowed")
+	ErrTooManyFiles       = errors.New("Maximum number of files to upload exceeded")
+	ErrAttachmentTooLarge = errors.New("Attachment exceeds configured size")
 )
 
 func Issues(ctx *middleware.Context) {
@@ -72,6 +73,10 @@ func Issues(ctx *middleware.Context) {
 		page = 1000000
 	}
 	result, err := models.ListUIIssues(ctx.Req.Request.Context(), models.UIIssueQuery{ActorID: uid, RepositoryID: ctx.Repo.Repository.Id, MilestoneID: mid, Closed: ctx.Query("state") == "closed", View: view, Labels: ctx.Query("labels"), Sort: ctx.Query("sortType"), Page: page})
+	if err == models.ErrRepoNotExist {
+		ctx.Error(404)
+		return
+	}
 	if err != nil {
 		ctx.Handle(500, "ListUIIssues", err)
 		return
@@ -91,6 +96,7 @@ func Issues(ctx *middleware.Context) {
 	ctx.Data["SortType"] = ctx.Query("sortType")
 	ctx.Data["SelectedMilestone"] = ctx.Query("milestone")
 	ui.IssuePagination(ctx, page, result.Total)
+	ui.IssueEmpty(ctx, result.HasIssues, ctx.Repo.RepoLink)
 	ctx.HTML(200, ISSUES)
 }
 
@@ -132,10 +138,17 @@ func CreateIssue(ctx *middleware.Context) {
 }
 
 func CreateIssuePost(ctx *middleware.Context, form auth.CreateIssueForm) {
+	var savedIssue *models.Issue
+	failureStage := "details"
 	send := func(status int, data interface{}, err error) {
 		if ctx.Query("ui") == "1" {
 			if err != nil {
-				ctx.Data["IssueUIError"] = ctx.Tr("ui.issue_save_failed")
+				ctx.Data["IssueFormStatus"] = status
+				if savedIssue != nil {
+					renderSavedIssueFailure(ctx, savedIssue, 0, failureStage, false)
+					return
+				}
+				ctx.Data["IssueUIError"] = issueInputError(ctx, err)
 				ctx.Data["title"] = form.IssueName
 				ctx.Data["content"] = form.Content
 				ctx.Data["assigneeid"] = form.AssigneeId
@@ -151,11 +164,12 @@ func CreateIssuePost(ctx *middleware.Context, form auth.CreateIssueForm) {
 		if err != nil {
 			log.Error(4, "issue.CreateIssuePost(?): %s", err)
 
-			ctx.JSON(status, map[string]interface{}{
-				"ok":     false,
-				"status": status,
-				"error":  err.Error(),
-			})
+			result := map[string]interface{}{"ok": false, "status": status, "error": err.Error()}
+			if savedIssue != nil {
+				result["saved"] = true
+				result["data"] = issueResultURL(ctx, savedIssue.Index, 0)
+			}
+			ctx.JSON(status, result)
 		} else {
 			ctx.JSON(status, map[string]interface{}{
 				"ok":     true,
@@ -233,14 +247,23 @@ func CreateIssuePost(ctx *middleware.Context, form auth.CreateIssueForm) {
 		Content:     form.Content,
 	}
 	if err := models.NewIssue(issue); err != nil {
+		// NewIssue can return a supporting milestone error after committing the row.
+		if issue.Id > 0 {
+			if persisted, e := models.GetIssueById(issue.Id); e == nil {
+				savedIssue = persisted
+			}
+		}
 		send(500, nil, err)
 		return
-	} else if err := models.NewIssueUserPairs(issue.RepoId, issue.Id, ctx.Repo.Owner.Id,
+	}
+	savedIssue = issue
+	if err := models.NewIssueUserPairs(issue.RepoId, issue.Id, ctx.Repo.Owner.Id,
 		ctx.User.Id, form.AssigneeId); err != nil {
 		send(500, nil, err)
 		return
 	}
 
+	failureStage = "attachments"
 	if setting.AttachmentEnabled {
 		if err := uploadFiles(ctx, issue.Id, 0); err != nil {
 			send(500, nil, err)
@@ -248,6 +271,7 @@ func CreateIssuePost(ctx *middleware.Context, form auth.CreateIssueForm) {
 		}
 	}
 
+	failureStage = "notifications"
 	// Update mentions.
 	ms := base.MentionPattern.FindAllString(issue.Content, -1)
 	if len(ms) > 0 {
@@ -322,6 +346,9 @@ func ViewIssue(ctx *middleware.Context) {
 	ctx.Data["AttachmentsEnabled"] = setting.AttachmentEnabled
 
 	idx := com.StrTo(ctx.Params(":index")).MustInt64()
+	if savedIndex, ok := ctx.Data["IssueViewIndex"].(int64); ok {
+		idx = savedIndex
+	}
 	if idx == 0 && ctx.Req.Method == "POST" {
 		idx = com.StrTo(ctx.Query("issueIndex")).MustInt64()
 	}
@@ -432,7 +459,11 @@ func ViewIssue(ctx *middleware.Context) {
 	ctx.Data["IsIssueOwner"] = ctx.Repo.IsOwner || (ctx.IsSigned && issue.PosterId == ctx.User.Id)
 	ctx.Data["IsRepoToolbarIssues"] = true
 	ctx.Data["IsRepoToolbarIssuesList"] = false
-	ctx.Data["ReplyEditor"] = issueEditor(ctx, "reply-body", ctx.Query("content"))
+	reply := ctx.Query("content")
+	if savedBody, _ := ctx.Data["IssueBodySaved"].(bool); savedBody {
+		reply = ""
+	}
+	ctx.Data["ReplyEditor"] = issueEditor(ctx, "reply-body", reply)
 	editTitle, editContent := issue.Name, issue.Content
 	if failed, _ := ctx.Data["EditError"].(bool); failed {
 		editTitle, _ = ctx.Data["EditTitle"].(string)
@@ -581,7 +612,7 @@ func UpdateIssueLabel(ctx *middleware.Context) {
 				label.NumClosedIssues--
 			}
 		}
-		if err = models.UpdateLabel(label); err != nil {
+		if err = models.UpdateLabelIssueStats(label); err != nil {
 			ctx.Handle(500, "issue.UpdateIssueLabel(UpdateLabel)", err)
 			return
 		}
@@ -786,12 +817,24 @@ func uploadFiles(ctx *middleware.Context, issueId, commentId int64) error {
 }
 
 func Comment(ctx *middleware.Context) {
+	var issue *models.Issue
+	var savedComment *models.Comment
+	statusSaved := false
+	failureStage := "details"
 	send := func(status int, data interface{}, err error) {
 		if ctx.Query("ui") == "1" {
 			if err != nil {
-				ctx.Data["IssueUIError"] = ctx.Tr("ui.issue_save_failed")
-				ctx.Data["content"] = ctx.Query("content")
-				ViewIssue(ctx)
+				ctx.Data["IssueFormStatus"] = status
+				if issue != nil && (savedComment != nil || statusSaved) {
+					cid := int64(0)
+					if savedComment != nil {
+						cid = savedComment.Id
+					}
+					renderSavedIssueFailure(ctx, issue, cid, failureStage, savedComment == nil && ctx.Query("content") != "")
+				} else {
+					ctx.Data["IssueUIError"] = issueInputError(ctx, err)
+					ViewIssue(ctx)
+				}
 			} else {
 				ctx.Redirect(data.(string), 303)
 			}
@@ -801,11 +844,16 @@ func Comment(ctx *middleware.Context) {
 		if err != nil {
 			log.Error(4, "issue.Comment(?): %s", err)
 
-			ctx.JSON(status, map[string]interface{}{
-				"ok":     false,
-				"status": status,
-				"error":  err.Error(),
-			})
+			result := map[string]interface{}{"ok": false, "status": status, "error": err.Error()}
+			if issue != nil && (savedComment != nil || statusSaved) {
+				cid := int64(0)
+				if savedComment != nil {
+					cid = savedComment.Id
+				}
+				result["saved"] = true
+				result["data"] = issueResultURL(ctx, issue.Index, cid)
+			}
+			ctx.JSON(status, result)
 		} else {
 			ctx.JSON(status, map[string]interface{}{
 				"ok":     true,
@@ -821,12 +869,13 @@ func Comment(ctx *middleware.Context) {
 		return
 	}
 
-	issue, err := models.GetIssueByIndex(ctx.Repo.Repository.Id, index)
+	var err error
+	issue, err = models.GetIssueByIndex(ctx.Repo.Repository.Id, index)
 	if err != nil {
 		if err == models.ErrIssueNotExist {
 			send(404, nil, err)
 		} else {
-			send(200, nil, err)
+			send(500, nil, err)
 		}
 
 		return
@@ -849,7 +898,13 @@ func Comment(ctx *middleware.Context) {
 			if err = models.UpdateIssue(issue); err != nil {
 				send(500, nil, err)
 				return
-			} else if err = models.UpdateIssueUserPairsByStatus(issue.Id, issue.IsClosed); err != nil {
+			}
+			statusSaved = true
+			if err = models.ChangeIssueLabelStats(issue); err != nil {
+				send(500, nil, err)
+				return
+			}
+			if err = models.UpdateIssueUserPairsByStatus(issue.Id, issue.IsClosed); err != nil {
 				send(500, nil, err)
 				return
 			}
@@ -868,7 +923,7 @@ func Comment(ctx *middleware.Context) {
 			}
 
 			if _, err = models.CreateComment(ctx.User.Id, ctx.Repo.Repository.Id, issue.Id, cmtType, "", nil); err != nil {
-				send(200, nil, err)
+				send(500, nil, err)
 				return
 			}
 			log.Trace("%s Issue(%d) status changed: %v", ctx.Req.RequestURI, issue.Id, !issue.IsClosed)
@@ -888,6 +943,8 @@ func Comment(ctx *middleware.Context) {
 				return
 			}
 
+			savedComment = comment
+			failureStage = "notifications"
 			// Update mentions.
 			ms = base.MentionPattern.FindAllString(content, -1)
 			if len(ms) > 0 {
@@ -908,6 +965,7 @@ func Comment(ctx *middleware.Context) {
 		}
 	}
 
+	failureStage = "attachments"
 	if comment != nil {
 		if err := uploadFiles(ctx, issue.Id, comment.Id); err != nil {
 			send(500, nil, err)
@@ -915,6 +973,7 @@ func Comment(ctx *middleware.Context) {
 		}
 	}
 
+	failureStage = "notifications"
 	// Notify watchers.
 	act := &models.Action{
 		ActUserId:    ctx.User.Id,

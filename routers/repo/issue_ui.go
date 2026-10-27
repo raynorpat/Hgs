@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"errors"
 	"fmt"
 	"github.com/gogits/gogs/models"
 	"github.com/gogits/gogs/modules/middleware"
@@ -76,7 +77,7 @@ func validateIssueUploads(ctx *middleware.Context) error {
 	}
 	for _, header := range files {
 		if setting.AttachmentMaxSize > 0 && header.Size > setting.AttachmentMaxSize*1024*1024 {
-			return fmt.Errorf("attachment too large")
+			return ErrAttachmentTooLarge
 		}
 		f, err := header.Open()
 		if err != nil {
@@ -101,4 +102,48 @@ func validateIssueUploads(ctx *middleware.Context) error {
 		}
 	}
 	return nil
+}
+
+func issueResultURL(ctx *middleware.Context, index, commentID int64) string {
+	result := fmt.Sprintf("%s/issues/%d", ctx.Repo.RepoLink, index)
+	if commentID > 0 {
+		result += fmt.Sprintf("#issue-comment-%d", commentID)
+	}
+	return result
+}
+
+// A failed supporting operation must not offer to create content already saved.
+// Only a genuinely unsaved comment remains in the reply editor.
+func renderSavedIssueFailure(ctx *middleware.Context, issue *models.Issue, commentID int64, stage string, unsavedComment bool) {
+	ctx.Data["IssueViewIndex"] = issue.Index
+	ctx.Data["IssueBodySaved"] = !unsavedComment
+	ctx.Data["IssueSavedResult"] = issueResultURL(ctx, issue.Index, commentID)
+	ctx.Resp.Header().Set("Content-Location", issueResultURL(ctx, issue.Index, commentID))
+	key := "ui.issue_saved_" + stage + "_failed"
+	if commentID > 0 {
+		key = "ui.comment_saved_" + stage + "_failed"
+	}
+	if unsavedComment {
+		key = "ui.status_saved_comment_failed"
+	}
+	ctx.Data["IssueUIError"] = ctx.Tr(key)
+	if stage == "attachments" {
+		ctx.Data["IssueRecoveryHint"] = ctx.Tr("ui.saved_attachment_recovery")
+	}
+	ViewIssue(ctx)
+}
+
+func issueInputError(ctx *middleware.Context, err error) string {
+	switch {
+	case errors.Is(err, ErrTooManyFiles):
+		return ctx.Tr("ui.attachments_too_many", setting.AttachmentMaxFiles)
+	case errors.Is(err, ErrFileTypeForbidden):
+		return ctx.Tr("ui.attachments_type", strings.ReplaceAll(setting.AttachmentAllowedTypes, "|", ", "))
+	case errors.Is(err, ErrAttachmentTooLarge):
+		return ctx.Tr("ui.attachments_size", setting.AttachmentMaxSize)
+	case ctx.HasError():
+		return ctx.Flash.ErrorMsg
+	default:
+		return ctx.Tr("ui.issue_save_failed")
+	}
 }

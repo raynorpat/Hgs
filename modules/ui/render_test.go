@@ -338,3 +338,38 @@ func TestSharedShellExploreLanguageContext(t *testing.T) {
 		})
 	}
 }
+
+func TestSharedIssueEmptyActions(t *testing.T) {
+	for _, tc := range []struct {
+		name                          string
+		signed, hasIssues             bool
+		repository, kind, action, url string
+	}{
+		{"repository", true, false, "/code/alice/laboratory", "empty", "New issue", "/code/alice/laboratory/issues/new"},
+		{"anonymous", false, false, "/code/alice/laboratory", "empty", "Sign in", "/code/user/login"},
+		{"filtered", true, true, "/code/alice/laboratory", "filtered", "Clear filters", "/code/alice/laboratory/issues"},
+		{"workspace", true, false, "", "empty", "Choose a repository", "/code/#repositories"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var account *models.User
+			if tc.signed {
+				account = &models.User{Id: 1, Name: "alice"}
+			}
+			shellFixture(t, "/code", Workspace, account, true, true, false, "Issues", func(ctx *middleware.Context) {
+				IssueEmpty(ctx, tc.hasIssues, tc.repository)
+				html, err := ctx.HTMLString("shared/issue_empty", ctx.Data)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, want := range []string{`data-issue-empty="` + tc.kind + `"`, tc.action, `href="` + tc.url + `"`} {
+					if !strings.Contains(html, want) {
+						t.Errorf("missing permitted empty action %q in %s", want, html)
+					}
+				}
+				if !tc.signed && strings.Contains(html, "/issues/new") {
+					t.Fatal("anonymous empty state offers creation directly")
+				}
+			})
+		})
+	}
+}
