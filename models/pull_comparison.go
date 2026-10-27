@@ -126,7 +126,10 @@ func FailPullComparison(ctx context.Context, id int64, reason string) error {
 	if reason != "interrupted" && reason != "snapshot-failed" && reason != "artifact-invalid" && reason != "selection-changed" {
 		return ErrPullInvalid
 	}
-	_, err := x.Where("id = ? AND state = ?", id, "pending").Cols("state", "failure").Update(&PullComparison{State: "unavailable", Failure: reason})
+	affected, err := x.Where("id = ? AND state = ?", id, "pending").Cols("state", "failure").Update(&PullComparison{State: "unavailable", Failure: reason})
+	if err == nil && affected != 1 {
+		return ErrPullConflict
+	}
 	return err
 }
 
@@ -144,6 +147,9 @@ func InvalidateComparisonArtifact(ctx context.Context, id int64) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	_, err := x.Id(id).Cols("state", "failure", "snapshot_complete").Update(&PullComparison{State: "unavailable", Failure: "artifact-invalid", SnapshotComplete: false})
+	affected, err := x.Id(id).Cols("state", "failure", "snapshot_complete").Update(&PullComparison{State: "unavailable", Failure: "artifact-invalid", SnapshotComplete: false})
+	if err == nil && affected != 1 {
+		return ErrPullConflict
+	}
 	return err
 }

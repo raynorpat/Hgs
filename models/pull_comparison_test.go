@@ -90,3 +90,29 @@ func TestPullComparisonPublicationRechecksAuthority(t *testing.T) {
 		t.Fatal("revoked reader read")
 	}
 }
+
+func TestPullComparisonFailureTransitionRequiresPending(t *testing.T) {
+	_, author, _, _, input := pullFixture(t, false)
+	ctx := context.Background()
+	p, err := CreatePullRecord(ctx, author.Id, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := ReservePullComparison(ctx, author.Id, p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := FailPullComparison(ctx, c.ID, "snapshot-failed"); err != nil {
+		t.Fatal(err)
+	}
+	if err := FailPullComparison(ctx, c.ID, "interrupted"); !errors.Is(err, ErrPullConflict) {
+		t.Fatalf("zero-row failure update claimed persistence: %v", err)
+	}
+	if err := InvalidateComparisonArtifact(ctx, c.ID+1); !errors.Is(err, ErrPullConflict) {
+		t.Fatalf("missing artifact row claimed persistence: %v", err)
+	}
+	got, err := GetPullComparison(ctx, author.Id, p.ID, c.ID)
+	if err != nil || got.State != "unavailable" || got.Failure != "snapshot-failed" {
+		t.Fatalf("failed transition changed row: %+v %v", got, err)
+	}
+}

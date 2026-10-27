@@ -266,31 +266,34 @@ func ReconcileComparisons(ctx context.Context, host *hosting.Service, staticRoot
 				return err
 			}
 			after = c.ID
-			if c.SnapshotComplete {
-				if _, err := comparisonSnapshot(host.ReviewArtifactRoot(), c); err != nil {
-					if err := models.InvalidateComparisonArtifact(ctx, c.ID); err != nil {
-						return err
-					}
-				}
-				continue
-			}
-			// Repair-needed allocations are retained even across later restarts.
-			if c.State == "unavailable" && c.Failure == "artifact-invalid" {
-				continue
-			}
-			err := removeComparisonAllocation(host.ReviewArtifactRoot(), c)
-			if c.State == "pending" {
-				reason := "interrupted"
-				if err != nil {
-					reason = "artifact-invalid"
-				}
-				if err := models.FailPullComparison(ctx, c.ID, reason); err != nil {
-					return err
-				}
+			if err := reconcileComparisonArtifact(ctx, host.ReviewArtifactRoot(), c); err != nil {
+				return err
 			}
 		}
 		if len(rows) < 100 {
 			return nil
 		}
 	}
+}
+
+func reconcileComparisonArtifact(ctx context.Context, root string, c models.PullComparison) error {
+	if c.SnapshotComplete {
+		if _, err := comparisonSnapshot(root, c); err != nil {
+			return markComparisonRepairNeeded(ctx, c, false)
+		}
+		return nil
+	}
+	if c.State == "unavailable" && c.Failure == "artifact-invalid" {
+		logComparisonRepairNeeded(c.ID)
+		return nil
+	}
+	if err := removeComparisonAllocation(root, c); err != nil {
+		return markComparisonRepairNeeded(ctx, c, true)
+	}
+	if c.State == "pending" {
+		if err := models.FailPullComparison(ctx, c.ID, "interrupted"); err != nil {
+			return &comparisonFailureError{operation: err, persistence: true}
+		}
+	}
+	return nil
 }

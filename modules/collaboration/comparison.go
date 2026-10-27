@@ -105,22 +105,14 @@ func (s *Service) RefreshComparison(ctx context.Context, actor, pullID int64) (c
 	if err != nil {
 		return c, err
 	}
+	reserved := c
 	owned := false
 	complete := false
 	defer func() {
 		if complete {
 			return
 		}
-		if owned {
-			_ = removeComparisonAllocation(host.ReviewArtifactRoot(), c)
-		}
-		// Failure cleanup is permitted even after the actor/context was revoked.
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), hg.BrowserCommandTimeout)
-		defer cancel()
-		_ = models.FailPullComparison(cleanupCtx, c.ID, "snapshot-failed")
-		c.State = "unavailable"
-		c.Failure = "snapshot-failed"
-		c.SnapshotComplete = false
+		c, resultErr = finishComparisonFailure(host.ReviewArtifactRoot(), reserved, owned, resultErr)
 	}()
 	if resolveErr != nil {
 		return c, comparisonError(resolveErr)
