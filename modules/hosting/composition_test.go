@@ -44,7 +44,21 @@ func fakeHostingHg(args []string) int {
 		}
 	case "help":
 		fmt.Print(`"pretxnopen" "pretxnclose" "pretxnclose-bookmark" "pretxnclose-phase" "prepushkey"`)
+	case "showconfig":
+		fmt.Print(`[]`)
 	case "log":
+		fixtureName := "fake-review-references"
+		if len(args) == 5 && strings.Contains(args[4], "p1node") {
+			fixtureName = "fake-review-result"
+		}
+		if data, err := os.ReadFile(filepath.Join(filepath.Dir(os.Getenv("HGRCPATH")), fixtureName)); err == nil {
+			if string(data) == "EXIT" {
+				fmt.Fprint(os.Stderr, "abort: injected result read failure")
+				return 255
+			}
+			fmt.Print(string(data))
+			return 0
+		}
 		fmt.Printf(`[{"node":"%s"}]`, strings.Repeat("0", 40))
 	case "init":
 		if trace := os.Getenv("GOGS_HG_TEST_TRACE"); trace != "" {

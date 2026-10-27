@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -179,5 +180,80 @@ func TestReviewPublishStartupAbortsRevokedUndispatchedOperation(t *testing.T) {
 	rows, err := models.PendingReviewReservations()
 	if err != nil || len(rows) != 0 {
 		t.Fatalf("startup retained revoked undispatched fence: %+v %v", rows, err)
+	}
+}
+
+func TestReviewPublishResultInspectionFailureQuarantinesTarget(t *testing.T) {
+	for _, tc := range []struct {
+		name, output string
+		repair       bool
+	}{
+		{"command_failure", "EXIT", true}, {"malformed_output", "{", true}, {"missing_node", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, owner, target := fixture(t)
+			source, err := models.CreateHgRepository(context.Background(), s.runner, s.RepositoryRoot(), models.CreateHgRepositoryOptions{OwnerID: owner.Id, Name: "source", Private: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			oldNode, resultNode := hg.NodeID(strings.Repeat("1", 40)), hg.NodeID(strings.Repeat("2", 40))
+			selection := hg.ReviewSelection{Ref: hg.RefSelection{Kind: hg.RefBookmark, Name: "selected"}}
+			e := MutationExpectation{RepoID: target.Id, Node: oldNode, Selection: selection, OperationID: "inspection-failure-operation", Source: MutationEndpoint{RepoID: source.Id, Node: resultNode}, Prepared: hg.PreparedMerge{Source: resultNode, Target: oldNode, Result: resultNode, Mode: "fast_forward", DestinationBranch: "default", Bookmark: "selected"}}
+			for name, data := range map[string]string{"fake-review-result": tc.output, "fake-review-references": `{"rev":0,"node":"` + string(oldNode) + `","branch":"default","bookmarks":["selected"],"tags":[]}`} {
+				if err = os.WriteFile(filepath.Join(filepath.Dir(s.cfg.Mercurial.ConfigPath), "review-inspection", name), []byte(data), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			path, _ := models.RepositoryStoragePath(s.RepositoryRoot(), target.Id)
+			endpoint, err := s.inspector.InspectReviewEndpoint(context.Background(), path, selection)
+			if err != nil || endpoint.Node != oldNode {
+				t.Fatalf("independent reference inspection: %+v %v", endpoint, err)
+			}
+			payload, err := json.Marshal(e)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// A no-longer-existing actor has no authority. Reconciliation may
+			// observe facts, but cannot publish or recover on that actor's behalf.
+			actorID := owner.Id + 1000
+			op := models.ReviewPublication{ID: e.OperationID, ActorID: actorID, Payload: string(payload)}
+			if _, err = models.BeginReviewPublication(op, []int64{source.Id, target.Id}); err != nil {
+				t.Fatal(err)
+			}
+			if err = models.StartReviewPublication(op.ID); err != nil {
+				t.Fatal(err)
+			}
+			s.sessions.reservations[source.Id], s.sessions.reservations[target.Id] = op.ID, op.ID
+			if err = s.WithRepositoryMutation(context.Background(), actorID, e, func(context.Context, map[string]string) error {
+				t.Fatal("revoked operation invoked publication")
+				return nil
+			}); err == nil {
+				t.Fatal("revoked operation accepted")
+			}
+			current, err := models.ReviewPublicationStatus(op.ID)
+			if err != nil || !current.Failed || current.Complete || current.RepairRequired != tc.repair {
+				t.Fatalf("terminal state: %+v %v", current, err)
+			}
+			rows, err := models.PendingReviewReservations()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.repair {
+				if len(rows) != 1 || rows[0].RepoID != target.Id || rows[0].OperationID != op.ID {
+					t.Fatalf("target quarantine missing: %+v", rows)
+				}
+				if release, err := s.RegisterBrowserRead(owner.Id, target.Id, func() {}); err == nil {
+					release()
+					t.Fatal("uncertain target admitted")
+				}
+			} else if len(rows) != 0 {
+				t.Fatalf("confirmed absent result retained fences: %+v", rows)
+			}
+			release, err := s.RegisterBrowserRead(owner.Id, source.Id, func() {})
+			if err != nil {
+				t.Fatalf("distinct source still blocked: %v", err)
+			}
+			release()
+		})
 	}
 }

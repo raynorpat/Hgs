@@ -166,8 +166,11 @@ func (r *Runner) reviewChangeset(ctx context.Context, path string, node NodeID) 
 	if err != nil {
 		return Changeset{}, err
 	}
-	if len(entries) != 1 || entries[0].Node != node {
+	if len(entries) == 0 {
 		return Changeset{}, ErrNotFound
+	}
+	if len(entries) != 1 || entries[0].Node != node {
+		return Changeset{}, errors.New("hg: unexpected review changeset result")
 	}
 	return entries[0], nil
 }

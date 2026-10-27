@@ -148,7 +148,19 @@ func fakeHg(args []string) int {
 		fmt.Print(fixture("fake-help", fakeHooksHelp))
 	case "init":
 		return exitCode(os.MkdirAll(filepath.Join(args[1], ".hg"), 0700))
+	case "showconfig":
+		fmt.Print(`[]`)
 	case "log":
+		if len(args) == 5 && strings.Contains(args[4], "p1node") {
+			if result := fixture("fake-review-result", "\x00"); result != "\x00" {
+				if result == "EXIT" {
+					fmt.Fprint(os.Stderr, "abort: injected result read failure")
+					return 255
+				}
+				fmt.Print(result)
+				return 0
+			}
+		}
 		if len(args) == 5 && args[4] == "{node}" {
 			recordFakeCall()
 			fmt.Print(fixture("fake-visible", ""))

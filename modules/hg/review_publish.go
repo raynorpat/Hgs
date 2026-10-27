@@ -35,7 +35,15 @@ func (r *Runner) ReviewPublicationState(ctx context.Context, q PublishReviewRequ
 	if q.TargetPath != q.Expected.Path || p.Target != q.Expected.Node || p.Result == "" {
 		return false, false, ErrNotFound
 	}
+	if _, err := ParseNodeID(string(p.Result)); err != nil {
+		return false, false, err
+	}
 	cs, e := r.reviewChangeset(ctx, q.TargetPath, p.Result)
+	// Only a successful, empty native result query proves absence. Inspection
+	// failures must keep the target quarantined during terminal reconciliation.
+	if e != nil && !errors.Is(e, ErrNotFound) {
+		return false, false, e
+	}
 	if e == nil {
 		if cs.Branch != p.DestinationBranch {
 			return false, false, ErrNotFound
