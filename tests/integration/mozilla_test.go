@@ -1030,9 +1030,13 @@ func (m *mozillaRun) resumeTimedOutSource() *mozillaIdentity {
 }
 
 func (m *mozillaRun) application() *application {
-	a := newConfiguredApplication(m.t, versions{name: "Mozilla native", server: hgPath(m.t), client: hgPath(m.t)}, func(s string) string {
+	return m.applicationAt("")
+}
+
+func (m *mozillaRun) applicationAt(root string) *application {
+	a := newConfiguredApplicationAt(m.t, versions{name: "Mozilla native", server: hgPath(m.t), client: hgPath(m.t)}, func(s string) string {
 		return strings.ReplaceAll(strings.ReplaceAll(s, "MAX_PROCESSES = 2", "MAX_PROCESSES = 8"), "SESSION_TIMEOUT = 2\n", "SESSION_TIMEOUT = 30\n")
-	}, 4*time.Hour)
+	}, 4*time.Hour, root)
 	config, e := os.ReadFile(a.config)
 	if e != nil {
 		m.t.Fatal(e)
@@ -1241,6 +1245,162 @@ func (m *mozillaRun) retainedOutcome(name string) {
 	}
 }
 
+// The fresh entry has its own one-shot lease and evidence. It never adopts a
+// historical interruption or consumes retained-phase-results.json. A failed or
+// interrupted attempt requires explicit review; re-running cannot replay writes.
+func skipStandaloneMozillaOrdered(t *testing.T) {
+	if os.Getenv("GOGS_TEST_MOZILLA_ORDERED") == "1" {
+		t.Skip("fresh ordered mode runs all gates in TestMozillaCentralOrdered; no duplicate fixtures")
+	}
+}
+
+func TestMozillaCentralOrdered(t *testing.T) {
+	if os.Getenv("GOGS_TEST_MOZILLA_ORDERED") != "1" {
+		t.Skip("explicit fresh ordered run: GOGS_TEST_MOZILLA_ORDERED=1")
+	}
+	if os.Getenv("GOGS_TEST_MOZILLA") != "1" || os.Getenv("GOGS_TEST_MOZILLA_RETAINED") != "" || os.Getenv("GOGS_TEST_MOZILLA_ALLOW_TIMED_OUT_SOURCE") != "" {
+		t.Fatal("ordered mode requires GOGS_TEST_MOZILLA=1 and forbids retained/conditional-source modes")
+	}
+	m := newMozillaRun(t)
+	m.freshOrdered(m.freeze)
+}
+
+func (m *mozillaRun) freshOrdered(verifySource func()) {
+	lease, err := os.OpenFile(filepath.Join(m.root, "ordered-run-lease.json"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		m.t.Fatal("ordered run already attempted or root unavailable; explicit review required, no replay: ", err)
+	}
+	err = json.NewEncoder(lease).Encode(map[string]interface{}{"utc": time.Now().UTC(), "raw": m.raw, "note": "one fresh attempt; no automatic replay or adoption"})
+	closeErr := lease.Close()
+	if err != nil || closeErr != nil {
+		m.t.Fatalf("write ordered lease: %v %v", err, closeErr)
+	}
+	results := map[string]bool{}
+	var a *application
+	// Registered before constructing the fixture: its own cleanup stops the app
+	// and closes the global model engine first (testing cleanup runs in LIFO order).
+	m.t.Cleanup(func() {
+		if a == nil || !a.lastCleanStop || !a.databaseClosed {
+			m.t.Error("ordered fixture is not proven cold; lease retained, no phase results published")
+			return
+		}
+		if left := waitNoProcesses(a.config, a.repoRoot); len(left) != 0 {
+			m.t.Errorf("ordered fixture still owns processes: %v; no cold checkpoint published", left)
+			return
+		}
+		state := map[string]interface{}{"utc": time.Now().UTC(), "fixture": a.root, "raw": m.raw, "cleanApplicationStop": a.lastCleanStop, "databaseClosed": a.databaseClosed, "testFailed": m.t.Failed(), "sourceIntegrity": m.identity.VerificationState, "sourceIdentity": m.identity, "results": results, "note": "retained in place; explicit review required before any further writes"}
+		b, e := json.MarshalIndent(state, "", "  ")
+		if e == nil {
+			e = os.WriteFile(filepath.Join(m.root, "ordered-cold-checkpoint.json"), b, 0600)
+		}
+		if e != nil {
+			m.t.Error(e)
+		}
+	})
+	phase := func(name string, fn func()) bool {
+		ok := m.t.Run(name, func(t *testing.T) {
+			previous := m.t
+			m.t = t
+			defer func() { m.t = previous }()
+			fn()
+		})
+		results[name] = ok
+		return ok
+	}
+	if !phase("source", func() {
+		verifySource()
+		if m.identity.VerificationState != "VERIFIED" {
+			m.t.Fatal("fresh ordered source gate requires successful native verification")
+		}
+	}) {
+		return
+	}
+	a = m.applicationAt(filepath.Join(m.root, "ordered-fixture"))
+	hashes := map[string]string{}
+	for _, name := range mozillaStaticFiles {
+		b, e := os.ReadFile(filepath.Join(a.root, name))
+		if e != nil {
+			m.t.Fatal(e)
+		}
+		sum := sha256.Sum256(b)
+		hashes[name] = hex.EncodeToString(sum[:])
+	}
+	userIDs, repoIDs := map[string]int64{}, map[string]int64{}
+	for name, user := range a.users {
+		userIDs[name] = user.Id
+	}
+	for name, repo := range a.repos {
+		repoIDs[name] = repo.Id
+	}
+	b, err := json.MarshalIndent(map[string]interface{}{"fixture": a.root, "files": hashes, "userIDs": userIDs, "keyIDs": a.keyIDs, "repositoryIDs": repoIDs}, "", "  ")
+	if err != nil {
+		m.t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(m.raw, "ordered-fixture-identity.json"), b, 0600); err != nil {
+		m.t.Fatal(err)
+	}
+	remotes, stores := make([]string, 2), make([]string, 2)
+	options := make([][]string, 2)
+	transports, repos := []string{transportHTTP, transportSSH}, []string{"public", "private"}
+	for i, transport := range transports {
+		if !phase(transport+"-ingestion", func() {
+			var ok bool
+			remotes[i], options[i], stores[i], ok = m.seed(a, transport, repos[i])
+			if !ok {
+				return
+			}
+			m.compareIdentity(stores[i], remotes[i], options[i], transport)
+			m.compareRequirements(stores[i], transport)
+		}) {
+			return
+		}
+	}
+	// These local reads do not need the service's finite lifetime running down.
+	a.stop()
+	if !a.lastCleanStop {
+		m.t.Fatal("ordered application did not stop before native verification")
+	}
+	for i, transport := range transports {
+		if !phase(transport+"-verification", func() { m.must(transport+"-verify", stores[i], "verify") }) {
+			return
+		}
+	}
+	a.start(m.t)
+	// All pristine content, UI, native baselines and read capacity precede the
+	// disposable workflow roots that change the default branch and bookmarks.
+	if !phase("pristine-reads", func() { m.performance(a, stores[0]) }) {
+		return
+	}
+	for i, transport := range transports {
+		if !phase(transport+"-workflows", func() { m.workflows(a, transport, repos[i], remotes[i], options[i], stores[i]) }) {
+			return
+		}
+	}
+	if !phase("issues", func() { m.issues(a) }) {
+		return
+	}
+	if err := mozillaCheckStaticFiles(a.root, hashes); err != nil {
+		m.t.Fatal(err)
+	}
+}
+
+func (m *mozillaRun) compareRequirements(store, label string) {
+	var requirements string
+	for _, path := range []string{".hg/requires", ".hg/store/requires"} {
+		b, err := os.ReadFile(filepath.Join(store, path))
+		if err != nil && !os.IsNotExist(err) {
+			m.t.Fatal(err)
+		}
+		requirements += path + ":\n" + string(b)
+	}
+	s := mozillaSample{Name: label + "-requirements", Kind: "requirements-check", StartedUTC: time.Now().UTC().Format(time.RFC3339Nano), Repository: store, Args: requirements}
+	if requirements != m.identity.Requirements {
+		s.Error = "hosted requirements differ from the frozen source"
+		m.t.Error(label + ": " + s.Error)
+	}
+	m.record(s)
+}
+
 func (m *mozillaRun) retainedPhases() {
 	a := m.retainedApplication()
 	results := map[string]bool{}
@@ -1374,6 +1534,7 @@ func (m *mozillaRun) compareIdentity(store, remote string, opts []string, label 
 }
 
 func TestMozillaCentralIngestion(t *testing.T) {
+	skipStandaloneMozillaOrdered(t)
 	m := newMozillaRun(t)
 	m.freeze()
 	if os.Getenv("GOGS_TEST_MOZILLA_RETAINED") == "1" {
@@ -1611,6 +1772,7 @@ func (m *mozillaRun) workflows(a *application, transport, repo, remote string, o
 	}
 }
 func TestMozillaCentralCorrectness(t *testing.T) {
+	skipStandaloneMozillaOrdered(t)
 	m := newMozillaRun(t)
 	m.freeze()
 	if os.Getenv("GOGS_TEST_MOZILLA_RETAINED") == "1" {
@@ -1839,6 +2001,7 @@ func (m *mozillaRun) issues(a *application) {
 }
 
 func TestMozillaCentralPerformance(t *testing.T) {
+	skipStandaloneMozillaOrdered(t)
 	m := newMozillaRun(t)
 	m.freeze()
 	if os.Getenv("GOGS_TEST_MOZILLA_RETAINED") == "1" {
@@ -1858,6 +2021,7 @@ func TestMozillaCentralPerformance(t *testing.T) {
 // cohort supplies native baselines even when full hosted ingestion is blocked.
 // It does not turn the failed source-integrity gate into a pass.
 func TestMozillaCentralNativeBaseline(t *testing.T) {
+	skipStandaloneMozillaOrdered(t)
 	m := newMozillaRun(t)
 	m.deadline = 30 * time.Second
 	m.freeze()
@@ -1921,10 +2085,10 @@ func (m *mozillaRun) performance(a *application, store string) {
 	// from Go/database/proxy/rendering. They are not subtracted as causal proof.
 	followPattern := m.nativePathPattern(m.followPath)
 	for i := 0; i < 5; i++ {
-		m.command("baseline-process-startup", "", "version", "-T", "json")
-		m.commandWithOptions("baseline-manifest", store, mozillaCommandOptions{Concurrency: 1, HashOnly: true}, "manifest", "-r", node)
-		m.command("baseline-history", store, "log", "-l", "30", "-T", "json")
-		m.command("baseline-file-history", store, "log", "--follow", "-r", node, "-l", "30", "--", followPattern)
+		m.must("baseline-process-startup", "", "version", "-T", "json")
+		m.mustHashOnly("baseline-manifest", store, "manifest", "-r", node)
+		m.must("baseline-history", store, "log", "-l", "30", "-T", "json")
+		m.must("baseline-file-history", store, "log", "--follow", "-r", node, "-l", "30", "--", followPattern)
 	}
 	for _, n := range []int{1, 4, 8, 12} {
 		var wg sync.WaitGroup

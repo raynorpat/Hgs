@@ -39,6 +39,7 @@ type application struct {
 	server                                                              *hg.Runner
 	child                                                               *hg.Child
 	lastCleanStop                                                       bool
+	databaseClosed                                                      bool
 	direct                                                              bool
 	output                                                              sync.WaitGroup
 	users                                                               map[string]*models.User
@@ -65,8 +66,24 @@ func newApplication(t *testing.T, v versions) *application {
 // newConfiguredApplication permits test-only workload settings before startup.
 // Existing acceptance callers retain their original limits.
 func newConfiguredApplication(t *testing.T, v versions, editConfig func(string) string, supervisorDeadline time.Duration) *application {
+	return newConfiguredApplicationAt(t, v, editConfig, supervisorDeadline, "")
+}
+
+// A supplied root is created exclusively and retained after cleanup. Ordinary
+// callers still get t.TempDir and its automatic removal.
+func newConfiguredApplicationAt(t *testing.T, v versions, editConfig func(string) string, supervisorDeadline time.Duration, root string) *application {
 	t.Helper()
-	a := &application{t: t, root: t.TempDir(), users: map[string]*models.User{}, keys: map[string]string{}, keyIDs: map[string]int64{}, repos: map[string]*models.Repository{}}
+	if root == "" {
+		root = t.TempDir()
+	} else {
+		if !filepath.IsAbs(root) {
+			t.Fatal("retained application root must be absolute")
+		}
+		if err := os.Mkdir(root, 0700); err != nil {
+			t.Fatal("retained application root must be new: ", err)
+		}
+	}
+	a := &application{t: t, root: root, users: map[string]*models.User{}, keys: map[string]string{}, keyIDs: map[string]int64{}, repos: map[string]*models.Repository{}}
 	a.address, a.sshAddress = freeAddress(t), freeAddress(t)
 	assets := os.Getenv("GOGS_TEST_ASSETS")
 	if os.Getenv("GOGS_TEST_BINARY") != "" && assets == "" {
@@ -126,6 +143,7 @@ func newConfiguredApplication(t *testing.T, v versions, editConfig func(string) 
 	t.Cleanup(func() {
 		a.stop()
 		models.CloseEngine()
+		a.databaseClosed = true
 		models.DbCfg, setting.LogRootPath, setting.RepoRootPath = oldDB, oldLog, oldRoot
 	})
 	// The first administrator must not accidentally be an acceptance principal.
