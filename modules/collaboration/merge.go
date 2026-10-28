@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -201,10 +200,11 @@ func preparedMergeRoot(host *hosting.Service) string {
 
 // removePreparedMerge deletes only <root>/prepared/<id> for a terminal operation.
 func removePreparedMerge(host *hosting.Service, id string) {
-	if b, err := hex.DecodeString(id); err != nil || len(b) != 16 {
+	op, err := models.LoadMergeOperation(id)
+	if err != nil {
 		return
 	}
-	if err := os.RemoveAll(filepath.Join(preparedMergeRoot(host), id)); err != nil {
+	if err := removeOwnedPrepared(host, op); err != nil {
 		log.Warn("remove prepared merge %s: %v", id, err)
 	}
 }
@@ -213,7 +213,9 @@ func failMerge(host *hosting.Service, op models.MergeOperation, code string, cau
 	if err := models.FailMerge(op.ID, code); err != nil {
 		return op, err
 	}
-	removePreparedMerge(host, op.ID)
+	if code != "publication-failed" {
+		removePreparedMerge(host, op.ID)
+	}
 	return reloadMerge(op), cause
 }
 
@@ -247,16 +249,8 @@ func (s *Service) prepareMerge(ctx context.Context, host *hosting.Service, op mo
 	if err != nil {
 		return failMerge(host, op, "authority-lost", err)
 	}
-	root := preparedMergeRoot(host)
-	if err = comparisonPlainPath(host.ReviewArtifactRoot()); err != nil {
-		return op, ErrComparisonUnavailable
-	}
-	if err = os.MkdirAll(root, 0700); err != nil {
-		return op, err
-	}
-	output := filepath.Join(root, op.ID)
-	// Nothing was published while unstarted, so any earlier attempt's output is ours to discard.
-	if err = os.RemoveAll(output); err != nil {
+	output, err := allocatePrepared(host, op)
+	if err != nil {
 		return op, err
 	}
 	prepared, err := host.Runner().PrepareReviewMerge(readCtx, snapshot, output, mergeAuthor(user), mergeMessage(p))
@@ -311,6 +305,15 @@ func (s *Service) publishMerge(ctx context.Context, host *hosting.Service, op mo
 	case statusErr == nil && st.Failed:
 		_, err = failMerge(host, op, "publication-failed", err)
 		return err
+	case statusErr == nil && st.Aborted && !st.Started:
+		code := "publication-aborted"
+		if errors.Is(err, hosting.ErrStaleRepository) {
+			code, err = "stale", ErrMergeStale
+		}
+		_, err = failMerge(host, op, code, err)
+		return err
+	case statusErr != nil && !errors.Is(statusErr, models.ErrReviewPublicationMissing):
+		return statusErr
 	case err == nil:
 		return errors.New("merge publication finished without a durable record")
 	case statusErr == nil && st.Started:

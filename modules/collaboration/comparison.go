@@ -117,14 +117,11 @@ func (s *Service) RefreshComparison(ctx context.Context, actor, pullID int64) (c
 	if resolveErr != nil {
 		return c, comparisonError(resolveErr)
 	}
-	if source.Node == target.Node {
-		return c, hg.ErrNoChanges
-	}
 	if err := allocateComparison(host.ReviewArtifactRoot(), c); err != nil {
 		return c, ErrComparisonUnavailable
 	}
 	owned = true
-	snapshot, err := host.Runner().SnapshotReview(ctx, source, target, filepath.Join(host.ReviewArtifactRoot(), c.ArtifactID, "snapshot"))
+	snapshot, err := host.Runner().SnapshotMergeReview(ctx, source, target, filepath.Join(host.ReviewArtifactRoot(), c.ArtifactID, "snapshot"))
 	if err != nil {
 		return c, comparisonError(err)
 	}
@@ -135,6 +132,10 @@ func (s *Service) RefreshComparison(ctx context.Context, actor, pullID int64) (c
 		return c, ErrComparisonUnavailable
 	}
 	_, previewErr := host.Runner().CompareReview(ctx, snapshot)
+	c.Outcome = models.ComparisonChanges
+	if errors.Is(previewErr, hg.ErrNoChanges) && snapshot.Base == snapshot.Source {
+		c.Outcome, previewErr = models.ComparisonIntegrated, nil
+	}
 	if previewErr != nil && !errors.Is(previewErr, hg.ErrComparisonTooLarge) {
 		return c, comparisonError(previewErr)
 	}
@@ -173,6 +174,9 @@ func (s *Service) Comparison(ctx context.Context, actor, pullID, id int64) (mode
 		return c, hg.ReviewComparison{}, ErrComparisonUnavailable
 	}
 	preview, err := host.Runner().CompareReview(ctx, snapshot)
+	if errors.Is(err, hg.ErrNoChanges) && c.Outcome == models.ComparisonIntegrated && snapshot.Base == snapshot.Source {
+		err = nil
+	}
 	// Native work can take time. Recheck before any buffered content is returned.
 	if _, accessErr := models.GetPullRecordByID(ctx, actor, pullID); accessErr != nil {
 		return models.PullComparison{}, hg.ReviewComparison{}, accessErr

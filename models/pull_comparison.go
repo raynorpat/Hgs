@@ -14,15 +14,23 @@ import (
 // of preview readiness: a too-large preview is unavailable, but its complete
 // snapshot can still serve authorized raw content. OwnershipNonce is internal.
 // CurrentComparisonID is an observation, never permission to publish a merge.
+type ComparisonOutcome string
+
+const (
+	ComparisonChanges    ComparisonOutcome = "changes"
+	ComparisonIntegrated ComparisonOutcome = "already_integrated"
+)
+
 type PullComparison struct {
 	ID                               int64 `xorm:"pk autoincr 'id'"`
 	PullID                           int64 `xorm:"unique(pull_comparison_revision) 'pull_id'"`
 	Revision                         int64 `xorm:"unique(pull_comparison_revision)"`
 	SourceNode, TargetNode, BaseNode hg.NodeID
-	ArtifactID                       string `xorm:"unique VARCHAR(64) 'artifact_id'"`
-	OwnershipNonce                   string `xorm:"VARCHAR(64)" json:"-"`
-	State                            string `xorm:"VARCHAR(16)"`
-	Failure                          string `xorm:"VARCHAR(32)"`
+	ArtifactID                       string            `xorm:"unique VARCHAR(64) 'artifact_id'"`
+	OwnershipNonce                   string            `xorm:"VARCHAR(64)" json:"-"`
+	State                            string            `xorm:"VARCHAR(16)"`
+	Outcome                          ComparisonOutcome `xorm:"VARCHAR(24)"`
+	Failure                          string            `xorm:"VARCHAR(32)"`
 	SnapshotComplete                 bool
 	Created                          time.Time `xorm:"created"`
 }
@@ -83,7 +91,7 @@ func CompletePullComparison(ctx context.Context, actor int64, c PullComparison) 
 			return ErrPullInvalid
 		}
 	}
-	if c.SourceNode == c.TargetNode {
+	if (c.Outcome != "" && c.Outcome != ComparisonChanges && c.Outcome != ComparisonIntegrated) || (c.Outcome == ComparisonIntegrated && (c.State != "ready" || c.BaseNode != c.SourceNode)) || (c.SourceNode == c.TargetNode && c.Outcome != ComparisonIntegrated) {
 		return ErrPullInvalid
 	}
 	return mutatePull(ctx, actor, c.PullID, func(sess *xorm.Session, p PullRequest, _, _ RepositoryAccess) error {
@@ -98,7 +106,7 @@ func CompletePullComparison(ctx context.Context, actor int64, c PullComparison) 
 		if old.ArtifactID != c.ArtifactID || old.OwnershipNonce != c.OwnershipNonce || old.Revision != c.Revision {
 			return ErrPullInvalid
 		}
-		_, err = sess.Id(c.ID).Cols("source_node", "target_node", "base_node", "state", "failure", "snapshot_complete").Update(&c)
+		_, err = sess.Id(c.ID).Cols("source_node", "target_node", "base_node", "state", "outcome", "failure", "snapshot_complete").Update(&c)
 		if err == nil && c.State == "ready" {
 			err = expirePullApprovals(sess, p.ID, c)
 		}

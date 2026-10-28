@@ -561,7 +561,7 @@ func TestReviewUnsupportedPathsRemainBrowsable(t *testing.T) {
 	if s.Base == s.Source || s.Base == s.Target {
 		t.Fatal("refusal fixture must require a two-parent merge")
 	}
-	entries, err := f.r.Manifest(f.ctx, s.Path, s.Source)
+	entries, err := f.r.reviewManifest(f.ctx, s.Path, s.Source)
 	if err != nil {
 		t.Fatalf("manifest browsing failed: %v", err)
 	}
@@ -618,7 +618,7 @@ func TestReviewStoreOnlyModesDoNotMaterialize(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			entries, err := f.r.Manifest(f.ctx, snapshot.Path, f.nodes["unsupported"])
+			entries, err := f.r.reviewManifest(f.ctx, snapshot.Path, f.nodes["unsupported"])
 			if err != nil {
 				t.Fatal(err)
 			}

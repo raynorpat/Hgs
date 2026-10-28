@@ -276,6 +276,17 @@ func (r *Runner) reviewBases(ctx context.Context, path string, source, target No
 	return nodes, nil
 }
 func (r *Runner) SnapshotReview(ctx context.Context, source, target ReviewEndpoint, output string) (ReviewSnapshot, error) {
+	return r.snapshotReview(ctx, source, target, output, false)
+}
+
+// SnapshotMergeReview also permits equal current endpoints. The resulting
+// native common ancestor proves the already-integrated outcome; callers must
+// still use the guarded publication path to record that outcome.
+func (r *Runner) SnapshotMergeReview(ctx context.Context, source, target ReviewEndpoint, output string) (ReviewSnapshot, error) {
+	return r.snapshotReview(ctx, source, target, output, true)
+}
+
+func (r *Runner) snapshotReview(ctx context.Context, source, target ReviewEndpoint, output string, allowEqual bool) (ReviewSnapshot, error) {
 	ctx, cancel := r.reviewOperationContext(ctx)
 	defer cancel()
 	result := ReviewSnapshot{}
@@ -291,7 +302,7 @@ func (r *Runner) SnapshotReview(ctx context.Context, source, target ReviewEndpoi
 			return result, ErrNotFound
 		}
 	}
-	if source.Node == target.Node {
+	if source.Node == target.Node && !allowEqual {
 		return result, ErrNoChanges
 	}
 	path, err := newReviewArtifact(output, source.Path, target.Path)

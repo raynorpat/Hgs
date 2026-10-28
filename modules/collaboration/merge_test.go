@@ -58,8 +58,8 @@ func TestPullMergeRejectsStaleReview(t *testing.T) {
 	if err := f.service.ReviewPull(f.ctx, reviewer.Id, f.pull.ID, c.ID, models.ReviewChangesRequested); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.service.AssignReviewers(f.ctx, f.owner.Id, f.pull.ID, nil); err != nil {
-		t.Fatal(err)
+	if err := f.service.AssignReviewers(f.ctx, f.owner.Id, f.pull.ID, nil); err == nil {
+		t.Fatal("unresolved blocker was unassigned")
 	}
 	if _, err := f.service.MergePull(f.ctx, f.owner.Id, f.mergeRequest(c, "blocked-merge")); !errors.Is(err, models.ErrMergeBlocked) {
 		t.Fatalf("unassignment bypassed a live block: %v", err)

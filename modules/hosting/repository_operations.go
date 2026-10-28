@@ -49,6 +49,9 @@ func (s *Service) mutationRequest(e MutationExpectation) hg.PublishReviewRequest
 	return hg.PublishReviewRequest{Prepared: e.Prepared, TargetPath: p, Expected: hg.ReviewEndpoint{Path: p, Selection: e.Selection, Node: e.Node}, OperationID: e.OperationID}
 }
 func (s *Service) mutationAuthority(actor int64, e MutationExpectation) error {
+	if err := models.ValidateMergePublication(context.Background(), actor, e.OperationID, e.Source.RepoID, e.RepoID, e.Source.Node, e.Node, e.Prepared.Result); err != nil {
+		return hgbridge.ErrDenied
+	}
 	if err := models.ValidateRepositoryCredential(actor, 0, 0); err != nil {
 		return hgbridge.ErrDenied
 	}

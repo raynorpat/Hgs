@@ -32,6 +32,7 @@ type ReviewReservation struct {
 
 var ErrReviewReserved = errors.New("repository reserved by a review publication")
 var ErrReviewPublicationTerminal = errors.New("review publication is terminal; a fresh authorized review is required")
+var ErrReviewPublicationMissing = errors.New("review operation missing")
 
 func BeginReviewPublication(op ReviewPublication, ids []int64) (bool, error) {
 	sess := x.NewSession()
@@ -123,7 +124,7 @@ func ReviewPublicationStatus(id string) (ReviewPublication, error) {
 		return op, err
 	}
 	if !ok {
-		return op, errors.New("review operation missing")
+		return op, ErrReviewPublicationMissing
 	}
 	return op, nil
 }

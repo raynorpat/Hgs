@@ -24,6 +24,7 @@ var (
 	ErrMergeIdempotency = errors.New("idempotency key was used for a different merge")
 	ErrMergeBlocked     = errors.New("pull request merge is blocked")
 	ErrMergeActive      = errors.New("another merge of this pull request is in progress")
+	ErrMergePartial     = errors.New("previous merge partially published; resolve locally and refresh changed endpoints")
 )
 
 // MergeOperation is the durable PR-level identity of one merge. Prepared and
@@ -75,18 +76,43 @@ func BeginMergeOperation(ctx context.Context, actor int64, in MergeAdmission) (o
 			}
 			return nil
 		}
+		var partial MergeOperation
+		if found, err := s.Where("pull_id = ? AND source_node = ? AND target_node = ? AND error_code = ?", p.ID, in.SourceNode, in.TargetNode, "publication-failed").Get(&partial); err != nil {
+			return err
+		} else if found {
+			return ErrMergePartial
+		}
+		c, err := validateMergePolicy(s, p, target, in.ComparisonID, in.SourceNode, in.TargetNode)
+		if err != nil {
+			return err
+		}
+		if ok, err := s.Where("active_key = ?", mergeActiveKey(p.ID)).Get(new(MergeOperation)); err != nil {
+			return err
+		} else if ok {
+			return ErrMergeActive
+		}
+		op = MergeOperation{ID: in.ID, PullID: p.ID, IdempotencyKey: in.IdempotencyKey, ActiveKey: mergeActiveKey(p.ID), ActorID: actor, ComparisonID: c.ID, SourceNode: c.SourceNode, TargetNode: c.TargetNode, ArtifactID: in.ID, State: MergeUnstarted}
+		if _, err := s.Insert(&op); err != nil {
+			return err
+		}
+		return pullEvent(s, p.ID, actor, 0, c.ID, "merge-requested", "")
+	})
+	return op, err
+}
+
+func validateMergePolicy(s *xorm.Session, p PullRequest, target RepositoryAccess, comparison int64, sourceNode, targetNode hg.NodeID) (c PullComparison, err error) {
+	err = func() error {
 		if p.State != PullOpen {
 			return ErrPullState
 		}
 		if !target.Write {
 			return ErrInvalidCredential
 		}
-		var c PullComparison
-		ok, err := s.Where("id = ? AND pull_id = ?", in.ComparisonID, p.ID).Get(&c)
+		ok, err := s.Where("id = ? AND pull_id = ?", comparison, p.ID).Get(&c)
 		if err != nil {
 			return err
 		}
-		if !ok || p.CurrentComparisonID != c.ID || c.State != "ready" || !c.SnapshotComplete || c.SourceNode != in.SourceNode || c.TargetNode != in.TargetNode {
+		if !ok || p.CurrentComparisonID != c.ID || c.State != "ready" || !c.SnapshotComplete || c.SourceNode != sourceNode || c.TargetNode != targetNode {
 			return ErrPullConflict
 		}
 		var repos [2]Repository
@@ -111,18 +137,31 @@ func BeginMergeOperation(ctx context.Context, actor int64, in MergeAdmission) (o
 				return ErrMergeBlocked
 			}
 		}
-		if ok, err := s.Where("active_key = ?", mergeActiveKey(p.ID)).Get(new(MergeOperation)); err != nil {
-			return err
-		} else if ok {
-			return ErrMergeActive
+		return nil
+	}()
+	return c, err
+}
+
+// ValidateMergePublication binds existing PR operations to the native guard,
+// including old serialized expectations. Only a successful absent-row lookup
+// leaves a generic hosting operation unbound. The same repository/PR locks as
+// review, comparison and privacy mutations serialize each authorization check.
+func ValidateMergePublication(ctx context.Context, actor int64, id string, sourceRepo, targetRepo int64, source, target, result hg.NodeID) error {
+	var op MergeOperation
+	found, err := x.Id(id).Get(&op)
+	if err != nil || !found {
+		return err
+	}
+	if op.ActorID != actor || op.SourceNode != source || op.TargetNode != target || op.ResultNode != result || op.State != MergePrepared {
+		return ErrMergeBlocked
+	}
+	return mutatePull(ctx, actor, op.PullID, func(s *xorm.Session, p PullRequest, _, access RepositoryAccess) error {
+		if p.SourceRepoID != sourceRepo || p.TargetRepoID != targetRepo {
+			return ErrMergeBlocked
 		}
-		op = MergeOperation{ID: in.ID, PullID: p.ID, IdempotencyKey: in.IdempotencyKey, ActiveKey: mergeActiveKey(p.ID), ActorID: actor, ComparisonID: c.ID, SourceNode: c.SourceNode, TargetNode: c.TargetNode, ArtifactID: in.ID, State: MergeUnstarted}
-		if _, err := s.Insert(&op); err != nil {
-			return err
-		}
-		return pullEvent(s, p.ID, actor, 0, c.ID, "merge-requested", "")
+		_, err := validateMergePolicy(s, p, access, op.ComparisonID, source, target)
+		return err
 	})
-	return op, err
 }
 
 func GetMergeOperation(ctx context.Context, actor, pull int64, id string) (MergeOperation, error) {
@@ -216,7 +255,8 @@ func FinalizeMerge(id string) error {
 	})
 }
 
-// FailMerge ends an operation whose publication provably never began.
+// FailMerge records a terminal outcome. publication-failed retains provenance
+// and prevents a fresh key from regenerating a result for the same pins.
 func FailMerge(id, code string) error {
 	return transitionMerge(id, []MergeState{MergeUnstarted, MergePrepared, MergeFailed}, func(s *xorm.Session, op MergeOperation) error {
 		if op.State == MergeFailed {
