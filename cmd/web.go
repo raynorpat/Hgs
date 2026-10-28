@@ -132,7 +132,9 @@ func newMacaron() *macaron.Macaron {
 		CustomDirectory: path.Join(setting.CustomPath, "conf/locale"),
 		Langs:           setting.Langs,
 		Names:           setting.Names,
-		Redirect:        true,
+		// Retain safe navigation queries when selecting a language. The native
+		// selector still owns locale validation and the language cookie.
+		Redirect: false,
 	}))
 	m.Use(cache.Cacher(cache.Options{
 		Adapter:       setting.CacheAdapter,
@@ -293,6 +295,7 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 	m.Get("/", middleware.Toggle(&middleware.ToggleOptions{}), routers.Home)
 	m.Get("/explore", middleware.Toggle(&middleware.ToggleOptions{}), routers.Explore)
 	m.Get("/explore/search", middleware.Toggle(&middleware.ToggleOptions{}), routers.ExploreSearch)
+	m.Get("/help", ignSignIn, routers.Help)
 	m.Get("/user/recent", reqSignIn, user.Recent)
 	m.Post("/user/recent/clear", reqSignIn, user.ClearRecent)
 	m.Combo("/install", routers.InstallInit).

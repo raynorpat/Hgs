@@ -225,6 +225,7 @@ func newUIFixture(t *testing.T, prefix string) *uiFixture {
 		}
 	})
 	guard := middleware.Toggle(&middleware.ToggleOptions{SignInRequire: true})
+	m.Get("/help", middleware.Toggle(&middleware.ToggleOptions{SignInRequire: setting.Service.RequireSignInView}), routers.Help)
 	m.Get("/", guard, user.Dashboard)
 	m.Get("/repo/create", guard, repo.Create)
 	m.Post("/repo/create", guard, binding.BindIgnErr(auth.CreateRepoForm{}), repo.CreatePost)
@@ -527,6 +528,142 @@ func TestSharedUIRepositoryMutations(t *testing.T) {
 		t.Errorf("deleted repository remains: %v", err)
 	}
 
+}
+
+func TestRepositoryWatchStarUI(t *testing.T) {
+	f := newUIFixture(t, "/code")
+	root := "/fixtureowner/private-lab"
+	assertState := func(watching, starred bool, watches, stars int) {
+		t.Helper()
+		r, err := models.GetRepositoryById(f.private.Id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if models.IsWatching(f.reader.Id, r.Id) != watching || models.IsStaring(f.reader.Id, r.Id) != starred || r.NumWatches != watches || r.NumStars != stars {
+			t.Errorf("state watching=%v starred=%v counts=%d/%d; want %v/%v %d/%d", models.IsWatching(f.reader.Id, r.Id), models.IsStaring(f.reader.Id, r.Id), r.NumWatches, r.NumStars, watching, starred, watches, stars)
+		}
+		body := f.get(t, root, "reader").Body.String()
+		for _, c := range []struct {
+			name   string
+			active bool
+			count  int
+		}{{"watch", watching, watches}, {"star", starred, stars}} {
+			action := c.name
+			if c.active {
+				action = "un" + action
+			}
+			pattern := `(?s)action="/code` + root + `/action/` + action + `"[^>]*>.*?<button[^>]*aria-pressed="` + fmt.Sprint(c.active) + `"[^>]*>[^<]*<span>` + fmt.Sprint(c.count) + `</span>`
+			if !regexp.MustCompile(pattern).MatchString(body) {
+				t.Errorf("rendered %s state/count missing", action)
+			}
+		}
+	}
+	baseline := models.GetStatistic().Counter.Action
+	persisted, err := models.GetRepositoryById(f.private.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	watches := persisted.NumWatches
+	if watches != 1 {
+		t.Fatalf("owner watch baseline=%d", watches)
+	}
+	assertState(false, false, watches, 0)
+	guest := f.get(t, "/fixtureowner/"+f.public.Name, "").Body.String()
+	if !strings.Contains(guest, `/code/user/login`) || !strings.Contains(guest, `Watch / Star`) || strings.Contains(guest, `/action/watch`) {
+		t.Error("guest action sign-in link missing")
+	}
+	if w := f.get(t, root, ""); w.Code != 404 {
+		t.Error("private repository disclosed")
+	}
+	if w := f.get(t, root+"/action/watch", "reader"); w.Code == 200 {
+		t.Error("GET action registered")
+	}
+	if w := f.post(t, root+"/action/watch", "reader", url.Values{}, false); w.Code != 400 {
+		t.Error("missing CSRF accepted")
+	}
+	assertState(false, false, watches, 0)
+	for _, step := range []struct {
+		action      string
+		watch, star bool
+		w, s        int
+	}{
+		{"watch", true, false, watches + 1, 0}, {"watch", true, false, watches + 1, 0},
+		{"star", true, true, watches + 1, 1}, {"star", true, true, watches + 1, 1},
+		{"unwatch", false, true, watches, 1}, {"unwatch", false, true, watches, 1},
+		{"unstar", false, false, watches, 0}, {"unstar", false, false, watches, 0},
+	} {
+		w := f.post(t, root+"/action/"+step.action, "reader", url.Values{}, true)
+		if w.Code != 302 {
+			t.Fatalf("reader %s status=%d", step.action, w.Code)
+		}
+		assertState(step.watch, step.star, step.w, step.s)
+	}
+	if models.GetStatistic().Counter.Action != baseline {
+		t.Error("Watch/Star emitted a feed notification")
+	}
+	// Fail after the membership change, at the repository counter write.
+	if _, err := f.db.Exec(`CREATE TRIGGER fail_watch_count BEFORE UPDATE OF num_watches ON repository BEGIN SELECT RAISE(FAIL, 'forced watch counter failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	w := f.post(t, root+"/action/watch", "reader", url.Values{}, true)
+	assertFailure := func(w *httptest.ResponseRecorder) {
+		t.Helper()
+		if w.Code != 302 || w.Header().Get("Location") != "/code"+root {
+			t.Fatalf("failure redirect: %d %s", w.Code, w.Header().Get("Location"))
+		}
+		r := httptest.NewRequest("GET", "/code"+root, nil)
+		r.Header.Set("X-Fixture-User", "reader")
+		for _, cookie := range w.Result().Cookies() {
+			r.AddCookie(cookie)
+		}
+		follow := httptest.NewRecorder()
+		f.m.ServeHTTP(follow, middleware.WithBrowserResponseController(r, follow))
+		if follow.Code != 200 || !strings.Contains(follow.Body.String(), "The action could not be completed. Try again.") {
+			t.Errorf("action failure not shown after redirect: %d", follow.Code)
+		}
+	}
+	assertFailure(w)
+	assertState(false, false, watches, 0)
+	if _, err := f.db.Exec(`DROP TRIGGER fail_watch_count`); err != nil {
+		t.Fatal(err)
+	}
+	if w = f.post(t, root+"/action/watch", "reader", url.Values{}, true); w.Code != 302 {
+		t.Fatal("watch retry failed")
+	}
+	assertState(true, false, watches+1, 0)
+	// A star has two counters; fail the last one to check the entire operation.
+	if _, err := f.db.Exec(`CREATE TRIGGER fail_user_star_count BEFORE UPDATE OF num_stars ON user BEGIN SELECT RAISE(FAIL, 'forced user star counter failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	w = f.post(t, root+"/action/star", "reader", url.Values{}, true)
+	assertFailure(w)
+	assertState(true, false, watches+1, 0)
+	u, err := models.GetUserById(f.reader.Id)
+	if err != nil || u.NumStars != 0 {
+		t.Errorf("user star counter changed: %v %v", u, err)
+	}
+	if _, err := f.db.Exec(`DROP TRIGGER fail_user_star_count`); err != nil {
+		t.Fatal(err)
+	}
+	if w = f.post(t, root+"/action/star", "reader", url.Values{}, true); w.Code != 302 {
+		t.Fatal("star retry failed")
+	}
+	assertState(true, true, watches+1, 1)
+	u, err = models.GetUserById(f.reader.Id)
+	if err != nil || u.NumStars != 1 {
+		t.Error("star retry user count missing")
+	}
+	if models.GetStatistic().Counter.Action != baseline {
+		t.Error("retry emitted a feed notification")
+	}
+}
+
+func TestSharedHelpAndFooter(t *testing.T) {
+	f := newUIFixture(t, "/code")
+	w := f.get(t, "/help", "reader")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `data-local-help`) || !strings.Contains(w.Body.String(), `href="/code/help"`) {
+		t.Fatalf("local Help/footer missing: status=%d", w.Code)
+	}
 }
 
 func TestSharedUIVisibilityGuidance(t *testing.T) {

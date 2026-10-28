@@ -706,18 +706,16 @@ func IsWatching(uid, repoId int64) bool {
 }
 
 func watchRepo(e Engine, uid, repoId int64, watch bool) (err error) {
+	has, err := e.Get(&Watch{UserId: uid, RepoId: repoId})
+	if err != nil || has == watch {
+		return err
+	}
 	if watch {
-		if IsWatching(uid, repoId) {
-			return nil
-		}
 		if _, err = e.Insert(&Watch{RepoId: repoId, UserId: uid}); err != nil {
 			return err
 		}
 		_, err = e.Exec("UPDATE `repository` SET num_watches = num_watches + 1 WHERE id = ?", repoId)
 	} else {
-		if !IsWatching(uid, repoId) {
-			return nil
-		}
 		if _, err = e.Delete(&Watch{0, uid, repoId}); err != nil {
 			return err
 		}
@@ -728,7 +726,16 @@ func watchRepo(e Engine, uid, repoId int64, watch bool) (err error) {
 
 // Watch or unwatch repository.
 func WatchRepo(uid, repoId int64, watch bool) (err error) {
-	return watchRepo(x, uid, repoId, watch)
+	sess := x.NewSession()
+	defer sess.Close()
+	if err = sess.Begin(); err != nil {
+		return err
+	}
+	defer sess.Rollback()
+	if err = watchRepo(sess, uid, repoId, watch); err != nil {
+		return err
+	}
+	return sess.Commit()
 }
 
 // GetWatchers returns all watchers of given repository.
@@ -781,28 +788,35 @@ type Star struct {
 
 // Star or unstar repository.
 func StarRepo(uid, repoId int64, star bool) (err error) {
-	if star {
-		if IsStaring(uid, repoId) {
-			return nil
-		}
-		if _, err = x.Insert(&Star{Uid: uid, RepoId: repoId}); err != nil {
-			return err
-		} else if _, err = x.Exec("UPDATE `repository` SET num_stars = num_stars + 1 WHERE id = ?", repoId); err != nil {
-			return err
-		}
-		_, err = x.Exec("UPDATE `user` SET num_stars = num_stars + 1 WHERE id = ?", uid)
-	} else {
-		if !IsStaring(uid, repoId) {
-			return nil
-		}
-		if _, err = x.Delete(&Star{0, uid, repoId}); err != nil {
-			return err
-		} else if _, err = x.Exec("UPDATE `repository` SET num_stars = num_stars - 1 WHERE id = ?", repoId); err != nil {
-			return err
-		}
-		_, err = x.Exec("UPDATE `user` SET num_stars = num_stars - 1 WHERE id = ?", uid)
+	sess := x.NewSession()
+	defer sess.Close()
+	if err = sess.Begin(); err != nil {
+		return err
 	}
-	return err
+	defer sess.Rollback()
+	has, err := sess.Get(&Star{Uid: uid, RepoId: repoId})
+	if err != nil || has == star {
+		return err
+	}
+	if star {
+		if _, err = sess.Insert(&Star{Uid: uid, RepoId: repoId}); err != nil {
+			return err
+		} else if _, err = sess.Exec("UPDATE `repository` SET num_stars = num_stars + 1 WHERE id = ?", repoId); err != nil {
+			return err
+		}
+		_, err = sess.Exec("UPDATE `user` SET num_stars = num_stars + 1 WHERE id = ?", uid)
+	} else {
+		if _, err = sess.Delete(&Star{0, uid, repoId}); err != nil {
+			return err
+		} else if _, err = sess.Exec("UPDATE `repository` SET num_stars = num_stars - 1 WHERE id = ?", repoId); err != nil {
+			return err
+		}
+		_, err = sess.Exec("UPDATE `user` SET num_stars = num_stars - 1 WHERE id = ?", uid)
+	}
+	if err != nil {
+		return err
+	}
+	return sess.Commit()
 }
 
 // IsStaring checks if user has starred given repository.

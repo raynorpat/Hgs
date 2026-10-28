@@ -13,6 +13,9 @@ import (
 // BuildShell does not query storage: repository authority is supplied by RepoAssignment.
 // Anonymous is a genuinely reduced layout for authentication and installation.
 func BuildShell(ctx *middleware.Context, kind ContextKind, active string) Shell {
+	if setting.InstallLock {
+		ctx.Data[HelpURL] = setting.AppSubUrl + "/help"
+	}
 	if _, set := ctx.Data[PullRequestsURL]; !set {
 		ctx.Data[PullRequestsURL] = setting.AppSubUrl + "/pulls"
 		if kind == Repository && ctx.Repo.HasAccess && ctx.Repo.Repository != nil {
