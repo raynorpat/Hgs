@@ -125,7 +125,7 @@ Outcomes (Windows 11, hg 7.2.4 venv client, loopback, unchanged shipping limits)
 | `TestMozillaCentralCorrectness` | PASS: HTTPS/SSH clone and pull, workflows, denial, raw identity, restart |
 | `TestMozillaCentralPerformance` | FAIL only on named unverified rows: active-stream cancellation (largest candidate below 1MiB) and merge-diff (no merge in the subset); non-ASCII path also absent |
 
-Initial push took about 101-125s per transport (full history needed over 2h on HTTPS and over 30min on SSH without finishing). UI samples (5 each, successful, warm shared workstation; min/median/max seconds):
+Initial push took about 101-125s per transport (full history needed over 2h on HTTPS and over 30min on SSH without finishing). UI samples (5 each unless a row says otherwise; all successful, warm shared workstation; min/median/max seconds):
 
 | Operation | Min | Median | Max |
 | --- | ---: | ---: | ---: |
@@ -134,15 +134,19 @@ Initial push took about 101-125s per transport (full history needed over 2h on H
 | repository history | 0.770 | 0.788 | 0.809 |
 | file history | 1.244 | 1.307 | 1.372 |
 | ref selection (302) | 0.734 | 0.743 | 0.786 |
-| raw text / binary / large | 0.81 | 0.83 | 0.89 |
+| raw text (5 samples) | 0.810 | 0.825 | 0.893 |
+| raw binary (5 samples) | 0.815 | 0.837 | 0.876 |
+| raw large, 246,995B (5 samples) | 0.889 | 0.916 | 0.955 |
 | native no-op pull, isolated HTTPS | 3.862 | 3.946 | 4.954 |
 | native incremental push, isolated HTTPS | 9.935 | 10.094 | 10.327 |
 
-Native baselines for the same repository: manifest 0.639/0.675/0.704s, history 0.418/0.427/0.473s, process startup 0.348/0.368/0.379s. Concurrent history readers: 1/4/8/12 readers gave medians 0.84/2.07/3.71/4.00s with no errors. The `incoming`/`outgoing` and denied-push exits in the sample file are the expected exit-1 and authorization-denial outcomes.
+Native baselines for the same repository: manifest 0.639/0.675/0.704s, history 0.418/0.427/0.473s, process startup 0.348/0.368/0.379s. Concurrent history readers: cohorts of 1/4/8/12 requests (one cohort each, so 1/4/8/12 samples, fewer than the five the plan asks for) gave medians 0.84/2.07/3.71/4.33s with no failed requests. The `incoming`/`outgoing` and denied-push exits in the sample file are the expected exit-1 and authorization-denial outcomes.
 
-**Correctness fix exposed by the data.** The first correctness run returned 404 for every raw download. `SingleDownload` listed the whole manifest through the runner's 2MiB output cap (`MaxCommandOutput`), and this subset's `hg manifest -v` is 3,028,484B; full mozilla-central's is about 38MB, so raw download could never work there. The manifest scan was removed because `ReadFile` already reports a missing file before writing. Regression: `TestRawFileWithManifestOverCommandLimit` (fails on the old handler, passes now); the fake `hg cat` now exits 1 for empty content so `TestRawPathIdentity` still checks missing files. The post-fix runs used a binary built from the working tree, not the pinned c459032 archive. A harness issue was also fixed: branch selection answers 302 by design and is no longer counted as an error.
+**Correctness fix exposed by the data.** The first correctness run returned 404 for every raw download. `SingleDownload` listed the whole manifest through the runner's 2MiB output cap (`MaxCommandOutput`), and this subset's `hg manifest -v` is 3,028,484B; full mozilla-central's is about 38MB, so raw download could never work there. The manifest scan was removed because `ReadFile` already reports a missing file before writing, and `Runner.Manifest` (now unused in production) was deleted with its tests. Attachment headers are now sent with the first byte, so a missing file returns a plain 404. Regression: `TestRawFileWithManifestOverCommandLimit` (fails on the old handler, passes now). The fake `hg cat` now exits 1 for empty content, so at that level `TestRawPathIdentity` only proves that a missing file maps to 404; path matching is covered by the native integration tests. The post-fix runs used a binary built from the working tree, not the pinned c459032 archive. A harness issue was also fixed: branch selection answers 302 by design and is no longer counted as an error.
 
 **Observed bottlenecks on this data (ranked):** (1) home and directory pages take 20-27s against 0.7s native manifest; at 41k files this is roughly 30x the native cost and is the clear first target. Cause is not yet profiled; the flat-directory scan (`flatDirectoryScanLimit`, 32MiB) and per-request manifest reads in `modules/hg/files.go` are hypotheses. Validate by a Go CPU profile and the `home`/`directory` rows above. (2) A no-op pull costs about 3.9s versus 0.4s for a native query; unprofiled. Neither was optimized here.
+
+Tables are reproduced from `samples.jsonl` with `GOGS_TEST_MOZILLA_SAMPLES=<path> go test -tags integration ./tests/integration -run TestMozillaSummarizeSamples -v`, which counts failed samples separately and excludes them from min/median/max (median is the upper middle value for even counts).
 
 Raw evidence: `F:/gogs-mozilla-smoke-20261027/raw/` (`TestMozillaCentral*` directories; earlier failed runs under `failed-run1..3`).
 

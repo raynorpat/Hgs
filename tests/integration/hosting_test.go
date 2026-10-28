@@ -354,12 +354,17 @@ func (a *application) stop() {
 	cancel()
 	a.output.Wait()
 	a.child = nil
-	// Direct package fixtures may share an executable. Only this fixture's
-	// unique state paths identify its remaining application and native workers.
-	if killed, err := reapApplicationOrphans(a.config, a.repoRoot); err != nil || len(killed) != 0 {
+	// Direct package fixtures may share an executable, so only their unique state
+	// paths identify them. Other fixtures own a private binary copy, which also
+	// appears in the command line of their hook children.
+	owner := a.binary
+	if a.direct {
+		owner = a.config
+	}
+	if killed, err := reapApplicationOrphans(owner, a.repoRoot); err != nil || len(killed) != 0 {
 		a.t.Errorf("application required orphan cleanup: %v %v", killed, err)
 	}
-	if left := waitNoProcesses(a.config, a.repoRoot); len(left) != 0 {
+	if left := waitNoProcesses(owner, a.repoRoot); len(left) != 0 {
 		a.t.Errorf("owned process tree survived: %v", left)
 	}
 }
