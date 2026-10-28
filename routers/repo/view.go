@@ -98,32 +98,7 @@ func splitTree(p string) (parent, name string) {
 }
 
 func browseTree(ctx *middleware.Context, p string) ([]hg.TreeEntry, *hg.TreeEntry, error) {
-	run := ctx.Repo.HgRunner
-	if p == "" {
-		entries, err := run.ListDirectory(ctx.Repo.HgContext, ctx.Repo.HgPath, ctx.Repo.Node, "")
-		return entries, nil, err
-	}
-	parent, name := splitTree(p)
-	listed, err := run.ListDirectory(ctx.Repo.HgContext, ctx.Repo.HgPath, ctx.Repo.Node, parent)
-	if err != nil {
-		return nil, nil, err
-	}
-	var match *hg.TreeEntry
-	for i := range listed {
-		if listed[i].Name == name {
-			match = &listed[i]
-			break
-		}
-	}
-	if match == nil {
-		return nil, nil, hg.ErrNotFound
-	}
-	if !match.Directory {
-		cp := *match
-		return nil, &cp, nil
-	}
-	entries, err := run.ListDirectory(ctx.Repo.HgContext, ctx.Repo.HgPath, ctx.Repo.Node, p)
-	return entries, nil, err
+	return ctx.Repo.HgRunner.ListPath(ctx.Repo.HgContext, ctx.Repo.HgPath, ctx.Repo.Node, p)
 }
 
 func treeRows(ctx *middleware.Context, dir string, entries []hg.TreeEntry) ([]hgTreeRow, *hg.ManifestEntry) {

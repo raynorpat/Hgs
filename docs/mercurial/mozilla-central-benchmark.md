@@ -197,6 +197,19 @@ Process polling of one cold request per page shows the remaining time: home runs
 
 Validation: `go test ./cmd ./routers/... ./modules/hg` and the native `go test -tags integration ./modules/hg` (real Mercurial 7.2.4, including symlink, executable and non-UTF-8 names) pass. At full mozilla-central scale the listing would still exceed `flatDirectoryScanLimit` (32MiB) against a roughly 38MB plain manifest (more with `-v` modes), so full-scale browsing is not shown to work; the limit was not changed.
 
+### Re-measurement after change 2 (one manifest read per path)
+
+`Runner.ListPath` replaces the router's parent-then-directory listing: a flat manifest is read once and answers both "is this a directory" and its children (tree-manifest repositories keep the two-step lookup). Same instance and method as above, five consecutive `curl` fetches (min/median/max s):
+
+| Page | After change 1 (median) | After change 2 min | median | max |
+| --- | ---: | ---: | ---: | ---: |
+| repo home | 2.633 | 2.559 | 2.568 | 2.678 |
+| top-level directory (`dom`) | 2.573 | 1.823 | 1.875 | 1.995 |
+| nested directory (`dom/base`) | not measured | 1.781 | 1.847 | 1.984 |
+| file view | 2.244 | 2.416 | 2.448 | 2.691 |
+
+The directory page now runs one `manifest -v` instead of two (about 0.7s saved). The file-view difference (2.24 vs 2.45) is within what a shared workstation and five cold requests can produce and was not investigated; its native work is unchanged (one `manifest -v`, one `cat`). A missing path returns 404 after one `manifest -v` (1.1s). Validation: `go test ./cmd ./routers/... ./modules/hg` and native `go test -tags integration ./modules/hg` pass, with new `TestListPathFlatReadsManifestOnce` and `TestListPathTree`.
+
 ## Outstanding acceptance and follow-ups
 
 **Unverified/blocked:** hosted full node/ref/bookmark/requirements/manifests/content comparison; hosted/clone native verification; full clones and pulls on both transports; five hosted incremental/UI samples; reader/writer denial on full stores; rename/merge/history pagination during writes; large raw streaming/cancellation; full-history issues/attachments and restart persistence; beyond-capacity concurrency/queue behavior. Hosted/UI successful sample count is zero. The original compiled suite later exercised issues/attachments on an empty fixture after cached seed failures; those receipts are not full-history evidence. Linux/macOS, legacy native versions and unresolved Task14 filesystem failures retain their [compatibility statuses](compatibility.md).

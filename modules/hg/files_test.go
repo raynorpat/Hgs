@@ -181,3 +181,59 @@ func TestListDirectoryTree(t *testing.T) {
 		t.Fatalf("unterminated manifest text: %v", err)
 	}
 }
+
+func TestListPathFlatReadsManifestOnce(t *testing.T) {
+	ctx := context.Background()
+	r, repo := newBrowseRunner(t, "")
+	writeFakeFixture(t, r, "fake-manifest", "644   a.txt\n755 * only/run.sh\n644   only/nested/c.txt\n")
+	entries, file, err := r.ListPath(ctx, repo, newerDefaultNode, "only")
+	if err != nil || file != nil || !reflect.DeepEqual(entries, []TreeEntry{{Name: "nested", Directory: true}, {Name: "run.sh", Executable: true}}) {
+		t.Fatalf("directory: %+v %+v %v", entries, file, err)
+	}
+	entries, file, err = r.ListPath(ctx, repo, newerDefaultNode, "only/run.sh")
+	if err != nil || len(entries) != 0 || file == nil || *file != (TreeEntry{Name: "run.sh", Executable: true}) {
+		t.Fatalf("file: %+v %+v %v", entries, file, err)
+	}
+	for _, missing := range []string{"nope", "only/nope", "a.txt/x"} {
+		if _, _, err = r.ListPath(ctx, repo, newerDefaultNode, missing); !errors.Is(err, ErrNotFound) {
+			t.Errorf("ListPath(%q): %v", missing, err)
+		}
+	}
+	if _, _, err = r.ListPath(ctx, repo, newerDefaultNode, "../a"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("escaping path: %v", err)
+	}
+	calls := fakeCalls(t, r)
+	if len(calls) != 5 {
+		t.Errorf("five accepted lookups ran %d Mercurial commands, want one manifest each: %v", len(calls), calls)
+	}
+	for _, call := range calls {
+		if call[2] != "manifest" {
+			t.Errorf("flat lookup ran %v", call)
+		}
+	}
+}
+
+func TestListPathTree(t *testing.T) {
+	ctx := context.Background()
+	r, repo := newBrowseRunner(t, "")
+	if err := os.MkdirAll(filepath.Join(repo, ".hg", "store"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".hg", "store", "requires"), []byte("share-safe\ntreemanifest\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	child, fileNode := strings.Repeat("b", 40), strings.Repeat("c", 40)
+	writeFakeFixture(t, r, "fake-manifest-node", strings.Repeat("d", 40)+"\n")
+	writeFakeFixture(t, r, "fake-debugdata", "a.txt\x00"+fileNode+"\nonly\x00"+child+"t\n")
+	writeFakeFixture(t, r, "fake-debugdata-only", "d.txt\x00"+fileNode+"x\n")
+	entries, file, err := r.ListPath(ctx, repo, newerDefaultNode, "only")
+	if err != nil || file != nil || !reflect.DeepEqual(entries, []TreeEntry{{Name: "d.txt", Executable: true}}) {
+		t.Fatalf("directory: %+v %+v %v", entries, file, err)
+	}
+	if _, file, err = r.ListPath(ctx, repo, newerDefaultNode, "a.txt"); err != nil || file == nil || file.Name != "a.txt" {
+		t.Fatalf("file: %+v %v", file, err)
+	}
+	if _, _, err = r.ListPath(ctx, repo, newerDefaultNode, "missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing: %v", err)
+	}
+}

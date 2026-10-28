@@ -134,23 +134,81 @@ func usesTreeManifest(repoPath string) bool {
 }
 
 func (r *Runner) listFlatDirectory(ctx context.Context, repoPath string, node NodeID, dir string) ([]TreeEntry, error) {
-	// manifest -v reports flags in one pass; the files template's flags keyword
-	// costs a per-file lookup that dominated large trees. It takes no path
-	// patterns, so parseFlatDirectory selects dir.
-	args := []string{"manifest", "-r", nodeRevset(node), "-v"}
+	b, err := r.flatManifest(ctx, repoPath, node)
+	if err != nil {
+		return nil, err
+	}
+	return parseFlatDirectory(b, dir)
+}
+
+// flatManifest reads the whole flat manifest with its flags. manifest -v does it
+// in one pass; the files template's flags keyword costs a per-file lookup that
+// dominated large trees. It takes no path patterns, so callers select paths.
+func (r *Runner) flatManifest(ctx context.Context, repoPath string, node NodeID) ([]byte, error) {
 	var out bytes.Buffer
-	err := r.run(ctx, repoPath, args, nil, &out, flatDirectoryScanLimit)
+	err := r.run(ctx, repoPath, []string{"manifest", "-r", nodeRevset(node), "-v"}, nil, &out, flatDirectoryScanLimit)
 	var exit *exec.ExitError
 	switch {
 	case err == nil:
-		return parseFlatDirectory(out.Bytes(), dir)
+		return out.Bytes(), nil
 	case errors.Is(err, ErrOutputLimit):
 		return nil, err
 	case errors.As(err, &exit) && exit.ExitCode() == 1:
-		return []TreeEntry{}, nil
+		return nil, nil
 	default:
 		return nil, r.notServed(ctx, repoPath, node, err)
 	}
+}
+
+// ListPath resolves p at a served changeset to a directory's children or to
+// the file entry it names; an unknown path is ErrNotFound. Flat manifests
+// answer both from one listing.
+func (r *Runner) ListPath(ctx context.Context, repoPath string, node NodeID, p string) ([]TreeEntry, *TreeEntry, error) {
+	if p == "" {
+		entries, err := r.ListDirectory(ctx, repoPath, node, "")
+		return entries, nil, err
+	}
+	node, err := ParseNodeID(string(node))
+	if err != nil {
+		return nil, nil, err
+	}
+	if err = checkFile(p); err != nil {
+		return nil, nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, BrowserCommandTimeout)
+	defer cancel()
+	parent, name := "", p
+	if i := strings.LastIndex(p, "/"); i >= 0 {
+		parent, name = p[:i], p[i+1:]
+	}
+	var listed []TreeEntry
+	if usesTreeManifest(repoPath) {
+		if listed, err = r.listTreeDirectory(ctx, repoPath, node, parent); err != nil {
+			return nil, nil, err
+		}
+	} else {
+		b, err := r.flatManifest(ctx, repoPath, node)
+		if err != nil {
+			return nil, nil, err
+		}
+		if entries, err := parseFlatDirectory(b, p); err != nil || len(entries) > 0 {
+			return entries, nil, err
+		}
+		if listed, err = parseFlatDirectory(b, parent); err != nil {
+			return nil, nil, err
+		}
+	}
+	for i := range listed {
+		if listed[i].Name != name {
+			continue
+		}
+		if !listed[i].Directory {
+			return nil, &listed[i], nil
+		}
+		entries, err := r.listTreeDirectory(ctx, repoPath, node, p)
+		return entries, nil, err
+	}
+	return nil, nil, ErrNotFound
 }
 
 func parseFlatDirectory(b []byte, dir string) ([]TreeEntry, error) {
