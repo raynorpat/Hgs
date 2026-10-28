@@ -168,7 +168,7 @@ Native baseline on the same store, three runs each (min/median/max s): `files -T
 
 **Observed bottleneck:** the `flags` template keyword makes native Mercurial look up flags per file, which costs about 0.45ms per file here: 56x the cost of listing the same paths without it, and 33x the cost of `manifest -v`, which returns the same flags. It is the sole cause of the 18-24s home and directory times on this tree. Scaled linearly to the 485,689 paths of full mozilla-central it would be roughly 220s per listing, against the 5.4s measured for the plain native manifest. This comes from `Runner.listFlatDirectory` in `modules/hg/files.go`, which already filters entries by prefix in Go.
 
-**Ranked next work (hypotheses with the evidence above; none implemented):**
+**Ranked next work (hypotheses with the evidence above; rank 1 was implemented and re-measured below):**
 
 | Rank | Change | Expected effect | Validation |
 | --- | --- | --- | --- |
@@ -181,6 +181,21 @@ The diff itself is cheap on these commits (about 0.3s for up to 155 files); comm
 Two `hg clone http://127.0.0.1:64676/ C:\src\mozilla-central-http` processes (started 20:27, scoop `hg`, not launched by this work) were running throughout. They did not change the native timings noticeably and were left alone.
 
 The full-history ordered run was stopped by the user's request during the source `hg verify`; the Mozilla clone had completed and no hosted push was attempted. Its one-shot lease at `F:/gogs-mozilla-full-20261027/ordered-run-lease.json` stays, so that root cannot be reused without review.
+
+### Re-measurement after change 1 (manifest -v listing)
+
+`Runner.listFlatDirectory` now runs `hg manifest -r <node> -v` and selects the directory in Go; the per-file `flags` template is gone. Same instance, store and node, rebuilt binary from the working tree, shared workstation (the full-history run was already stopped). Five consecutive `curl` fetches per page, all successful (min/median/max s); the "before" column is the single cold observation above, so the comparison is indicative, not a controlled A/B:
+
+| Page | Before | After min | After median | After max |
+| --- | ---: | ---: | ---: | ---: |
+| repo home | 18.7 | 2.492 | 2.633 | 2.670 |
+| top-level directory (`dom`) | 24.3 | 2.514 | 2.573 | 2.628 |
+| file view | 3.0 | 2.213 | 2.244 | 2.309 |
+| repository history | 0.9 | 0.753 | 0.773 | 0.803 |
+
+Process polling of one cold request per page shows the remaining time: home runs 6 native commands (the `manifest -v` about 0.6s, the other five about 0.3s each); the directory page still runs `manifest -v` twice (once for the parent listing, once for the directory, about 0.6s and 0.3s) plus four 0.3s commands; the file view runs `manifest -v` once plus four 0.3s commands. Native `manifest -v` on this tree is 0.57s. What remains is mostly process starts, so ranked changes 2 and 3 are now the next candidates and are worth about 0.3-0.9s per page here.
+
+Validation: `go test ./cmd ./routers/... ./modules/hg` and the native `go test -tags integration ./modules/hg` (real Mercurial 7.2.4, including symlink, executable and non-UTF-8 names) pass. At full mozilla-central scale the listing would still exceed `flatDirectoryScanLimit` (32MiB) against a roughly 38MB plain manifest (more with `-v` modes), so full-scale browsing is not shown to work; the limit was not changed.
 
 ## Outstanding acceptance and follow-ups
 

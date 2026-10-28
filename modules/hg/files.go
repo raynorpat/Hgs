@@ -134,19 +134,10 @@ func usesTreeManifest(repoPath string) bool {
 }
 
 func (r *Runner) listFlatDirectory(ctx context.Context, repoPath string, node NodeID, dir string) ([]TreeEntry, error) {
-	args := []string{"files", "-r", nodeRevset(node), "-T", "{if(flags, flags, '.')} {path}\\n"}
-	if dir != "" {
-		patternDir, err := os.MkdirTemp(filepath.Dir(r.cfg.ConfigPath), "dir-")
-		if err != nil {
-			return nil, err
-		}
-		defer os.RemoveAll(patternDir)
-		pattern := filepath.Join(patternDir, "pattern")
-		if err = os.WriteFile(pattern, []byte("path:"+dir+"\x00"), 0600); err != nil {
-			return nil, err
-		}
-		args = append(args, "--", "listfile0:"+pattern)
-	}
+	// manifest -v reports flags in one pass; the files template's flags keyword
+	// costs a per-file lookup that dominated large trees. It takes no path
+	// patterns, so parseFlatDirectory selects dir.
+	args := []string{"manifest", "-r", nodeRevset(node), "-v"}
 	var out bytes.Buffer
 	err := r.run(ctx, repoPath, args, nil, &out, flatDirectoryScanLimit)
 	var exit *exec.ExitError
@@ -176,15 +167,22 @@ func parseFlatDirectory(b []byte, dir string) ([]TreeEntry, error) {
 	}
 	byName := map[string]TreeEntry{}
 	for _, line := range strings.Split(text, "\n") {
-		if len(line) < 2 || line[1] != ' ' || line[2:] == "" {
+		// "hg manifest -v" lines are mode, type and raw path: "644   a", "755 * a", "644 @ a".
+		if len(line) < 7 {
 			return nil, fmt.Errorf("hg: unrecognized file list line %q", line)
 		}
-		switch line[0] {
-		case '.', 'x', 'l':
+		var flag byte
+		switch line[:6] {
+		case "644   ":
+			flag = '.'
+		case "755 * ":
+			flag = 'x'
+		case "644 @ ":
+			flag = 'l'
 		default:
 			return nil, fmt.Errorf("hg: unrecognized file list line %q", line)
 		}
-		rel, ok := strings.CutPrefix(line[2:], prefix)
+		rel, ok := strings.CutPrefix(line[6:], prefix)
 		if !ok {
 			continue
 		}
@@ -196,7 +194,7 @@ func parseFlatDirectory(b []byte, dir string) ([]TreeEntry, error) {
 		name, _, isDir := strings.Cut(rel, "/")
 		e := TreeEntry{Name: name, Directory: isDir}
 		if !isDir {
-			switch line[0] {
+			switch flag {
 			case 'x':
 				e.Executable = true
 			case 'l':

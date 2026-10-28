@@ -78,7 +78,7 @@ func TestReadFileNeverChecksOut(t *testing.T) {
 func TestListDirectoryFlat(t *testing.T) {
 	ctx := context.Background()
 	r, repo := newBrowseRunner(t, "")
-	writeFakeFixture(t, r, "fake-files", ". a.txt\nx bin\nl link\n. my file.txt\n. only/nested/c.txt\n. only/d.txt\n")
+	writeFakeFixture(t, r, "fake-manifest", "644   a.txt\n755 * bin\n644 @ link\n644   my file.txt\n644   only/nested/c.txt\n644   only/d.txt\n")
 	root, err := r.ListDirectory(ctx, repo, newerDefaultNode, "")
 	if err != nil {
 		t.Fatal(err)
@@ -104,23 +104,26 @@ func TestListDirectoryFlat(t *testing.T) {
 		if call[2] == "debugdata" {
 			t.Fatalf("flat listing used %v", call)
 		}
-		if call[2] == "files" && strings.Contains(strings.Join(call, " "), "{if(flags, flags, '.')}") {
+		if call[2] == "files" {
+			t.Fatalf("flat listing used the per-file flags template: %v", call)
+		}
+		if call[2] == "manifest" && strings.Contains(strings.Join(call, " "), " -v") {
 			sawFiles = true
 		}
 	}
 	if !sawFiles {
-		t.Fatal("flat listing did not ask files for flags and paths")
+		t.Fatal("flat listing did not ask manifest -v for flags and paths")
 	}
 
-	writeFakeFixture(t, r, "fake-files", ". a.txt")
+	writeFakeFixture(t, r, "fake-manifest", "644   a.txt")
 	if _, err := r.ListDirectory(ctx, repo, newerDefaultNode, ""); err == nil || errors.Is(err, ErrNotFound) {
 		t.Fatalf("unterminated list: %v", err)
 	}
-	writeFakeFixture(t, r, "fake-files", "")
+	writeFakeFixture(t, r, "fake-manifest", "")
 	if entries, err := r.ListDirectory(ctx, repo, newerDefaultNode, ""); err != nil || len(entries) != 0 {
 		t.Fatalf("empty list: %v %+v", err, entries)
 	}
-	writeFakeFixture(t, r, "fake-files", "EXIT")
+	writeFakeFixture(t, r, "fake-manifest", "644   a.txt\n")
 	if entries, err := r.ListDirectory(ctx, repo, newerDefaultNode, "only"); err != nil || len(entries) != 0 {
 		t.Fatalf("no match: %v %+v", err, entries)
 	}
@@ -159,7 +162,7 @@ func TestListDirectoryTree(t *testing.T) {
 		t.Fatalf("missing directory: %v", err)
 	}
 	for _, call := range fakeCalls(t, r) {
-		if call[2] == "files" {
+		if call[2] == "files" || call[2] == "manifest" {
 			t.Fatalf("tree listing used %v", call)
 		}
 	}
