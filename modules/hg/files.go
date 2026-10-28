@@ -18,10 +18,17 @@ import (
 	"strings"
 )
 
-// flatDirectoryScanLimit bounds a flat-manifest directory scan. Flat
-// manifests have no per-directory revlog, so child names come from a bounded
-// scan of paths under that directory.
+// flatDirectoryScanLimit bounds the manifest text of one tree-manifest
+// directory. Flat manifests are scanned as a stream instead (flatScan).
 const flatDirectoryScanLimit = 32 << 20
+
+// A streamed flat-manifest scan keeps only the children of one directory, so
+// memory follows these bounds rather than the repository size; the browser
+// command timeout bounds its time.
+const (
+	maxFlatChildren = 100000
+	maxFlatLine     = 64 << 10
+)
 
 // ReadFile streams the stored content of file at a served changeset to out,
 // without an output limit; a symlink yields its link text. Rendering callers
@@ -134,27 +141,32 @@ func usesTreeManifest(repoPath string) bool {
 }
 
 func (r *Runner) listFlatDirectory(ctx context.Context, repoPath string, node NodeID, dir string) ([]TreeEntry, error) {
-	b, err := r.flatManifest(ctx, repoPath, node)
+	scan, err := r.scanFlat(ctx, repoPath, node, dir)
 	if err != nil {
 		return nil, err
 	}
-	return parseFlatDirectory(b, dir)
+	return scan.entries(), nil
 }
 
-// flatManifest reads the whole flat manifest with its flags. manifest -v does it
-// in one pass; the files template's flags keyword costs a per-file lookup that
-// dominated large trees. It takes no path patterns, so callers select paths.
-func (r *Runner) flatManifest(ctx context.Context, repoPath string, node NodeID) ([]byte, error) {
-	var out bytes.Buffer
-	err := r.run(ctx, repoPath, []string{"manifest", "-r", nodeRevset(node), "-v"}, nil, &out, flatDirectoryScanLimit)
+// scanFlat streams "hg manifest -v" through a flatScan for path p. The
+// per-file flags template of "hg files" costs a lookup per file that
+// dominated large trees; manifest -v reports the flags in one pass. It takes
+// no path patterns, so the scan selects p.
+func (r *Runner) scanFlat(ctx context.Context, repoPath string, node NodeID, p string) (*flatScan, error) {
+	scan := &flatScan{dir: p, prefix: p, byName: map[string]TreeEntry{}}
+	if p != "" {
+		scan.prefix += "/"
+	}
+	err := r.run(ctx, repoPath, []string{"manifest", "-r", nodeRevset(node), "-v"}, nil, scan, -1)
+	if scan.err != nil {
+		return nil, scan.err
+	}
 	var exit *exec.ExitError
 	switch {
 	case err == nil:
-		return out.Bytes(), nil
-	case errors.Is(err, ErrOutputLimit):
-		return nil, err
+		return scan, scan.finish()
 	case errors.As(err, &exit) && exit.ExitCode() == 1:
-		return nil, nil
+		return scan, nil
 	default:
 		return nil, r.notServed(ctx, repoPath, node, err)
 	}
@@ -162,7 +174,7 @@ func (r *Runner) flatManifest(ctx context.Context, repoPath string, node NodeID)
 
 // ListPath resolves p at a served changeset to a directory's children or to
 // the file entry it names; an unknown path is ErrNotFound. Flat manifests
-// answer both from one listing.
+// answer both from one streamed scan.
 func (r *Runner) ListPath(ctx context.Context, repoPath string, node NodeID, p string) ([]TreeEntry, *TreeEntry, error) {
 	if p == "" {
 		entries, err := r.ListDirectory(ctx, repoPath, node, "")
@@ -177,26 +189,26 @@ func (r *Runner) ListPath(ctx context.Context, repoPath string, node NodeID, p s
 	}
 	ctx, cancel := context.WithTimeout(ctx, BrowserCommandTimeout)
 	defer cancel()
+	if !usesTreeManifest(repoPath) {
+		scan, err := r.scanFlat(ctx, repoPath, node, p)
+		if err != nil {
+			return nil, nil, err
+		}
+		if entries := scan.entries(); len(entries) > 0 {
+			return entries, nil, nil
+		}
+		if scan.file != nil {
+			return nil, scan.file, nil
+		}
+		return nil, nil, ErrNotFound
+	}
 	parent, name := "", p
 	if i := strings.LastIndex(p, "/"); i >= 0 {
 		parent, name = p[:i], p[i+1:]
 	}
-	var listed []TreeEntry
-	if usesTreeManifest(repoPath) {
-		if listed, err = r.listTreeDirectory(ctx, repoPath, node, parent); err != nil {
-			return nil, nil, err
-		}
-	} else {
-		b, err := r.flatManifest(ctx, repoPath, node)
-		if err != nil {
-			return nil, nil, err
-		}
-		if entries, err := parseFlatDirectory(b, p); err != nil || len(entries) > 0 {
-			return entries, nil, err
-		}
-		if listed, err = parseFlatDirectory(b, parent); err != nil {
-			return nil, nil, err
-		}
+	listed, err := r.listTreeDirectory(ctx, repoPath, node, parent)
+	if err != nil {
+		return nil, nil, err
 	}
 	for i := range listed {
 		if listed[i].Name != name {
@@ -211,63 +223,104 @@ func (r *Runner) ListPath(ctx context.Context, repoPath string, node NodeID, p s
 	return nil, nil, ErrNotFound
 }
 
-func parseFlatDirectory(b []byte, dir string) ([]TreeEntry, error) {
-	if len(b) == 0 {
-		return []TreeEntry{}, nil
-	}
-	text, ok := strings.CutSuffix(string(b), "\n")
-	if !ok {
-		return nil, errors.New("hg: unterminated file list")
-	}
-	prefix := dir
-	if prefix != "" {
-		prefix += "/"
-	}
-	byName := map[string]TreeEntry{}
-	for _, line := range strings.Split(text, "\n") {
-		// "hg manifest -v" lines are mode, type and raw path: "644   a", "755 * a", "644 @ a".
-		if len(line) < 7 {
-			return nil, fmt.Errorf("hg: unrecognized file list line %q", line)
-		}
-		var flag byte
-		switch line[:6] {
-		case "644   ":
-			flag = '.'
-		case "755 * ":
-			flag = 'x'
-		case "644 @ ":
-			flag = 'l'
-		default:
-			return nil, fmt.Errorf("hg: unrecognized file list line %q", line)
-		}
-		rel, ok := strings.CutPrefix(line[6:], prefix)
-		if !ok {
-			continue
-		}
-		for _, seg := range strings.Split(rel, "/") {
-			if seg == "" {
-				return nil, fmt.Errorf("hg: unrecognized file list line %q", line)
-			}
-		}
-		name, _, isDir := strings.Cut(rel, "/")
-		e := TreeEntry{Name: name, Directory: isDir}
-		if !isDir {
-			switch flag {
-			case 'x':
-				e.Executable = true
-			case 'l':
-				e.Symlink = true
-			}
-		}
-		if prev, seen := byName[name]; seen {
-			if prev.Directory || !isDir {
-				continue
-			}
-		}
-		byName[name] = e
-	}
-	return sortedTreeEntries(byName), nil
+// flatScan consumes "hg manifest -v" lines of mode, type and raw path ("644   a",
+// "755 * a", "644 @ a") as a stream. It keeps the immediate children of dir and
+// the entry for the file dir itself names, if any. Mercurial forbids newlines in
+// file names, so lines are lossless in any encoding.
+type flatScan struct {
+	dir, prefix string
+	byName      map[string]TreeEntry
+	file        *TreeEntry
+	carry       []byte
+	err         error
 }
+
+func (s *flatScan) Write(p []byte) (int, error) {
+	n := len(p)
+	for len(p) > 0 && s.err == nil {
+		i := bytes.IndexByte(p, '\n')
+		if i < 0 {
+			if len(s.carry)+len(p) > maxFlatLine {
+				s.err = errors.New("hg: file list line too long")
+			} else {
+				s.carry = append(s.carry, p...)
+			}
+			break
+		}
+		line := p[:i]
+		if len(s.carry) > 0 {
+			if len(s.carry)+len(line) > maxFlatLine {
+				s.err = errors.New("hg: file list line too long")
+				break
+			}
+			s.carry = append(s.carry, line...)
+			line = s.carry
+		}
+		s.err = s.line(line)
+		s.carry = s.carry[:0]
+		p = p[i+1:]
+	}
+	if s.err != nil {
+		return 0, s.err
+	}
+	return n, nil
+}
+
+// finish reports output that stopped mid-line.
+func (s *flatScan) finish() error {
+	if len(s.carry) > 0 {
+		return errors.New("hg: unterminated file list")
+	}
+	return nil
+}
+
+func (s *flatScan) line(b []byte) error {
+	if len(b) < 7 {
+		return fmt.Errorf("hg: unrecognized file list line %q", b)
+	}
+	var flag byte
+	switch string(b[:6]) {
+	case "644   ":
+		flag = '.'
+	case "755 * ":
+		flag = 'x'
+	case "644 @ ":
+		flag = 'l'
+	default:
+		return fmt.Errorf("hg: unrecognized file list line %q", b)
+	}
+	path := b[6:]
+	if s.dir != "" && string(path) == s.dir {
+		e := TreeEntry{Name: s.dir[strings.LastIndexByte(s.dir, '/')+1:], Executable: flag == 'x', Symlink: flag == 'l'}
+		s.file = &e
+		return nil
+	}
+	if len(path) <= len(s.prefix) || string(path[:len(s.prefix)]) != s.prefix {
+		return nil
+	}
+	rel := string(path[len(s.prefix):])
+	for _, seg := range strings.Split(rel, "/") {
+		if seg == "" {
+			return fmt.Errorf("hg: unrecognized file list line %q", b)
+		}
+	}
+	name, _, isDir := strings.Cut(rel, "/")
+	e := TreeEntry{Name: name, Directory: isDir}
+	if !isDir {
+		e.Executable, e.Symlink = flag == 'x', flag == 'l'
+	}
+	if prev, seen := s.byName[name]; seen {
+		if prev.Directory || !isDir {
+			return nil
+		}
+	} else if len(s.byName) >= maxFlatChildren {
+		return ErrOutputLimit
+	}
+	s.byName[name] = e
+	return nil
+}
+
+func (s *flatScan) entries() []TreeEntry { return sortedTreeEntries(s.byName) }
 
 type treeTextEntry struct {
 	TreeEntry

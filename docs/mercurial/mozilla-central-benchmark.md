@@ -195,7 +195,7 @@ The full-history ordered run was stopped by the user's request during the source
 
 Process polling of one cold request per page shows the remaining time: home runs 6 native commands (the `manifest -v` about 0.6s, the other five about 0.3s each); the directory page still runs `manifest -v` twice (once for the parent listing, once for the directory, about 0.6s and 0.3s) plus four 0.3s commands; the file view runs `manifest -v` once plus four 0.3s commands. Native `manifest -v` on this tree is 0.57s. What remains is mostly process starts, so ranked changes 2 and 3 are now the next candidates and are worth about 0.3-0.9s per page here.
 
-Validation: `go test ./cmd ./routers/... ./modules/hg` and the native `go test -tags integration ./modules/hg` (real Mercurial 7.2.4, including symlink, executable and non-UTF-8 names) pass. At full mozilla-central scale the listing would still exceed `flatDirectoryScanLimit` (32MiB) against a roughly 38MB plain manifest (more with `-v` modes), so full-scale browsing is not shown to work; the limit was not changed.
+Validation: `go test ./cmd ./routers/... ./modules/hg` and the native `go test -tags integration ./modules/hg` (real Mercurial 7.2.4, including symlink, executable and non-UTF-8 names) pass. At that point a full mozilla-central listing would still have exceeded the 32MiB buffer (a roughly 38MB plain manifest, more with `-v` modes); the streaming change below removes that limit for flat manifests.
 
 ### Re-measurement after change 2 (one manifest read per path)
 
@@ -208,7 +208,27 @@ Validation: `go test ./cmd ./routers/... ./modules/hg` and the native `go test -
 | nested directory (`dom/base`) | not measured | 1.781 | 1.847 | 1.984 |
 | file view | 2.244 | 2.416 | 2.448 | 2.691 |
 
-The directory page now runs one `manifest -v` instead of two (about 0.7s saved). The file-view difference (2.24 vs 2.45) is within what a shared workstation and five cold requests can produce and was not investigated; its native work is unchanged (one `manifest -v`, one `cat`). A missing path returns 404 after one `manifest -v` (1.1s). Validation: `go test ./cmd ./routers/... ./modules/hg` and native `go test -tags integration ./modules/hg` pass, with new `TestListPathFlatReadsManifestOnce` and `TestListPathTree`.
+Controlled A/B for change 2 (the earlier rows above were taken while other work ran on the workstation): binaries built from `2213601` (change 1) and `0e39de8` (change 2) alternated over two rounds on the same instance, with the server restarted for each, one warm-up request, and six requests per page per round (12 samples each, nothing else running; min/median/max s):
+
+| Page | Change 1 | Change 2 |
+| --- | --- | --- |
+| repo home | 2.451 / 2.540 / 2.661 | 2.470 / 2.559 / 2.626 |
+| top-level directory (`dom`) | 2.376 / 2.412 / 2.497 | 1.724 / 1.837 / 1.919 |
+| nested directory (`dom/base`) | 2.379 / 2.464 / 3.090 | 1.732 / 1.766 / 1.839 |
+| file view | 2.161 / 2.255 / 2.396 | 2.166 / 2.251 / 2.363 |
+| missing path (404) | 1.020 / 1.064 / 1.119 | 1.022 / 1.070 / 1.136 |
+
+Change 2 saves about 0.6-0.7s on directory pages (one `manifest -v` instead of two) and leaves the home, file and 404 pages unchanged, as expected. The apparent file-view regression in the unaccompanied samples above was workstation noise.
+
+Validation: `go test ./cmd ./routers/... ./modules/hg` and native `go test -tags integration ./modules/hg` pass, with new `TestListPathFlatReadsManifestOnce` and `TestListPathTree`.
+
+### Streaming flat-manifest scan (removes the 32MiB buffer)
+
+`flatScan` in `modules/hg/files.go` now consumes `hg manifest -v` as a stream instead of buffering it, keeping only the immediate children of the requested directory and the entry for the path itself. The byte cap is gone for flat manifests; memory follows the directory being shown. Replacement bounds: the 30s browser command timeout, at most 100,000 distinct children (`ErrOutputLimit`), and a 64KiB line limit. Tree-manifest directory texts keep their 32MiB bound (`flatDirectoryScanLimit`, now tree-only), since each is one directory's text.
+
+Validation: new tests feed the fake `hg` a 33MiB-plus manifest (directory, file and root lookups correct past the old limit), an over-long line and 100,001 root children; `go test ./...`, `go vet ./...` and the native `go test -tags integration ./modules/hg` pass. On the demo instance (41k files, nowhere near the old limit) responses are byte-identical in size and timing is unchanged (home median 2.56s, `dom` 1.84s, file view 2.30s, 404 1.07s; six requests each), as expected.
+
+**Not measured:** full mozilla-central browsing. The hosted full store does not exist, so the first-page cost is a hypothesis: the native manifest alone took about 5.4s for 485,689 paths in the earlier source-only baseline, plus scanning 485k lines in Go. The 100,000-child cap also means a single directory with more entries now returns an error rather than a truncated list.
 
 ## Outstanding acceptance and follow-ups
 

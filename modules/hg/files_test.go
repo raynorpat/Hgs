@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -235,5 +236,46 @@ func TestListPathTree(t *testing.T) {
 	}
 	if _, _, err = r.ListPath(ctx, repo, newerDefaultNode, "missing"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing: %v", err)
+	}
+}
+
+func TestListPathStreamsManifestPastOldScanLimit(t *testing.T) {
+	ctx := context.Background()
+	r, repo := newBrowseRunner(t, "")
+	var m strings.Builder
+	m.WriteString("644   a.txt\n755 * only/run.sh\n")
+	filler := "644   bulk/" + strings.Repeat("d/", 40) + "file\n"
+	for m.Len() < 33<<20 {
+		m.WriteString(filler)
+	}
+	m.WriteString("644 @ zlink\n")
+	writeFakeFixture(t, r, "fake-manifest", m.String())
+	entries, file, err := r.ListPath(ctx, repo, newerDefaultNode, "only")
+	if err != nil || file != nil || !reflect.DeepEqual(entries, []TreeEntry{{Name: "run.sh", Executable: true}}) {
+		t.Fatalf("directory: %+v %+v %v", entries, file, err)
+	}
+	if _, file, err = r.ListPath(ctx, repo, newerDefaultNode, "zlink"); err != nil || file == nil || *file != (TreeEntry{Name: "zlink", Symlink: true}) {
+		t.Fatalf("file after the old limit: %+v %v", file, err)
+	}
+	root, err := r.ListDirectory(ctx, repo, newerDefaultNode, "")
+	if err != nil || !reflect.DeepEqual(root, []TreeEntry{{Name: "a.txt"}, {Name: "bulk", Directory: true}, {Name: "only", Directory: true}, {Name: "zlink", Symlink: true}}) {
+		t.Fatalf("root: %+v %v", root, err)
+	}
+}
+
+func TestListDirectoryBoundsStreamedScan(t *testing.T) {
+	ctx := context.Background()
+	r, repo := newBrowseRunner(t, "")
+	writeFakeFixture(t, r, "fake-manifest", "644   "+strings.Repeat("x", maxFlatLine)+"\n")
+	if _, err := r.ListDirectory(ctx, repo, newerDefaultNode, ""); err == nil || errors.Is(err, ErrNotFound) {
+		t.Errorf("over-long line: %v", err)
+	}
+	var m strings.Builder
+	for i := 0; i <= maxFlatChildren; i++ {
+		fmt.Fprintf(&m, "644   f%d\n", i)
+	}
+	writeFakeFixture(t, r, "fake-manifest", m.String())
+	if _, err := r.ListDirectory(ctx, repo, newerDefaultNode, ""); !errors.Is(err, ErrOutputLimit) {
+		t.Errorf("too many children: %v", err)
 	}
 }
