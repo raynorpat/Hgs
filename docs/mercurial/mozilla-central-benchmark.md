@@ -1,6 +1,6 @@
 # mozilla-central hosting measurements
 
-**Task16 remains IN PROGRESS: full-scale acceptance is FAILED/UNVERIFIED.** The complete native acquisition succeeded, but source verification hit its two-hour bound, HTTPS never finished native client bundle preparation, and SSH hit the shipped 30-minute server-session bound during native receive staging. Neither hosted store acquired history. This report and harness are ready for review; they do not establish a verified full-scale host or a release.
+**Task16 remains IN PROGRESS: full-scale acceptance is FAILED/UNVERIFIED.** The complete native acquisition succeeded, but source verification hit its two-hour bound, HTTPS never finished native client bundle preparation, and SSH hit the shipped 30-minute server-session bound during native receive staging. Neither hosted store acquired history. This report and harness are ready for review; they do not establish a verified full-scale host or a release. A user-approved 98-changeset UI smoke run passed ingestion and correctness; see "Reduced-scope UI smoke run".
 
 The approved measurement-order exception allowed conditional hosting after the time-bound source failure, with full frozen node/ref/requirements identity checks. It never waived integrity verification. Undetected source damage could invalidate these observations. No failed full seed or source verification was retried, and no production optimization or limit increase was made.
 
@@ -110,6 +110,41 @@ Three further genuine native AES128-GCM pushes passed the same identity/hook che
 A prepared full ordinary verification with10Hz native CPU sampling and5s process observation did not start: fresh free RAM was3.94GiB, below the unchanged4GiB reserve. A later tiny harness probe was also stopped on resource pressure with about250MiB in its owned process tree. No WSL distribution was running during a subsequent low-memory observation. Shared host memory, rather than proven benchmark memory growth, currently blocks these new runs; no unrelated process was stopped and no reserve was lowered.
 
 Evidence: `raw/native-profile-20261027T1230/`, `raw/native-partial-profile-20261027T1230-retry1/`, `raw/ssh-pipe-profile-20261027/`, `raw/ssh-native-small-20261027/`, `raw/ssh-cipher-small-20261027/` and `raw/native-full-verify-20261027T130915/`. Source integrity and full hosted acceptance remain FAILED/UNVERIFIED.
+
+## Reduced-scope UI smoke run (approved 2026-10-27)
+
+On 2026-10-27 the user replaced the full-history requirement with a smoke run of only the latest 100 changesets on `F:` (`F:/gogs-mozilla-smoke-20261027`, sentinel `gogs-task16-smoke-20261027`). **This does not satisfy full-scale acceptance**, which remains FAILED/UNVERIFIED above; it checks that hosting, transports and the UI work on real Mozilla content.
+
+Dataset: `hg convert` with `convert.hg.startrev=886595`, end `6394817c482c7ed8baa4021802f4f231315ef0be` (rev 886694), and a filemap of the directories touched by those changesets (280 includes). Result: **98 changesets** (two became empty), one head `a94794d5cf0f` on default, 41,127 files, 211MB `.hg`, linear (no merges), all-ASCII paths, largest sampled file 246,995B. Node IDs differ from upstream, so no upstream identity claim. The source passed ordinary `hg verify` ("checked 98 changesets with 41761 changes to 41127 files"). The harness accepts it with `GOGS_TEST_MOZILLA_SUBSET=1`, which skips only the upstream clone receipt and default-URL check; the server `PATH` comes from `GOGS_TEST_SERVER_PATH` (venv Scripts plus the Python 3.13 directory).
+
+Outcomes (Windows 11, hg 7.2.4 venv client, loopback, unchanged shipping limits):
+
+| Test | Result |
+| --- | --- |
+| `TestMozillaCentralIngestion` | PASS: full push over HTTPS and SSH to empty stores, node/ref comparison |
+| `TestMozillaCentralCorrectness` | PASS: HTTPS/SSH clone and pull, workflows, denial, raw identity, restart |
+| `TestMozillaCentralPerformance` | FAIL only on named unverified rows: active-stream cancellation (largest candidate below 1MiB) and merge-diff (no merge in the subset); non-ASCII path also absent |
+
+Initial push took about 101-125s per transport (full history needed over 2h on HTTPS and over 30min on SSH without finishing). UI samples (5 each, successful, warm shared workstation; min/median/max seconds):
+
+| Operation | Min | Median | Max |
+| --- | ---: | ---: | ---: |
+| home | 19.850 | 20.219 | 20.709 |
+| directory (`dom`, 16.7k files below) | 26.395 | 26.674 | 27.457 |
+| repository history | 0.770 | 0.788 | 0.809 |
+| file history | 1.244 | 1.307 | 1.372 |
+| ref selection (302) | 0.734 | 0.743 | 0.786 |
+| raw text / binary / large | 0.81 | 0.83 | 0.89 |
+| native no-op pull, isolated HTTPS | 3.862 | 3.946 | 4.954 |
+| native incremental push, isolated HTTPS | 9.935 | 10.094 | 10.327 |
+
+Native baselines for the same repository: manifest 0.639/0.675/0.704s, history 0.418/0.427/0.473s, process startup 0.348/0.368/0.379s. Concurrent history readers: 1/4/8/12 readers gave medians 0.84/2.07/3.71/4.00s with no errors. The `incoming`/`outgoing` and denied-push exits in the sample file are the expected exit-1 and authorization-denial outcomes.
+
+**Correctness fix exposed by the data.** The first correctness run returned 404 for every raw download. `SingleDownload` listed the whole manifest through the runner's 2MiB output cap (`MaxCommandOutput`), and this subset's `hg manifest -v` is 3,028,484B; full mozilla-central's is about 38MB, so raw download could never work there. The manifest scan was removed because `ReadFile` already reports a missing file before writing. Regression: `TestRawFileWithManifestOverCommandLimit` (fails on the old handler, passes now); the fake `hg cat` now exits 1 for empty content so `TestRawPathIdentity` still checks missing files. The post-fix runs used a binary built from the working tree, not the pinned c459032 archive. A harness issue was also fixed: branch selection answers 302 by design and is no longer counted as an error.
+
+**Observed bottlenecks on this data (ranked):** (1) home and directory pages take 20-27s against 0.7s native manifest; at 41k files this is roughly 30x the native cost and is the clear first target. Cause is not yet profiled; the flat-directory scan (`flatDirectoryScanLimit`, 32MiB) and per-request manifest reads in `modules/hg/files.go` are hypotheses. Validate by a Go CPU profile and the `home`/`directory` rows above. (2) A no-op pull costs about 3.9s versus 0.4s for a native query; unprofiled. Neither was optimized here.
+
+Raw evidence: `F:/gogs-mozilla-smoke-20261027/raw/` (`TestMozillaCentral*` directories; earlier failed runs under `failed-run1..3`).
 
 ## Outstanding acceptance and follow-ups
 
