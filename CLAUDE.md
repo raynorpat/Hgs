@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is the Gogs 0.5.13 Beta source (Feb 2015), converted into a **Mercurial-only** hosting service. Before changing anything structural, read:
 
 - `docs/superpowers/specs/2026-10-25-mercurial-hosting-design.md` — approved design (scope, exclusions, security model)
-- `docs/superpowers/plans/2026-10-25-mercurial-hosting.md` — implementation plan (Task16 benchmark appended; not yet executed)
+- `docs/superpowers/plans/2026-10-25-mercurial-hosting.md` — implementation plan (Task16 is incomplete: full-scale acceptance failed/unverified, see `docs/mercurial/mozilla-central-benchmark.md`)
 
 Key decisions those documents fix, which are easy to violate by accident:
 

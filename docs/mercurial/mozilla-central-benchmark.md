@@ -245,6 +245,21 @@ Controlled A/B: the `e982c19` and change-3 binaries alternated over two rounds o
 
 Directory and file pages (24 samples each, the two paths were pooled by the script) were unchanged, as expected: 1.724 / 2.162 / 2.259 before and 1.748 / 2.222 / 2.687 after. Home saves about 0.7s (two native processes), commit pages about 0.35s (one). `go test ./...`, `go vet ./...` and the native `go test -tags integration ./modules/hg` pass.
 
+### Further file-browsing ideas (recorded, not implemented)
+
+Everything left on a 41k-file tree is mostly native process starts (about 0.3s each; `hg version` alone is 0.24s) and one manifest scan. Candidates, with the evidence behind each and what would validate it:
+
+| Idea | Evidence / expected effect | Risk and validation |
+| --- | --- | --- |
+| Run the independent native calls of a page in parallel (node lookup, listing, refs) | wall time becomes the slowest call instead of the sum; a file view at about 2.2s could plausibly reach about 1.2s (hypothesis) | each call takes a worker slot (`MAX_PROCESSES=8`, 5s queue), so it could raise queue time under load; needs a per-request cap and a concurrent-reader benchmark |
+| Fold `branches --closed`, the tags/bookmarks `log` and the node lookup into one `hg log` | saves about 0.3-0.6s per page that shows refs | touches `References` parsing and secret-changeset filtering; native tests for hidden, closed, bookmark and tag cases |
+| Bounded in-memory cache of immutable results keyed by repository ID, node and path | repeat views skip the listing and `cat`; authorization and the not-secret check still run per request | memory bound, invalidation on repository delete or recreate (IDs are immutable); cache hit/miss test |
+| Load the branch/tag dropdown after first paint | first paint about 0.6s sooner; total work unchanged | UI change; keep a no-script fallback |
+| Scope listings to a directory (`files` with `path:` or `rootfilesin:`, flags only for direct children) instead of scanning the whole manifest | matters at full scale, where a file view would otherwise scan 485,689 paths (about 5s) | earlier profile showed `path:` patterns walking every manifest path in Python (10.7s of regex time), so measure plain `files` with patterns first; may not beat the streaming scan |
+| Cheaper process startup: Rust `rhg`, or `chg` | startup is 0.24-0.3s of every command | `chg` is Unix-only and a long-lived process (needs separate approval); `rhg` is not installed here and covers only some commands |
+
+Measure the last two natively before building anything. None of these were attempted.
+
 ## Outstanding acceptance and follow-ups
 
 **Unverified/blocked:** hosted full node/ref/bookmark/requirements/manifests/content comparison; hosted/clone native verification; full clones and pulls on both transports; five hosted incremental/UI samples; reader/writer denial on full stores; rename/merge/history pagination during writes; large raw streaming/cancellation; full-history issues/attachments and restart persistence; beyond-capacity concurrency/queue behavior. Hosted/UI successful sample count is zero. The original compiled suite later exercised issues/attachments on an empty fixture after cached seed failures; those receipts are not full-history evidence. Linux/macOS, legacy native versions and unresolved Task14 filesystem failures retain their [compatibility statuses](compatibility.md).
