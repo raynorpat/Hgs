@@ -49,10 +49,13 @@ func Home(ctx *middleware.Context) {
 		}
 		return
 	}
-	refs, err := ctx.Repo.HgRunner.References(ctx.Repo.HgContext, ctx.Repo.HgPath)
-	if err != nil {
-		ctx.Handle(500, "References", err)
-		return
+	refs := ctx.Repo.References
+	if refs == nil {
+		refs, err = ctx.Repo.HgRunner.References(ctx.Repo.HgContext, ctx.Repo.HgPath)
+		if err != nil {
+			ctx.Handle(500, "References", err)
+			return
+		}
 	}
 	ctx.Data["References"] = referenceRows(ctx.Repo.RepoLink, refs)
 	ctx.Data["SourceURL"] = middleware.HgPathURL(ctx.Repo.RepoLink, "src", ctx.Repo.Node, "")

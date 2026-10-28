@@ -84,7 +84,7 @@ func TestHistoryAndDiffRejectInvalidNodesAndPaths(t *testing.T) {
 		if _, err := r.Changeset(context.Background(), repo, node); !errors.Is(err, ErrNotFound) {
 			t.Errorf("Changeset(%q): %v", node, err)
 		}
-		if _, err := r.Diff(context.Background(), repo, node, 0); !errors.Is(err, ErrNotFound) {
+		if _, err := diffNode(r, context.Background(), repo, node, 0); !errors.Is(err, ErrNotFound) {
 			t.Errorf("Diff(%q): %v", node, err)
 		}
 	}
@@ -94,7 +94,7 @@ func TestHistoryAndDiffRejectInvalidNodesAndPaths(t *testing.T) {
 		}
 	}
 	for _, index := range []int{-1, 2, 100} {
-		if _, err := r.Diff(context.Background(), repo, baseNode, index); err == nil {
+		if _, err := diffNode(r, context.Background(), repo, baseNode, index); err == nil {
 			t.Errorf("Diff accepted parent %d", index)
 		}
 	}

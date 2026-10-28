@@ -39,38 +39,38 @@ func TestDiffSelectsMergeParent(t *testing.T) {
 	if err != nil || len(cs.Parents) != 2 || cs.Parents[0] != right || cs.Parents[1] != left {
 		t.Fatalf("merge parents %+v, %v", cs, err)
 	}
-	d0, err := r.Diff(ctx, repo, merge, 0)
+	d0, err := diffNode(r, ctx, repo, merge, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	d1, err := r.Diff(ctx, repo, merge, 1)
+	d1, err := diffNode(r, ctx, repo, merge, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Contains(d0.Text, []byte("+left")) || bytes.Contains(d0.Text, []byte("+right")) || !bytes.Contains(d1.Text, []byte("+right")) || bytes.Equal(d0.Text, d1.Text) {
 		t.Fatalf("parent diffs: %q / %q", d0.Text, d1.Text)
 	}
-	d, err := r.Diff(ctx, repo, base, 0)
+	d, err := diffNode(r, ctx, repo, base, 0)
 	if err != nil || !bytes.Contains(d.Text, []byte("+root")) {
 		t.Fatalf("root diff: %q, %v", d.Text, err)
 	}
 	for _, index := range []int{-1, 1, 2} {
-		if _, err := r.Diff(ctx, repo, base, index); err == nil {
+		if _, err := diffNode(r, ctx, repo, base, index); err == nil {
 			t.Errorf("root accepted parent %d", index)
 		}
 	}
-	if _, err := r.Diff(ctx, repo, left, 1); err == nil {
+	if _, err := diffNode(r, ctx, repo, left, 1); err == nil {
 		t.Error("nonmerge accepted parent 1")
 	}
 	write("binary", "a\x00b")
 	binary := commit("binary")
-	d, err = r.Diff(ctx, repo, binary, 0)
+	d, err = diffNode(r, ctx, repo, binary, 0)
 	if err != nil || !d.Binary || d.Truncated || len(d.Text) == 0 {
 		t.Fatalf("binary diff %+v, %v", d, err)
 	}
 	write("huge", string(bytes.Repeat([]byte("x"), MaxDiffBytes+100)))
 	big := commit("huge line")
-	d, err = r.Diff(ctx, repo, big, 0)
+	d, err = diffNode(r, ctx, repo, big, 0)
 	if err != nil || len(d.Text) > MaxDiffBytes || !d.Truncated {
 		t.Fatalf("huge diff bytes=%d truncated=%v, %v", len(d.Text), d.Truncated, err)
 	}

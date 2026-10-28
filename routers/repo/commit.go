@@ -90,7 +90,7 @@ func Diff(ctx *middleware.Context) {
 		ctx.Error(400)
 		return
 	}
-	patch, err := ctx.Repo.HgRunner.Diff(ctx.Repo.HgContext, ctx.Repo.HgPath, ctx.Repo.Node, parent)
+	patch, err := ctx.Repo.HgRunner.Diff(ctx.Repo.HgContext, ctx.Repo.HgPath, ctx.Repo.Changeset, parent)
 	if err != nil {
 		ctx.Handle(404, "Diff", err)
 		return

@@ -230,6 +230,21 @@ Validation: new tests feed the fake `hg` a 33MiB-plus manifest (directory, file 
 
 **Not measured:** full mozilla-central browsing. The hosted full store does not exist, so the first-page cost is a hypothesis: the native manifest alone took about 5.4s for 485,689 paths in the earlier source-only baseline, plus scanning 485k lines in Go. The 100,000-child cap also means a single directory with more entries now returns an error rather than a truncated list.
 
+### Removing duplicate native calls (change 3)
+
+Two pages repeated native work the page had already done. The home page listed references twice (the landing selection and then the page itself), and commit pages looked the same changeset up twice (the middleware, then `Diff`). The middleware now keeps the references it listed and `Home` reuses them; `Runner.Diff` takes the changeset the middleware already holds. New tests `TestHomeListsReferencesOnce` (fails with two `branches` calls when reuse is disabled) and `TestCommitPageLooksUpChangesetOnce` pin this. No new long-lived process or cross-request state.
+
+Controlled A/B: the `e982c19` and change-3 binaries alternated over two rounds on the demo instance, server restarted for each, one warm-up request, six requests per page per round, nothing else running (12 samples each; min/median/max s). Response sizes were identical apart from a one-byte difference on one commit page.
+
+| Page | Before | After |
+| --- | --- | --- |
+| repo home | 2.483 / 2.516 / 2.819 | 1.746 / 1.844 / 2.394 |
+| commit, 4 files | 1.144 / 1.184 / 1.408 | 0.785 / 0.812 / 0.865 |
+| commit, 39 files (504KB page) | 1.411 / 1.457 / 1.582 | 1.052 / 1.078 / 1.123 |
+| commit, 155 files (322KB page) | 1.360 / 1.450 / 1.960 | 1.012 / 1.026 / 1.089 |
+
+Directory and file pages (24 samples each, the two paths were pooled by the script) were unchanged, as expected: 1.724 / 2.162 / 2.259 before and 1.748 / 2.222 / 2.687 after. Home saves about 0.7s (two native processes), commit pages about 0.35s (one). `go test ./...`, `go vet ./...` and the native `go test -tags integration ./modules/hg` pass.
+
 ## Outstanding acceptance and follow-ups
 
 **Unverified/blocked:** hosted full node/ref/bookmark/requirements/manifests/content comparison; hosted/clone native verification; full clones and pulls on both transports; five hosted incremental/UI samples; reader/writer denial on full stores; rename/merge/history pagination during writes; large raw streaming/cancellation; full-history issues/attachments and restart persistence; beyond-capacity concurrency/queue behavior. Hosted/UI successful sample count is zero. The original compiled suite later exercised issues/attachments on an empty fixture after cached seed failures; those receipts are not full-history evidence. Linux/macOS, legacy native versions and unresolved Task14 filesystem failures retain their [compatibility statuses](compatibility.md).

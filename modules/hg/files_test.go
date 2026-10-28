@@ -279,3 +279,12 @@ func TestListDirectoryBoundsStreamedScan(t *testing.T) {
 		t.Errorf("too many children: %v", err)
 	}
 }
+
+// diffNode looks node up the way the commit page does before diffing it.
+func diffNode(r *Runner, ctx context.Context, repo string, node NodeID, parentIndex int) (DiffResult, error) {
+	cs, err := r.Changeset(ctx, repo, node)
+	if err != nil {
+		return DiffResult{}, err
+	}
+	return r.Diff(ctx, repo, cs, parentIndex)
+}
