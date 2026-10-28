@@ -37,6 +37,7 @@ var (
 // repository ID; selections are serialized hg.ReviewSelection data, not revsets.
 // CurrentComparisonID == 0 honestly denotes an unprepared comparison.
 type PullRequest struct {
+	SourceDeleted       bool
 	ID                  int64     `xorm:"pk autoincr 'id'"`
 	TargetRepoID        int64     `xorm:"unique(pull_target_number) 'target_repo_id'"`
 	SourceRepoID        int64     `xorm:"index 'source_repo_id'"`
@@ -98,6 +99,20 @@ func PullSelections(p PullRequest) (source, target hg.ReviewSelection, err error
 	return source, target, nil
 }
 func pullReads(e Engine, actor int64, p PullRequest, locked bool) (RepositoryAccess, RepositoryAccess, error) {
+	if p.SourceDeleted && !locked {
+		// Only the final deletion transaction may grant this read-only exception.
+		var source Repository
+		if exists, err := e.Id(p.SourceRepoID).Get(&source); err != nil {
+			return RepositoryAccess{}, RepositoryAccess{}, err
+		} else if exists {
+			return RepositoryAccess{}, RepositoryAccess{}, ErrPullNotExist
+		}
+		target, err := repositoryAccessFor(e, actor, p.TargetRepoID, false)
+		if err == nil && !target.Read {
+			err = ErrPullNotExist
+		}
+		return RepositoryAccess{}, target, err
+	}
 	source, err := repositoryAccessFor(e, actor, p.SourceRepoID, locked)
 	if err != nil {
 		if errors.Is(err, ErrRepoNotExist) || errors.Is(err, ErrForkLineage) {
@@ -163,7 +178,7 @@ func ValidatePullCreation(actor int64, p PullRequest) error {
 	return pullCreationAllowed(x, actor, p, false)
 }
 func validateNewPull(p PullRequest) error {
-	if p.SourceRepoID <= 0 || p.TargetRepoID <= 0 || p.ID != 0 || p.Number != 0 || p.AuthorID != 0 || p.State != "" || p.CurrentComparisonID != 0 || !validPullText(p.Title, p.Body) {
+	if p.SourceRepoID <= 0 || p.TargetRepoID <= 0 || p.ID != 0 || p.Number != 0 || p.AuthorID != 0 || p.State != "" || p.CurrentComparisonID != 0 || p.SourceDeleted || !validPullText(p.Title, p.Body) {
 		return ErrPullInvalid
 	}
 	source, target, err := PullSelections(p)

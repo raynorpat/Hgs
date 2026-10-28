@@ -30,14 +30,33 @@ func (s *Service) comparisonRead(ctx context.Context, actor, pullID int64) (cont
 	if err := validateComparisonRoot(host.ReviewArtifactRoot(), host.RepositoryRoot()); err != nil {
 		return nil, nil, p, nil, ErrComparisonUnavailable
 	}
+	readRepo := p.SourceRepoID
+	if p.SourceDeleted {
+		if p.State != models.PullMerged {
+			return nil, nil, p, nil, ErrComparisonUnavailable
+		}
+		readRepo = p.TargetRepoID
+	} else {
+		source, err := models.GetRepositoryById(p.SourceRepoID)
+		if err != nil {
+			return nil, nil, p, nil, err
+		}
+		target, err := models.GetRepositoryById(p.TargetRepoID)
+		if err != nil {
+			return nil, nil, p, nil, err
+		}
+		if source.IsPrivate != target.IsPrivate {
+			return nil, nil, p, nil, ErrComparisonUnavailable
+		}
+	}
 	readCtx, cancel := context.WithTimeout(ctx, host.ReviewOperationTimeout())
-	release, err := host.RegisterBrowserRead(actor, p.SourceRepoID, cancel)
+	release, err := host.RegisterBrowserRead(actor, readRepo, cancel)
 	if err != nil {
 		cancel()
 		return nil, nil, p, nil, err
 	}
 	finish := func() { cancel(); release() }
-	if p.TargetRepoID != p.SourceRepoID {
+	if p.TargetRepoID != readRepo {
 		other, err := host.RegisterBrowserRead(actor, p.TargetRepoID, cancel)
 		if err != nil {
 			finish()
@@ -105,6 +124,9 @@ func (s *Service) RefreshComparison(ctx context.Context, actor, pullID int64) (c
 					return c, models.ErrPullConflict
 				}
 				if old.State == "ready" {
+					if err := models.ValidatePullComparisonPrivacy(ctx, actor, pullID); err != nil {
+						return c, ErrComparisonUnavailable
+					}
 					return old, nil
 				}
 				return old, hg.ErrComparisonTooLarge
@@ -188,7 +210,7 @@ func (s *Service) Comparison(ctx context.Context, actor, pullID, id int64) (mode
 		err = nil
 	}
 	// Native work can take time. Recheck before any buffered content is returned.
-	if _, accessErr := models.GetPullRecordByID(ctx, actor, pullID); accessErr != nil {
+	if _, accessErr := models.GetPullComparison(ctx, actor, pullID, id); accessErr != nil {
 		return models.PullComparison{}, hg.ReviewComparison{}, accessErr
 	}
 	if err != nil {
@@ -205,7 +227,11 @@ type comparisonWriter struct {
 }
 
 func (w *comparisonWriter) Write(p []byte) (int, error) {
-	if _, err := models.GetPullRecordByID(w.ctx, w.actor, w.pullID); err != nil {
+	pull, err := models.GetPullRecordByID(w.ctx, w.actor, w.pullID)
+	if err == nil && !pull.SourceDeleted {
+		err = models.ValidatePullComparisonPrivacy(w.ctx, w.actor, w.pullID)
+	}
+	if err != nil {
 		w.err = err
 		return 0, err
 	}

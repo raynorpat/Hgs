@@ -28,6 +28,7 @@ import (
 type Provider interface{ Service() *Service }
 
 type Config struct {
+	RepositoryCleanup                                                                models.RepositoryCollaborationCleanup
 	ReviewArtifactRoot                                                               string
 	ReviewOperationTimeout                                                           time.Duration
 	Mercurial                                                                        hg.Config
@@ -150,7 +151,7 @@ func New(ctx context.Context, cfg Config) (s *Service, err error) {
 	if err = s.reconcileForksAtStartup(); err != nil {
 		return nil, err
 	}
-	if err = models.ReconcileHgRepositories(ctx, cfg.RepositoryRoot); err != nil {
+	if err = models.ReconcileHgRepositories(ctx, cfg.RepositoryRoot, cfg.RepositoryCleanup); err != nil {
 		return nil, err
 	}
 	ttl := cfg.Mercurial.SessionTimeout
@@ -455,4 +456,12 @@ func (s *Service) CloneLinks(owner, repository string) models.CloneLink {
 		links.SSH = u.String()
 	}
 	return links
+}
+
+// RepositoryCleanup is composed by cmd from validated roots before New runs.
+func (s *Service) RepositoryCleanup(ctx context.Context, id int64) error {
+	if s.cfg.RepositoryCleanup == nil {
+		return models.ErrReviewReserved
+	}
+	return s.cfg.RepositoryCleanup(ctx, id)
 }

@@ -42,6 +42,12 @@ func (s *Service) InspectPullComparison(ctx context.Context, actor, pullID int64
 	if err != nil {
 		return c, "unavailable", err
 	}
+	if p.SourceDeleted {
+		if _, err := comparisonSnapshot(host.ReviewArtifactRoot(), c); err != nil {
+			return c, "unavailable", nil
+		}
+		return c, "merged", nil
+	}
 	source, target, resolveErr := comparisonEndpoints(ctx, host, p)
 	current, err := models.GetPullRecordByID(ctx, actor, pullID)
 	if err != nil {
@@ -73,6 +79,9 @@ func (s *Service) InspectPullComparison(ctx context.Context, actor, pullID int64
 	}
 	if _, err := comparisonSnapshot(host.ReviewArtifactRoot(), c); err != nil {
 		return c, "unavailable", nil
+	}
+	if err := models.ValidatePullComparisonPrivacy(ctx, actor, pullID); err != nil {
+		return c, "unavailable", err
 	}
 	return c, "fresh", nil
 }

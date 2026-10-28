@@ -5,9 +5,11 @@
 package models
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"github.com/Unknwon/com"
+	"github.com/go-xorm/xorm"
 	"html/template"
 	"regexp"
 	"strings"
@@ -213,6 +215,9 @@ func TransferOwnership(u *User, newOwner string, repo *Repository) error {
 	} else if reserved {
 		return ErrReviewReserved
 	}
+	if err = collaborationLifecycleBusy(sess, repo.Id); err != nil {
+		return err
+	}
 	if err = validateForkTransfer(sess, repo, newUser, t); err != nil {
 		return err
 	}
@@ -329,9 +334,14 @@ func ChangeRepositoryName(repoID int64, newRepoName string) error {
 	} else if has {
 		return ErrRepoAlreadyExist
 	}
-	_, err = x.Exec("UPDATE `repository` SET name = ?, lower_name = ? WHERE id = ? AND state = ?",
-		newRepoName, strings.ToLower(newRepoName), repoID, RepositoryReady)
-	return err
+	return pullTransaction(context.Background(), []int64{repoID}, func(sess *xorm.Session) error {
+		if err := collaborationLifecycleBusy(sess, repoID); err != nil {
+			return err
+		}
+		_, err := sess.Exec("UPDATE `repository` SET name = ?, lower_name = ? WHERE id = ? AND state = ?",
+			newRepoName, strings.ToLower(newRepoName), repoID, RepositoryReady)
+		return err
+	})
 }
 
 // UpdateRepository saves a repository loaded from the database. Rows that
@@ -360,6 +370,11 @@ func UpdateRepository(repo *Repository) error {
 	}
 	if current.OwnerId != repo.OwnerId || current.State != repo.State || current.StorageNonce != repo.StorageNonce {
 		return ErrForkPolicy
+	}
+	if current.IsPrivate != repo.IsPrivate || current.Name != repo.Name {
+		if err := collaborationLifecycleBusy(sess, repo.Id); err != nil {
+			return err
+		}
 	}
 	if current.IsPrivate != repo.IsPrivate {
 		if err := forkDependents(sess, repo.Id); err != nil {
@@ -415,6 +430,13 @@ func DeleteRepository(uid, repoId int64, userName string) error {
 		}
 		repo.State = RepositoryDeleting
 	}
+	rows, err := RepositoryPullDeletion(context.Background(), repo.Id)
+	if err != nil {
+		return err
+	}
+	if len(rows) != 0 {
+		return ErrReviewReserved
+	}
 	return deleteRepositoryRows(repo)
 }
 
@@ -439,6 +461,10 @@ func deleteRepositoryRows(repo *Repository) error {
 		return err
 	}
 
+	defer sess.Rollback()
+	if err = deleteRepositoryPullRows(sess, repoId); err != nil {
+		return err
+	}
 	if err = forkDependents(sess, repoId); err != nil {
 		sess.Rollback()
 		return err

@@ -442,55 +442,35 @@ func DeleteUser(u *User) error {
 		return ErrUserHasOrgs
 	}
 
-	// FIXME: check issues, other repos' commits
-	// FIXME: roll backable in some point.
-
-	// Delete all followers.
-	if _, err = x.Delete(&Follow{FollowId: u.Id}); err != nil {
+	sess := x.NewSession()
+	defer sess.Close()
+	if err := sess.Begin(); err != nil {
 		return err
 	}
-	// Delete oauth2.
-	if _, err = x.Delete(&Oauth2{Uid: u.Id}); err != nil {
-		return err
-	}
-	// Delete all feeds.
-	if _, err = x.Delete(&Action{UserId: u.Id}); err != nil {
-		return err
-	}
-	// Delete all watches.
-	if _, err = x.Delete(&Watch{UserId: u.Id}); err != nil {
-		return err
-	}
-	// Delete all accesses.
-	if _, err = x.Delete(&Access{UserId: u.Id}); err != nil {
-		return err
-	}
-	// Delete all alternative email addresses
-	if _, err = x.Delete(&EmailAddress{Uid: u.Id}); err != nil {
-		return err
-	}
-	// Delete all SSH keys.
-	keys := make([]*PublicKey, 0, 10)
-	if err = x.Find(&keys, &PublicKey{OwnerId: u.Id}); err != nil {
-		return err
-	}
-	for _, key := range keys {
-		if err = DeletePublicKey(key); err != nil {
+	defer sess.Rollback()
+	for _, bean := range []interface{}{&Follow{FollowId: u.Id}, &Oauth2{Uid: u.Id}, &Action{UserId: u.Id}, &Watch{UserId: u.Id}, &Access{UserId: u.Id}, &EmailAddress{Uid: u.Id}, &PublicKey{OwnerId: u.Id}, u} {
+		if _, err := sess.Delete(bean); err != nil {
 			return err
 		}
 	}
-
-	_, err = x.Delete(u)
-	return err
+	return commitRetiringReviews(sess)
 }
 
 // DeleteInactivateUsers deletes all inactivate users and email addresses.
 func DeleteInactivateUsers() error {
-	_, err := x.Where("is_active=?", false).Delete(new(User))
-	if err == nil {
-		_, err = x.Where("is_activated=?", false).Delete(new(EmailAddress))
+	sess := x.NewSession()
+	defer sess.Close()
+	if err := sess.Begin(); err != nil {
+		return err
 	}
-	return err
+	defer sess.Rollback()
+	if _, err := sess.Where("is_active=?", false).Delete(new(User)); err != nil {
+		return err
+	}
+	if _, err := sess.Where("is_activated=?", false).Delete(new(EmailAddress)); err != nil {
+		return err
+	}
+	return commitRetiringReviews(sess)
 }
 
 func GetUserByKeyId(keyId int64) (*User, error) {

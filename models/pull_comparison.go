@@ -35,6 +35,39 @@ type PullComparison struct {
 	Created                          time.Time `xorm:"created"`
 }
 
+// Comparison privacy is checked independently of read authority. A leaf may
+// change visibility while all actors retain both reads.
+func pullComparisonPrivacy(e Engine, p PullRequest, locked bool) error {
+	if p.SourceDeleted {
+		return ErrPullState
+	}
+	var source, target Repository
+	for _, endpoint := range []struct {
+		id   int64
+		repo *Repository
+	}{{p.SourceRepoID, &source}, {p.TargetRepoID, &target}} {
+		ok, err := policyGet(e, locked, "repository", "id = ? AND state = ?", endpoint.repo, endpoint.id, RepositoryReady)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrPullNotExist
+		}
+	}
+	if source.IsPrivate != target.IsPrivate {
+		return ErrPullState
+	}
+	return nil
+}
+
+func ValidatePullComparisonPrivacy(ctx context.Context, actor, id int64) error {
+	p, err := GetPullRecordByID(ctx, actor, id)
+	if err != nil {
+		return err
+	}
+	return pullComparisonPrivacy(x, p, false)
+}
+
 func comparisonRandomID() (string, error) {
 	var b [32]byte
 	if _, err := rand.Read(b[:]); err != nil {
@@ -58,6 +91,9 @@ func ReservePullComparison(ctx context.Context, actor, pullID int64, expected ..
 		return PullComparison{}, err
 	}
 	err = mutatePull(ctx, actor, pullID, func(sess *xorm.Session, p PullRequest, _, _ RepositoryAccess) error {
+		if err := pullComparisonPrivacy(sess, p, true); err != nil {
+			return err
+		}
 		if p.State == PullMerged {
 			return ErrPullState
 		}
@@ -106,6 +142,9 @@ func CompletePullComparison(ctx context.Context, actor int64, c PullComparison) 
 		return ErrPullInvalid
 	}
 	return mutatePull(ctx, actor, c.PullID, func(sess *xorm.Session, p PullRequest, _, _ RepositoryAccess) error {
+		if err := pullComparisonPrivacy(sess, p, true); err != nil {
+			return err
+		}
 		var old PullComparison
 		ok, err := policyGet(sess, true, "pull_comparison", "id = ? AND pull_id = ?", &old, c.ID, c.PullID)
 		if err != nil {
@@ -125,8 +164,17 @@ func CompletePullComparison(ctx context.Context, actor int64, c PullComparison) 
 	})
 }
 func GetPullComparison(ctx context.Context, actor, pullID, id int64) (PullComparison, error) {
-	if _, err := GetPullRecordByID(ctx, actor, pullID); err != nil {
+	p, err := GetPullRecordByID(ctx, actor, pullID)
+	if err != nil {
 		return PullComparison{}, err
+	}
+	if p.SourceDeleted && (p.State != PullMerged || id != p.CurrentComparisonID) {
+		return PullComparison{}, ErrPullNotExist
+	}
+	if !p.SourceDeleted {
+		if err := pullComparisonPrivacy(x, p, false); err != nil {
+			return PullComparison{}, err
+		}
 	}
 	var c PullComparison
 	ok, err := x.Where("id = ? AND pull_id = ?", id, pullID).Get(&c)

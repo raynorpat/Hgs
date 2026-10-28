@@ -170,6 +170,25 @@ func TestPullMergeNativePartialRevocationAndRestart(t *testing.T) {
 	if got := f.run(f.targetPath, "log", "-r", "merge()", "-T", "{node}"); got != string(op.ResultNode) {
 		t.Fatalf("duplicate result: %s", got)
 	}
+	if err := models.DeleteHgRepository(f.ctx, f.host.RepositoryRoot(), f.source.Id, f.host.DrainRepository, f.service.AfterRepositoryDeleted); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(e.Prepared.Path); !os.IsNotExist(err) {
+		t.Fatalf("terminal partial private payload retained: %v", err)
+	}
+	if err := f.service.ReconcileOperations(f.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(e.Prepared.Path); !os.IsNotExist(err) {
+		t.Fatalf("recovery recreated deleted payload: %v", err)
+	}
+	denied, err := models.LoadMergeOperation(op.ID)
+	if err != nil || denied.State != models.MergeFailed || denied.Prepared != op.Prepared || denied.Expectation != op.Expectation || denied.ResultNode != op.ResultNode {
+		t.Fatalf("deleted-source partial denial lost provenance: %+v %v", denied, err)
+	}
+	if err := models.ValidateMergePublication(f.ctx, f.owner.Id, op.ID, f.source.Id, f.target.Id, op.SourceNode, op.TargetNode, op.ResultNode); err == nil {
+		t.Fatal("partial binding became generic after deletion")
+	}
 }
 
 func TestPullMergeRestartPublishedWithoutGrant(t *testing.T) {

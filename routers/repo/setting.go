@@ -14,6 +14,7 @@ import (
 	"github.com/gogits/gogs/models"
 	"github.com/gogits/gogs/modules/auth"
 	"github.com/gogits/gogs/modules/base"
+	"github.com/gogits/gogs/modules/collaboration"
 	"github.com/gogits/gogs/modules/hosting"
 	"github.com/gogits/gogs/modules/log"
 	"github.com/gogits/gogs/modules/mailer"
@@ -68,6 +69,9 @@ func SettingsPost(ctx *middleware.Context, form auth.RepoSettingForm, provider h
 				ctx.RenderWithErr(ctx.Tr("form.repo_name_been_taken"), SETTINGS_OPTIONS, nil)
 				return
 			} else if err = models.ChangeRepositoryName(ctx.Repo.Repository.Id, newRepoName); err != nil {
+				if renderForkLifecycleError(ctx, err) {
+					return
+				}
 				if err == models.ErrRepoNameIllegal {
 					ctx.Data["Err_RepoName"] = true
 					ctx.RenderWithErr(ctx.Tr("form.illegal_repo_name"), SETTINGS_OPTIONS, nil)
@@ -155,7 +159,7 @@ func SettingsPost(ctx *middleware.Context, form auth.RepoSettingForm, provider h
 		}
 		drainCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
-		if err := models.DeleteHgRepository(drainCtx, service.RepositoryRoot(), ctx.Repo.Repository.Id, service.DrainRepository); err != nil {
+		if err := models.DeleteHgRepository(drainCtx, service.RepositoryRoot(), ctx.Repo.Repository.Id, service.DrainRepository, service.RepositoryCleanup); err != nil {
 			if renderForkLifecycleError(ctx, err) {
 				return
 			}
@@ -289,7 +293,7 @@ func renderForkLifecycleError(ctx *middleware.Context, err error) bool {
 		key = "repo.fork_dependents"
 	case errors.Is(err, models.ErrForkPolicy):
 		key = "repo.fork_lifecycle_restricted"
-	case errors.Is(err, models.ErrReviewReserved), errors.Is(err, hosting.ErrMutationBusy):
+	case errors.Is(err, models.ErrReviewReserved), errors.Is(err, hosting.ErrMutationBusy), errors.Is(err, collaboration.ErrMergeBusy):
 		key = "repo.fork_busy"
 	default:
 		return false

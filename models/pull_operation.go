@@ -60,14 +60,22 @@ type MergeAdmission struct {
 func mergeActiveKey(pull int64) string { return "pull:" + strconv.FormatInt(pull, 10) }
 
 func LatestPullMerge(ctx context.Context, actor, pull int64) (MergeOperation, error) {
-	if _, err := GetPullRecordByID(ctx, actor, pull); err != nil {
+	p, err := GetPullRecordByID(ctx, actor, pull)
+	if err != nil {
 		return MergeOperation{}, err
 	}
+	if p.SourceDeleted && p.State != PullMerged {
+		return MergeOperation{}, ErrPullNotExist
+	}
 	var op MergeOperation
+	if p.SourceDeleted {
+		_, err := x.Where("pull_id = ? AND comparison_id = ? AND state = ?", p.ID, p.CurrentComparisonID, MergeFinalized).Get(&op)
+		return op, err
+	}
 	if found, err := x.Where("active_key = ?", mergeActiveKey(pull)).Get(&op); err != nil || found {
 		return op, err
 	}
-	_, err := x.Where("pull_id = ?", pull).Desc("created", "id").Get(&op)
+	_, err = x.Where("pull_id = ?", pull).Desc("created", "id").Get(&op)
 	return op, err
 }
 
@@ -177,11 +185,18 @@ func ValidateMergePublication(ctx context.Context, actor int64, id string, sourc
 }
 
 func GetMergeOperation(ctx context.Context, actor, pull int64, id string) (MergeOperation, error) {
-	if _, err := GetPullRecordByID(ctx, actor, pull); err != nil {
+	p, err := GetPullRecordByID(ctx, actor, pull)
+	if err != nil {
 		return MergeOperation{}, err
+	}
+	if p.SourceDeleted && p.State != PullMerged {
+		return MergeOperation{}, ErrPullNotExist
 	}
 	var op MergeOperation
 	ok, err := x.Where("id = ? AND pull_id = ?", id, pull).Get(&op)
+	if err == nil && p.SourceDeleted && (op.State != MergeFinalized || op.ComparisonID != p.CurrentComparisonID) {
+		return MergeOperation{}, ErrPullNotExist
+	}
 	if err == nil && !ok {
 		err = ErrPullNotExist
 	}

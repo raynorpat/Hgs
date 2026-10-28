@@ -192,6 +192,9 @@ func tombstoneReviewSafe(repoID int64) error {
 	if err := forkDependents(sess, repoID); err != nil {
 		return err
 	}
+	if err := collaborationLifecycleBusy(sess, repoID); err != nil {
+		return err
+	}
 	if err := setRepositoryState(sess, repoID, RepositoryReady, RepositoryDeleting); err != nil {
 		return err
 	}

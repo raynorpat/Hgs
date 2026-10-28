@@ -129,15 +129,22 @@ func pullRepoName(id int64) (string, error) {
 	return r.Owner.Name + "/" + r.Name, nil
 }
 func pullDisplay(p models.PullRequest) (pullRow, error) {
-	source, e := pullRepoName(p.SourceRepoID)
-	if e != nil {
-		return pullRow{}, e
+	var source string
+	var e error
+	if !p.SourceDeleted {
+		source, e = pullRepoName(p.SourceRepoID)
+		if e != nil {
+			return pullRow{}, e
+		}
 	}
 	target, e := pullRepoName(p.TargetRepoID)
 	if e != nil {
 		return pullRow{}, e
 	}
-	person := pullPersonFor(p.AuthorID)
+	person := pullPerson{}
+	if p.AuthorID != 0 {
+		person = pullPersonFor(p.AuthorID)
+	}
 	return pullRow{p.ID, p.Number, p.Title, fmt.Sprintf("%s/%s/pulls/%d", setting.AppSubUrl, target, p.Number), source, target, person.Name, person.Avatar, string(p.State)}, nil
 }
 func pullSelections(f PullForm) (hg.ReviewSelection, hg.ReviewSelection) {
@@ -245,6 +252,12 @@ func Pulls(ctx *middleware.Context, s *collaboration.Service) {
 			pullError(ctx, e)
 			return
 		}
+		if p.SourceDeleted {
+			row.Source = ctx.Tr("pulls.source_deleted")
+			if p.State != models.PullMerged {
+				row.Title = ctx.Tr("pulls.source_deleted")
+			}
+		}
 		rows = append(rows, row)
 	}
 	tabs := []pullTab{}
@@ -325,6 +338,17 @@ func renderPull(ctx *middleware.Context, s *collaboration.Service, p models.Pull
 		pullError(ctx, e)
 		return
 	}
+	if p.SourceDeleted {
+		row.Source = ctx.Tr("pulls.source_deleted")
+		if p.State != models.PullMerged {
+			// Tombstones never hydrate author, selectors, comparison or transcript.
+			ctx.Data["Title"] = ctx.Tr("pulls.source_deleted")
+			ui.BuildShell(ctx, ui.Repository, "pull_requests")
+			ctx.Data["Pull"] = pullDetail{Pull: p, Row: row}
+			ctx.HTML(status, "repo/pull/deleted")
+			return
+		}
+	}
 	source, target, e := models.PullSelections(p)
 	if e != nil {
 		pullError(ctx, e)
@@ -337,7 +361,7 @@ func renderPull(ctx *middleware.Context, s *collaboration.Service, p models.Pull
 	}
 	sa, _ := models.RepositoryAccessFor(actor, p.SourceRepoID)
 	ta, _ := models.RepositoryAccessFor(actor, p.TargetRepoID)
-	enabled := actor > 0 && models.ValidateRepositoryCredential(actor, 0, 0) == nil
+	enabled := !p.SourceDeleted && actor > 0 && models.ValidateRepositoryCredential(actor, 0, 0) == nil
 	d.CanEdit = enabled && actor == p.AuthorID
 	d.CanSelectSource = d.CanEdit && sa.Write && p.State == models.PullOpen
 	d.CanSelect = enabled && p.State == models.PullOpen && (d.CanSelectSource || ta.Write)

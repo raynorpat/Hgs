@@ -1,0 +1,3 @@
+{{template "shared/start" .}}{{template "repo/header" .}}<div class="hg-pull-page">
+<header class="hg-page-header"><div><p><a href="{{.RepoLink}}/pulls">{{.i18n.Tr "ui.pull_requests"}}</a> / #{{.Pull.Pull.Number}}</p><h2>{{.i18n.Tr "pulls.source_deleted"}}</h2><span class="hg-badge hg-status-declined">{{.i18n.Tr "pulls.declined"}}</span></div></header>
+<p>{{.i18n.Tr "pulls.source_deleted_reason"}}</p></div>{{template "shared/end" .}}

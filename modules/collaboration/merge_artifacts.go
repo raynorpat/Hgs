@@ -27,11 +27,14 @@ func preparedOwnerBytes(op models.MergeOperation) []byte {
 }
 
 func preparedAllocation(host *hosting.Service, op models.MergeOperation) (string, error) {
+	return preparedAllocationAt(preparedMergeRoot(host), op)
+}
+
+func preparedAllocationAt(root string, op models.MergeOperation) (string, error) {
 	b, err := hex.DecodeString(op.ID)
 	if err != nil || len(b) != 16 || hex.EncodeToString(b) != op.ID || op.ArtifactID != op.ID {
 		return "", hg.ErrUnsafeCheckout
 	}
-	root := preparedMergeRoot(host)
 	if err := comparisonPlainPath(root); err != nil {
 		return "", err
 	}
@@ -39,7 +42,11 @@ func preparedAllocation(host *hosting.Service, op models.MergeOperation) (string
 }
 
 func removeOwnedPrepared(host *hosting.Service, op models.MergeOperation) error {
-	path, err := preparedAllocation(host, op)
+	return removeOwnedPreparedAt(preparedMergeRoot(host), op)
+}
+
+func removeOwnedPreparedAt(root string, op models.MergeOperation) error {
+	path, err := preparedAllocationAt(root, op)
 	if os.IsNotExist(err) {
 		return nil
 	}

@@ -121,6 +121,9 @@ func SubmitPullReview(ctx context.Context, actor, pull, comparison int64, state 
 		return ErrPullInvalid
 	}
 	return mutatePull(ctx, actor, pull, func(s *xorm.Session, p PullRequest, _, _ RepositoryAccess) error {
+		if err := pullComparisonPrivacy(s, p, true); err != nil {
+			return err
+		}
 		if p.State != PullOpen {
 			return ErrPullState
 		}
@@ -209,6 +212,18 @@ func expirePullApprovals(e Engine, pull int64, c PullComparison) error {
 // ListPullReviews rechecks current effective authority, persists loss, and
 // returns decisions independently of assignment. No approval count is imposed.
 func ListPullReviews(ctx context.Context, actor, pull int64) (rows []PullReview, err error) {
+	p, err := GetPullRecordByID(ctx, actor, pull)
+	if err != nil {
+		return nil, err
+	}
+	if p.SourceDeleted {
+		if p.State != PullMerged {
+			return nil, nil
+		}
+		err = x.Where("pull_id = ?", p.ID).Asc("id").Find(&rows)
+		return rows, err
+	}
+
 	err = mutatePull(ctx, actor, pull, func(s *xorm.Session, p PullRequest, _, _ RepositoryAccess) error {
 		if err := retirePullReviewAuthority(s); err != nil {
 			return err
@@ -264,6 +279,10 @@ func retirePullReviewAuthority(e *xorm.Session) error {
 		} else if !ok {
 			continue
 		}
+		// Completed deleted-source history is a read-only accepted transcript.
+		if p.SourceDeleted && p.State == PullMerged {
+			continue
+		}
 		if ok, err := pullReviewEligibleWithLock(e, p, r.ReviewerID, true); err != nil {
 			return err
 		} else if ok {
@@ -302,6 +321,12 @@ func assignedPullReview(p PullRequest, actor int64) (bool, error) {
 func needsPullReview(p PullRequest, actor int64) (bool, error) {
 	if p.State != PullOpen {
 		return false, nil
+	}
+	if err := pullComparisonPrivacy(x, p, false); err != nil {
+		if errors.Is(err, ErrPullState) || errors.Is(err, ErrPullNotExist) {
+			return false, nil
+		}
+		return false, err
 	}
 	if eligible, err := assignedPullReview(p, actor); err != nil || !eligible {
 		return false, err

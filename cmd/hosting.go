@@ -56,6 +56,7 @@ func (h *hostingHolder) Initialize() error {
 		if setting.DisableSSH {
 			cfg.SSHAddress = ""
 		}
+		cfg.RepositoryCleanup = collaboration.RepositoryCleanup(cfg.RepositoryRoot, cfg.ReviewArtifactRoot, filepath.Join(setting.StaticRootPath, "public"), setting.AvatarUploadPath)
 		service, err := hosting.New(context.Background(), cfg)
 		if err != nil {
 			h.err = err

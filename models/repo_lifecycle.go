@@ -381,7 +381,7 @@ type DrainRepository func(context.Context, int64) error
 // DeleteHgRepository deletes a ready repository: it is hidden first, its
 // sessions drained, its storage removed, then its rows. Any failure leaves
 // it hidden in the deleting state, and calling again resumes.
-func DeleteHgRepository(ctx context.Context, root string, repoID int64, drain DrainRepository) error {
+func DeleteHgRepository(ctx context.Context, root string, repoID int64, drain DrainRepository, cleanup ...RepositoryCollaborationCleanup) error {
 	if _, err := RepositoryStoragePath(root, repoID); err != nil {
 		return err
 	}
@@ -408,10 +408,17 @@ func DeleteHgRepository(ctx context.Context, root string, repoID int64, drain Dr
 		return fmt.Errorf("drain repository %d: %v", repoID, err)
 	}
 	lifecycleStage("drained")
-	return finishDeletion(root, repoID)
+	return finishDeletion(ctx, root, repoID, cleanup...)
 }
 
-func finishDeletion(root string, repoID int64) error {
+func finishDeletion(ctx context.Context, root string, repoID int64, cleanup ...RepositoryCollaborationCleanup) error {
+	rows, err := RepositoryPullDeletion(ctx, repoID)
+	if err != nil {
+		return err
+	}
+	if len(rows) > 0 && (len(cleanup) != 1 || cleanup[0] == nil) {
+		return ErrReviewReserved
+	}
 	if reserved, err := RepositoryReviewReserved(repoID); err != nil {
 		return err
 	} else if reserved {
@@ -429,6 +436,12 @@ func finishDeletion(root string, repoID int64) error {
 		return err
 	}
 	lifecycleStage("storage-removed")
+	if len(cleanup) == 1 && cleanup[0] != nil {
+		if err := cleanup[0](ctx, repoID); err != nil {
+			return err
+		}
+	}
+	lifecycleStage("collaboration-cleaned")
 	return deleteRepositoryRows(repo)
 }
 
@@ -436,7 +449,7 @@ func finishDeletion(root string, repoID int64) error {
 // interrupted. It must run before transports start, since it completes
 // deletions without draining. Nothing it cannot prove it owns is removed;
 // unknown entries in the root are logged.
-func ReconcileHgRepositories(ctx context.Context, root string) error {
+func ReconcileHgRepositories(ctx context.Context, root string, cleanup ...RepositoryCollaborationCleanup) error {
 	if err := ValidateRepositoryRoot(root); err != nil {
 		return err
 	}
@@ -457,7 +470,7 @@ func ReconcileHgRepositories(ctx context.Context, root string) error {
 				errs = append(errs, fmt.Errorf("discard unfinished repository %d: %v", repo.Id, err))
 			}
 		case RepositoryDeleting:
-			if err := finishDeletion(root, repo.Id); err != nil {
+			if err := finishDeletion(ctx, root, repo.Id, cleanup...); err != nil {
 				errs = append(errs, fmt.Errorf("finish deleting repository %d: %v", repo.Id, err))
 			}
 		case RepositoryReady:
