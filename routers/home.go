@@ -46,6 +46,23 @@ func Home(ctx *middleware.Context) {
 	}
 
 	ctx.Data["PageIsHome"] = true
+	if setting.Service.DisableRegistration {
+		ctx.Data["ShowRegistrationButton"] = false
+	}
+	ctx.Data["ShowPublicExplore"] = !setting.Service.RequireSignInView
+	if !setting.Service.RequireSignInView {
+		page, err := models.ListAccessibleRepositories(ctx.Req.Request.Context(), 0, models.CatalogQuery{Visibility: "public", PageSize: 3})
+		if err != nil {
+			ctx.Handle(500, "ListAccessibleRepositories", err)
+			return
+		}
+		ctx.Data["LandingRepositories"] = page.Repositories
+		if len(page.Repositories) > 0 {
+			repo := page.Repositories[0]
+			ctx.Data["LandingCloneCommand"] = "hg clone " + setting.AppUrl + "hg/" + url.PathEscape(repo.Owner.Name) + "/" + url.PathEscape(repo.Name)
+		}
+	}
+	ui.BuildShell(ctx, ui.Anonymous, "")
 	ctx.HTML(200, HOME)
 }
 

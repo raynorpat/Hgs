@@ -1,95 +1,22 @@
-{{template "ng/base/head" .}}
-{{template "ng/base/header" .}}
-<div id="promo-wrapper">
-    <div class="container clear">
-        <div id="promo-logo" class="left">
-            <img src="{{AppSubUrl}}/img/gogs-lg.png" alt="logo" />
-        </div>
-        <div id="promo-content">
-            <h1>Gogs</h1>
-            <h2>{{.i18n.Tr "app_desc"}}</h2>
-            <form id="promo-form" action="{{AppSubUrl}}/user/login" method="post">
-                {{.CsrfTokenHtml}}
-                <input class="ipt ipt-large" id="username" name="uname" type="text" placeholder="{{.i18n.Tr "home.uname_holder"}}"/>
-                <input class="ipt ipt-large" name="password" type="password" placeholder="{{.i18n.Tr "home.password_holder"}}"/>
-                <input name="from" type="hidden" value="home">
-                <button class="btn btn-black btn-large">{{.i18n.Tr "sign_in"}}</button>
-                {{if .ShowRegistrationButton}}
-                <button class="btn btn-green btn-large" id="register-button">{{.i18n.Tr "register"}}</button>
-                {{end}}
-            </form>
-            <div id="promo-social" class="social-buttons">
-                {{template "ng/base/social" .}}
-            </div>
-        </div>&nbsp;
-    </div>
+{{template "shared/start" .}}
+<div class="hg-landing">
+<section class="hg-landing-hero" aria-labelledby="landing-title">
+<div><p class="hg-landing-eyebrow">{{.i18n.Tr "ui.landing_meet"}}</p><h1 id="landing-title">{{.i18n.Tr "ui.landing_tagline"}}</h1><p class="hg-landing-lead">{{.i18n.Tr "ui.landing_lead"}}</p>
+<div class="hg-actions">{{if .ShowPublicExplore}}<a class="hg-button hg-button-primary" href="{{AppSubUrl}}/explore?visibility=public">{{.i18n.Tr "ui.explore_repositories"}} <span aria-hidden="true">→</span></a>{{end}}<a class="hg-button" href="{{AppSubUrl}}/user/login">{{.i18n.Tr "sign_in"}}</a>{{if .ShowRegistrationButton}}<a class="hg-button" href="{{AppSubUrl}}/user/sign_up">{{.i18n.Tr "sign_up"}}</a>{{end}}</div>
+{{if .OauthEnabled}}<div class="hg-landing-providers" aria-label="{{.i18n.Tr "ui.sign_in_with"}}">{{template "shared/social" .}}</div>{{end}}
+<p class="hg-meta">{{.i18n.Tr "ui.landing_note"}}</p></div>
+<figure class="hg-landing-mascot"><img src="{{AppSubUrl}}/img/hgs-mascot.png" width="1218" height="1292" alt="{{.i18n.Tr "ui.mascot_alt"}}"><figcaption>{{.i18n.Tr "ui.landing_curiosity"}}</figcaption></figure>
+</section>
+<section class="hg-landing-intro" aria-labelledby="landing-intro"><h2 id="landing-intro">{{.i18n.Tr "ui.landing_intro_title"}}</h2><p>{{.i18n.Tr "ui.landing_intro"}}</p></section>
+<section class="hg-landing-features" aria-label="{{.i18n.Tr "ui.landing_features"}}">
+<article><span aria-hidden="true">01</span><h3>{{.i18n.Tr "ui.landing_source_title"}}</h3><p>{{.i18n.Tr "ui.landing_source"}}</p></article>
+<article><span aria-hidden="true">02</span><h3>{{.i18n.Tr "ui.landing_discuss_title"}}</h3><p>{{.i18n.Tr "ui.landing_discuss"}}</p></article>
+<article><span aria-hidden="true">03</span><h3>{{.i18n.Tr "ui.landing_workspace_title"}}</h3><p>{{.i18n.Tr "ui.landing_workspace"}}</p></article>
+</section>
+{{if .ShowPublicExplore}}
+{{if .LandingCloneCommand}}<section class="hg-landing-workflow" data-landing-clone aria-labelledby="landing-workflow"><div><p class="hg-landing-eyebrow">{{.i18n.Tr "ui.landing_terminal"}}</p><h2 id="landing-workflow">{{.i18n.Tr "ui.landing_clone_title"}}</h2><p>{{.i18n.Tr "ui.landing_clone"}}</p></div><div class="hg-landing-command" data-repository-controls><label for="landing-clone">{{.i18n.Tr "ui.clone"}}</label><input id="landing-clone" readonly data-clone-value value="{{.LandingCloneCommand}}"><button class="hg-button" type="button" data-clone-copy data-copied="{{.i18n.Tr "ui.copied"}}" data-copy-failed="{{.i18n.Tr "ui.copy_failed"}}">{{.i18n.Tr "ui.copy"}}</button><span class="hg-meta" role="status" data-clone-status></span></div></section><script defer src="{{AppSubUrl}}/js/app/repository.js"></script>{{end}}
+<section class="hg-landing-catalog" data-landing-catalog aria-labelledby="landing-repositories"><div class="hg-page-header"><h2 id="landing-repositories">{{.i18n.Tr "ui.explore_repositories"}}</h2><a href="{{AppSubUrl}}/explore?visibility=public">{{.i18n.Tr "ui.landing_all_public"}}</a></div><ul class="hg-repository-results">{{range .LandingRepositories}}<li><a href="{{AppSubUrl}}/{{.Owner.Name}}/{{.Name}}">{{.Owner.Name}} / {{.Name}}</a>{{if .Description}}<p>{{.Description}}</p>{{end}}</li>{{else}}<li class="hg-empty">{{.i18n.Tr "ui.no_repositories"}}</li>{{end}}</ul></section>
+{{end}}
+<p class="hg-landing-credit">{{.i18n.Tr "ui.mascot_credit_prefix"}} <a href="https://go.dev/blog/gopher">Renee French</a>, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. {{.i18n.Tr "ui.mascot_credit_adaptation"}} <a href="{{AppSubUrl}}/img/hgs-mascot.LICENSE.md">{{.i18n.Tr "ui.artwork_provenance"}}</a></p>
 </div>
-<div id="feature-wrapper">
-    <div class="container clear">
-        {{if eq .Lang "de-DE"}}
-        <div class="grid-1-2 left">
-            <i class="octicon octicon-flame"></i>
-            <b>Einfach zu installieren</b>
-            <p>Run the native executable with matching assets and a supported Mercurial executable. Legacy deployment recipes are retired.</p>
-        </div>
-        <div class="grid-1-2 left">
-            <i class="octicon octicon-device-desktop"></i>
-            <b>Plattformübergreifend</b>
-            <p>Native Windows-amd64-Tests sind dokumentiert. Linux/macOS und weitere Plattformen benötigen native Prüfung; siehe die Kompatibilitätsdokumentation dieser Version.</p>
-        </div>
-        <div class="grid-1-2 left">
-            <i class="octicon octicon-rocket"></i>
-            <b>Leichtgewicht</b>
-            <p>Der Ressourcenbedarf hängt von Repository-Größe und gleichzeitigen Zugriffen ab. Raspberry Pi und ARM sind noch nicht nativ geprüft.</p>
-        </div>
-        <div class="grid-1-2 left">
-            <i class="octicon octicon-code"></i>
-            <b>Quelloffen</b>
-            <p>Der komplette Code befindet sich auf <a target="_blank" href="https://github.com/gogits/gogs/">GitHub</a>! Unterstütze uns bei der Verbesserung dieses Projekts. Trau dich!</p>
-        </div>
-        {{else if eq .Lang "zh-CN"}}
-        <div class="grid-1-2 left">
-            <i class="octicon octicon-flame"></i>
-            <b>易安装</b>
-            <p>Run the native executable with matching assets and a supported Mercurial executable. Legacy deployment recipes are retired.</p>
-        </div>
-        <div class="grid-1-2 left">
-            <i class="octicon octicon-device-desktop"></i>
-            <b>跨平台</b>
-            <p>已记录 Windows amd64 原生测试。Linux/macOS 和其他平台仍需原生验证；请参阅本版本兼容性文档。</p>
-        </div>
-        <div class="grid-1-2 left">
-            <i class="octicon octicon-rocket"></i>
-            <b>轻量级</b>
-            <p>资源需求取决于仓库大小和并发访问量。树莓派和 ARM 平台尚未经过原生验证。</p>
-        </div>
-        <div class="grid-1-2 left">
-            <i class="octicon octicon-code"></i>
-            <b>开源化</b>
-            <p>所有的代码都开源在 <a target="_blank" href="https://github.com/gogits/gogs/">GitHub</a> 上，赶快加入我们来共同发展这个伟大的项目！还等什么？成为贡献者吧！</p>
-        </div>
-        {{else}}
-        <div class="grid-1-2 left">
-            <i class="octicon octicon-flame"></i>
-            <b>Easy to install</b>
-            <p>Run the native executable with matching assets and a supported Mercurial executable. Legacy deployment recipes are retired.</p>
-        </div>
-        <div class="grid-1-2 left">
-            <i class="octicon octicon-device-desktop"></i>
-            <b>Cross-platform</b>
-            <p>Native Windows amd64 tests are documented. Linux/macOS and other platforms need native validation; consult this release’s compatibility documentation.</p>
-        </div>
-        <div class="grid-1-2 left">
-            <i class="octicon octicon-rocket"></i>
-            <b>Lightweight</b>
-            <p>Resource needs depend on repository size and concurrent access. Raspberry Pi and ARM remain unverified on native hardware.</p>
-        </div>
-        <div class="grid-1-2 left">
-            <i class="octicon octicon-code"></i>
-            <b>Open Source</b>
-            <p>It's all on <a target="_blank" href="https://github.com/gogits/gogs/">GitHub</a>! Join us by contributing to make this project even better. Don't be shy to be a contributor!</p>
-        </div>
-        {{end}}
-    </div>
-</div>
-{{template "ng/base/footer" .}}
+{{template "shared/end" .}}

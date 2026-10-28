@@ -170,6 +170,7 @@ func packageRelease(root, binary, out string) (err error) {
 			allowed := false
 			switch tree {
 			case "public":
+				allowed = name == "public/img/hgs-mascot.LICENSE.md" || name == "public/img/favicon.ico"
 				switch ext {
 				case ".css", ".eot", ".jpg", ".js", ".less", ".map", ".otf", ".png", ".svg", ".swf", ".ttf", ".woff":
 					allowed = true

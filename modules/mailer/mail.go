@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"html"
 	"path"
 
 	"github.com/Unknwon/com"
@@ -179,9 +180,12 @@ func SendIssueNotifyMail(u, owner *models.User, repo *models.Repository, issue *
 	}
 
 	subject := fmt.Sprintf("[%s] %s(#%d)", repo.Name, issue.Name, issue.Index)
-	content := fmt.Sprintf("%s<br>-<br> <a href=\"%s%s/%s/issues/%d\">View it on Gogs</a>.",
-		base.RenderSpecialLink([]byte(issue.Content), owner.Name+"/"+repo.Name),
-		setting.AppUrl, owner.Name, repo.Name, issue.Index)
+	// This existing notification path has no Macaron renderer. Escape user and
+	// instance data before composing its compact inline mail presentation.
+	content := fmt.Sprintf(`<!doctype html><html><body style="margin:0;padding:24px 12px;background:#FAFBFC;color:#172B4D;font:16px/1.6 Arial,sans-serif;"><div style="max-width:600px;margin:auto;background:#FFFFFF;border:1px solid #DFE1E6;padding:24px;"><a href="%s" style="font-size:22px;font-weight:bold;color:#172B4D;text-decoration:none;"><img src="%simg/favicon-32.png" width="32" height="32" alt="" style="vertical-align:middle;margin-right:8px;">%s</a><p style="white-space:pre-wrap;">%s</p><p><a href="%s%s/%s/issues/%d" style="color:#0052CC;font-weight:bold;">View the issue on %s</a></p></div><p style="max-width:600px;margin:16px auto;font-size:12px;color:#5E6C84;">© 2014 <a href="http://gogits.org">GoGits</a> · Based on Gogs. Existing project copyright and license notices apply.</p></body></html>`,
+		html.EscapeString(setting.AppUrl), html.EscapeString(setting.AppUrl), html.EscapeString(setting.AppName),
+		base.RenderSpecialLink([]byte(html.EscapeString(issue.Content)), owner.Name+"/"+repo.Name),
+		html.EscapeString(setting.AppUrl), html.EscapeString(owner.Name), html.EscapeString(repo.Name), issue.Index, html.EscapeString(setting.AppName))
 	msg := NewMailMessageFrom(tos, u.Email, subject, content)
 	msg.Info = fmt.Sprintf("Subject: %s, send issue notify emails", subject)
 	SendAsync(&msg)

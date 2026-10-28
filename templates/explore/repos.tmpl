@@ -2,6 +2,7 @@
 <h1>{{.i18n.Tr "ui.explore"}}</h1>
 <form method="get" action="{{AppSubUrl}}/explore" class="hg-catalog-filter">
 {{if .CatalogQuery.OwnerID}}<input type="hidden" name="owner_id" value="{{.CatalogQuery.OwnerID}}">{{end}}
+{{if not .IsSigned}}<input type="hidden" name="visibility" value="public">{{end}}
 <input type="hidden" name="page_size" value="{{.CatalogQuery.PageSize}}">
 <div class="hg-field"><label for="catalog-query">{{.i18n.Tr "ui.search_repositories"}}</label><input type="search" name="q" id="catalog-query" maxlength="200" value="{{.CatalogQuery.Text}}"></div>
 {{if .IsSigned}}<div class="hg-field"><label for="catalog-visibility">{{.i18n.Tr "ui.visibility"}}</label><select id="catalog-visibility" name="visibility"><option value="all"{{if eq .CatalogQuery.Visibility "all"}} selected{{end}}>{{.i18n.Tr "ui.all"}}</option><option value="public"{{if eq .CatalogQuery.Visibility "public"}} selected{{end}}>{{.i18n.Tr "ui.public"}}</option><option value="private"{{if eq .CatalogQuery.Visibility "private"}} selected{{end}}>{{.i18n.Tr "ui.private"}}</option></select></div>

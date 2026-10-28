@@ -23,7 +23,7 @@ func sharedCutoverAssets(t *testing.T, body, prefix string) {
 	}
 	for _, match := range regexp.MustCompile(`(?:href|src)="([^"]+)"`).FindAllStringSubmatch(body, -1) {
 		asset := strings.Split(match[1], "#")[0]
-		if !strings.HasPrefix(asset, prefix+"/css/") && !strings.HasPrefix(asset, prefix+"/js/") && !strings.HasPrefix(asset, prefix+"/img/ui-icons.svg") {
+		if !strings.HasPrefix(asset, prefix+"/css/") && !strings.HasPrefix(asset, prefix+"/js/") && !strings.HasPrefix(asset, prefix+"/img/") {
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join("../../public", strings.TrimPrefix(asset, prefix+"/")))

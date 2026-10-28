@@ -1,16 +1,4 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-    <title>{{.Subject}}</title>
-</head>
-
-<body>
-    <p>{{.ActUserName}} mentioned you.</p>
-    <p>
-        ---
-        <br>
-        <a href="{{.AppUrl}}{{.IssueLink}}">View it on Gogs</a>.
-    </p>
-</body>
-</html>
+{{template "mail/header" .}}
+<p>You were mentioned in an issue.</p><p>{{.Subject}}</p>
+<p><a href="{{.AppUrl}}{{.IssueLink}}" style="color:#0052CC;font-weight:bold;">View the issue on {{.AppName}}</a></p>
+{{template "mail/footer" .}}

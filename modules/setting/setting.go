@@ -186,7 +186,7 @@ func NewConfigContext() {
 	LogRootPath = Cfg.Section("log").Key("ROOT_PATH").MustString(path.Join(workDir, "log"))
 
 	sec := Cfg.Section("server")
-	AppName = Cfg.Section("").Key("APP_NAME").MustString("Gogs: Mercurial Hosting")
+	AppName = Cfg.Section("").Key("APP_NAME").MustString("Hgs")
 	AppUrl = sec.Key("ROOT_URL").MustString("http://localhost:3000/")
 	if AppUrl[len(AppUrl)-1] != '/' {
 		AppUrl += "/"

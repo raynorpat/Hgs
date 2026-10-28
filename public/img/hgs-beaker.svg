@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#172B4D" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<!-- Master mark: simplified beaker from the approved lab-coat Gopher adaptation. See hgs-mascot.LICENSE.md. -->
+<defs><g id="beaker"><path d="M5 4C3 4 2 5 3 6l2 2v11c0 3 14 3 14 0V6l1-2Z" fill="#DEEBFF"/><path d="M6 13c4-2 7 2 12 0v6c-3 2-9 2-12 0Z" fill="#00B8D9" stroke="none"/><path d="M14 9h3m-3 3h3m-3 4h3" stroke="#0747A6"/><path d="M5 4c1 2 12 2 15 0M8 8v3"/><path d="M8 15v3" stroke="#FFFFFF"/></g></defs>
+<use href="#beaker"/>
+</svg>

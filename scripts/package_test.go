@@ -217,3 +217,35 @@ func TestPackageSharedUIAssetsAndEvidence(t *testing.T) {
 		}
 	}
 }
+
+func TestLandingAssetPackaging(t *testing.T) {
+	root, err := filepath.Abs("..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "landing.zip")
+	if err := packageRelease(root, testBinary, out); err != nil {
+		t.Fatal(err)
+	}
+	z, err := zip.OpenReader(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer z.Close()
+	seen := map[string]int{}
+	for _, f := range z.File {
+		seen[f.Name]++
+	}
+	for _, name := range []string{"public/img/hgs-mascot.png", "public/img/hgs-mascot.LICENSE.md", "public/img/hgs-beaker.svg", "public/img/hgs-beaker-inverse.svg", "public/img/favicon.png", "public/img/favicon-16.png", "public/img/favicon-32.png", "public/img/favicon.ico"} {
+		if seen[name] != 1 {
+			t.Errorf("archive %s count=%d", name, seen[name])
+		}
+	}
+	for _, name := range []string{"public/img/unapproved.md", "public/img/unapproved.ico"} {
+		f := fixture(t)
+		put(t, filepath.Join(f, filepath.FromSlash(name)), "not approved")
+		if err := packageRelease(f, testBinary, filepath.Join(t.TempDir(), "bad.zip")); err == nil {
+			t.Errorf("accepted arbitrary asset %s", name)
+		}
+	}
+}

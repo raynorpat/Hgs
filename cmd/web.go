@@ -290,7 +290,7 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 	protectedPOST := func(ctx *macaron.Context, token csrf.CSRF) { csrf.Validate(ctx, token) }
 
 	// Routers.
-	m.Get("/", ignSignIn, routers.Home)
+	m.Get("/", middleware.Toggle(&middleware.ToggleOptions{}), routers.Home)
 	m.Get("/explore", middleware.Toggle(&middleware.ToggleOptions{}), routers.Explore)
 	m.Get("/explore/search", middleware.Toggle(&middleware.ToggleOptions{}), routers.ExploreSearch)
 	m.Get("/user/recent", reqSignIn, user.Recent)

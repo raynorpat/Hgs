@@ -1,7 +1,7 @@
 {{template "shared/head" .}}
-<body class="hg-app{{if .PageIsInstall}} hg-install{{end}}{{if eq .Shell.Kind "anonymous"}} hg-reduced{{end}}" data-hg-shell>
+<body class="hg-app{{if .PageIsHome}} hg-home{{end}}{{if .PageIsInstall}} hg-install{{end}}{{if eq .Shell.Kind "anonymous"}} hg-reduced{{end}}" data-hg-shell>
 <a class="hg-skip" href="#hg-main">{{.i18n.Tr "ui.skip_content"}}</a>
-{{if eq .Shell.Kind "anonymous"}}<header class="hg-public-header"><a href="{{.Shell.SubURL}}/" class="hg-brand"><svg class="hg-icon" aria-hidden="true"><use href="{{.Shell.SubURL}}/img/ui-icons.svg#beaker"/></svg> Hgs{{if and (AppName) (ne (AppName) "Hgs")}} · {{AppName}}{{end}}</a><span>{{.i18n.Tr "ui.mercurial_service"}}</span></header>{{else}}
+{{if eq .Shell.Kind "anonymous"}}<header class="hg-public-header"><a href="{{.Shell.SubURL}}/" class="hg-brand"><img class="hg-icon" src="{{.Shell.SubURL}}/img/hgs-beaker.svg" alt="" width="24" height="24"> Hgs{{if and (AppName) (ne (AppName) "Hgs")}} · {{AppName}}{{end}}</a><span class="hg-service-description">{{.i18n.Tr "ui.mercurial_service"}}</span>{{if .PageIsHome}}<nav class="hg-public-nav" aria-label="{{.i18n.Tr "ui.navigation"}}">{{if .ShowPublicExplore}}<a href="{{.Shell.SubURL}}/explore?visibility=public">{{.i18n.Tr "ui.explore_repositories"}}</a>{{end}}<a class="hg-button" href="{{.Shell.SubURL}}/user/login">{{.i18n.Tr "sign_in"}}</a></nav>{{end}}</header>{{else}}
 {{template "shared/rail" .}}
 <button class="hg-menu hg-button" type="button" data-drawer="hg-context" aria-haspopup="dialog" aria-controls="hg-context" aria-expanded="false">{{.i18n.Tr "ui.menu"}}</button>
 <div class="hg-backdrop" data-drawer-backdrop hidden></div>

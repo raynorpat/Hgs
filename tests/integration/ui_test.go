@@ -28,6 +28,7 @@ import (
 	"github.com/gogits/gogs/modules/hosting"
 	"github.com/gogits/gogs/modules/middleware"
 	"github.com/gogits/gogs/modules/setting"
+	"github.com/gogits/gogs/routers"
 	"github.com/gogits/gogs/routers/repo"
 	"github.com/gogits/gogs/routers/user"
 	"github.com/macaron-contrib/binding"
@@ -36,6 +37,34 @@ import (
 	"github.com/macaron-contrib/i18n"
 	"github.com/macaron-contrib/session"
 )
+
+// The cmd landing matrix covers the actual production registrations. This
+// integration seam checks the same Home rendering against account fixture data.
+func TestLandingIdentityAndAuth(t *testing.T) {
+	f := accountApp(t, true)
+	oldName, oldOAuth := setting.AppName, setting.OauthService
+	t.Cleanup(func() { setting.AppName, setting.OauthService = oldName, oldOAuth })
+	setting.AppName = "Hgs"
+	setting.Service.RequireSignInView = true
+	setting.Service.ShowRegistrationButton = true
+	setting.OauthService = &setting.Oauther{GitHub: true}
+	f.m.Get("/", routers.Home)
+	for _, disabled := range []bool{false, true} {
+		setting.Service.DisableRegistration = disabled
+		w := f.request(t, "GET", "/", "", nil, false)
+		for _, want := range []string{"A painless, self-hosted Mercurial service.", "/code/img/hgs-mascot.png", "/code/img/hgs-beaker.svg", "/code/user/login/oauth2/github", "Renee French", "CC BY 4.0"} {
+			if w.Code != 200 || !strings.Contains(w.Body.String(), want) {
+				t.Errorf("landing missing %q HTTP %d", want, w.Code)
+			}
+		}
+		if strings.Contains(w.Body.String(), "/code/user/sign_up") == disabled {
+			t.Error("registration policy lost")
+		}
+		if strings.Contains(w.Body.String(), `href="/code/explore`) {
+			t.Error("restricted discovery link")
+		}
+	}
+}
 
 type uiProvider struct{ s *hosting.Service }
 
