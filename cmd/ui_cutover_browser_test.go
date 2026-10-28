@@ -57,6 +57,19 @@ func installDraftFixtureOutage(db *xorm.Engine) error {
 	return err
 }
 
+func configureDraftFixtureAttachments(t *testing.T, root string) {
+	t.Helper()
+	enabled, path, types, files, size := setting.AttachmentEnabled, setting.AttachmentPath, setting.AttachmentAllowedTypes, setting.AttachmentMaxFiles, setting.AttachmentMaxSize
+	uploads := filepath.Join(root, "attachments")
+	if err := os.MkdirAll(uploads, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		setting.AttachmentEnabled, setting.AttachmentPath, setting.AttachmentAllowedTypes, setting.AttachmentMaxFiles, setting.AttachmentMaxSize = enabled, path, types, files, size
+	})
+	setting.AttachmentEnabled, setting.AttachmentPath, setting.AttachmentAllowedTypes, setting.AttachmentMaxFiles, setting.AttachmentMaxSize = true, uploads, "image/png", 10, 32
+}
+
 type draftFixtureResponse struct {
 	http.ResponseWriter
 	ctx                          context.Context
@@ -215,6 +228,9 @@ func TestSharedUICutoverBrowserFixture(t *testing.T) {
 	}
 	if err = models.NewIssue(&models.Issue{RepoId: a.repo.Id, Index: 1, PosterId: a.alice.Id, Name: "Check the laboratory navigation at narrow widths", Content: "**Task15:** inspect labels, milestones, settings and issue forms.", MilestoneId: milestone.Id}); err != nil {
 		t.Fatal(err)
+	}
+	if os.Getenv("UI_DRAFT_FIXTURE") == "1" {
+		configureDraftFixtureAttachments(t, a.root)
 	}
 	a.handler = newWebHandler(a.holder)
 	if os.Getenv("UI_DRAFT_FIXTURE") == "1" {

@@ -230,7 +230,16 @@
         if (!response.headers.get('Content-Type')?.includes('application/json')) throw new Error('Invalid response');
         const result = await response.json();
         if (epoch !== s.epoch) return;
-        if (result.code === 'saved' && result.committed) { const destination = resultLink(s, result.destination); dispose(s); location.assign(destination); return; }
+        if (result.code === 'saved' && result.committed) {
+          const destination = resultLink(s, result.destination), target = new URL(destination), current = new URL(location.href);
+          dispose(s);
+          if (target.pathname === current.pathname && target.search === current.search) {
+            // A fragment change alone leaves the submitted editor in place.
+            // Preserve the canonical anchor and refresh the saved document.
+            location.hash = target.hash; location.reload();
+          } else location.assign(destination);
+          return;
+        }
         if (result.code === 'partial' && result.committed) {
           resultLink(s, result.destination); dispose(s); if (!result.unsaved) reset(s);
           s.unknown = true; s.auth.hidden = false; say(s, 'partial'); return;

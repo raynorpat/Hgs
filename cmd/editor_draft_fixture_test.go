@@ -4,12 +4,33 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gogits/gogs/models"
+	"github.com/gogits/gogs/modules/setting"
 )
+
+func TestEditorDraftFixtureAttachments(t *testing.T) {
+	enabled, path, types, files, size := setting.AttachmentEnabled, setting.AttachmentPath, setting.AttachmentAllowedTypes, setting.AttachmentMaxFiles, setting.AttachmentMaxSize
+	t.Run("owned setup", func(t *testing.T) {
+		root := t.TempDir()
+		configureDraftFixtureAttachments(t, root)
+		if !setting.AttachmentEnabled || setting.AttachmentPath != filepath.Join(root, "attachments") || setting.AttachmentAllowedTypes != "image/png" || setting.AttachmentMaxFiles != 10 || setting.AttachmentMaxSize != 32 {
+			t.Fatal("fixture attachment settings not bounded/owned")
+		}
+		info, err := os.Stat(setting.AttachmentPath)
+		if err != nil || !info.IsDir() {
+			t.Fatalf("owned upload directory missing: %v", err)
+		}
+	})
+	if setting.AttachmentEnabled != enabled || setting.AttachmentPath != path || setting.AttachmentAllowedTypes != types || setting.AttachmentMaxFiles != files || setting.AttachmentMaxSize != size {
+		t.Fatal("fixture attachment settings leaked after cleanup")
+	}
+}
 
 func TestEditorDraftFixtureOptions(t *testing.T) {
 	defaults, err := parseDraftFixtureOptions("", "", "")

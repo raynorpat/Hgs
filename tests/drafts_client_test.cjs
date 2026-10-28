@@ -7,8 +7,21 @@ const fs = require('node:fs');
 const path = require('node:path');
 const source = fs.readFileSync(path.join(__dirname, '../public/js/app/drafts.js'), 'utf8');
 
-async function harness(outcome = 'unknown', kind = 'issue_comment') {
+async function harness(outcome = 'unknown', kind = 'issue_comment', destination = '/code/a/b/issues/1#issue-comment-2') {
   const handlers = {}, formHandlers = {}, timers = new Map(), calls = [];
+  const navigation = [];
+  let href = 'http://host/code/a/b/issues/1';
+  const location = {
+    get href() { return href; }, origin: 'http://host',
+    get hash() { return new URL(href).hash; },
+    set hash(value) { const next = new URL(href); next.hash = value; href = next.href; navigation.push({kind: 'fragment', url: href}); },
+    assign(value) {
+      const next = new URL(value, href), prior = new URL(href);
+      const fragmentOnly = next.origin === prior.origin && next.pathname === prior.pathname && next.search === prior.search && next.hash !== prior.hash;
+      href = next.href; navigation.push({kind: fragmentOnly ? 'fragment' : 'GET', url: href});
+    },
+    reload() { navigation.push({kind: 'GET', url: href}); }
+  };
   let timer = 0, sessionCode = 'ok', checkCode = 'ok', saveCode = 'ok', releaseSave = null, heldSave = null;
   const body = {name: 'content', tagName: 'TEXTAREA', defaultValue: '', value: '', setCustomValidity() {}, disabled: false};
   const selectedSource = {name: 'source_repository', tagName: 'INPUT', defaultValue: 'owner/source', value: 'owner/source', setCustomValidity() {}, disabled: false};
@@ -39,6 +52,7 @@ async function harness(outcome = 'unknown', kind = 'issue_comment') {
     if (url === form.action) {
       if (outcome === 'unknown') throw Error('lost response');
       if (outcome === 'validation') return response({code: 'validation'});
+      if (outcome === 'saved') return response({code: 'saved', committed: true, destination});
       return response({code: 'partial', committed: true, unsaved: true, destination: '/code/a/b/issues/1'});
     }
     if (url.endsWith('/session')) return response({code: sessionCode, actorID: 1, csrf: 'fresh', collectionPresent: true});
@@ -51,7 +65,7 @@ async function harness(outcome = 'unknown', kind = 'issue_comment') {
   };
   vm.runInNewContext(source, {
     document: {querySelector: q => q === '[data-hg-shell]' ? shell : {content: 'csrf'}, querySelectorAll: () => []},
-    navigator: {}, location: {href: 'http://host/code/a/b/issues/1', origin: 'http://host', assign() {throw Error('unexpected navigation');}},
+    navigator: {}, location,
     fetch, URL, URLSearchParams, TextEncoder, CustomEvent: class {},
     FormData: class {append() {}},
     addEventListener: (event, fn) => { handlers[event] = fn; },
@@ -60,7 +74,7 @@ async function harness(outcome = 'unknown', kind = 'issue_comment') {
   const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
   await flush();
   body.value = 'LATEST LOCAL TEXT'; formHandlers.input({target: body});
-  return {body, status, calls, flush,
+  return {body, status, calls, flush, navigation,
     edit: (name, value) => {const input = inputs.find(input => input.name === name); input.value = value; formHandlers.input({target: input});},
     holdSave: () => {heldSave = new Promise(resolve => {releaseSave = resolve;});},
     releaseSave: () => {releaseSave(); heldSave = null;},
@@ -70,6 +84,16 @@ async function harness(outcome = 'unknown', kind = 'issue_comment') {
     focus: async () => {handlers.focus(); await flush();},
     save: async () => {const fn = timers.values().next().value; if (fn) await fn(); await flush();}
   };
+}
+for (const destination of ['/code/a/b/issues/1#issue-comment-2', '/code/a/b/issues/2']) {
+  test(`known success GETs canonical result ${destination} without replay`, async () => {
+    const h = await harness('saved', 'issue_comment', destination); await h.submit();
+    assert.equal(h.calls.filter(([url]) => url.endsWith('/comment/new')).length, 1);
+    assert.equal(h.calls.filter(([url]) => url.endsWith('/discard')).length, 1);
+    const gets = h.navigation.filter(event => event.kind === 'GET');
+    assert.equal(gets.length, 1, 'fragment-only navigation must refresh the canonical document');
+    assert.equal(gets[0].url, 'http://host' + destination);
+  });
 }
 for (const field of ['title', 'content', 'source_repository']) {
   test(`unacknowledged ${field} immediately stops claiming Saved`, async () => {
