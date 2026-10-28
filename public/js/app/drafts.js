@@ -15,7 +15,7 @@
     if (meta) meta.content = token;
     document.querySelectorAll('input[name=_csrf]').forEach(input => { input.value = token; });
   };
-  function say(s, key) { s.status.textContent = s.controls.dataset[key] || s.controls.dataset.failed; }
+  function say(s, key) { s.message = key; s.status.textContent = s.controls.dataset[key] || s.controls.dataset.failed; }
   function timers(s) { clearTimeout(s.idle); clearTimeout(s.maximum); s.idle = s.maximum = null; }
   function busy(s, value) {
     s.submitting = value;
@@ -202,7 +202,12 @@
     form.addEventListener('input', event => {
       if (!inputs.includes(event.target) || s.stopped) return;
       ++s.generation; s.lastInput = Date.now(); if (!s.dirtySince) s.dirtySince = s.lastInput;
-      if (bounded(s)) schedule(s);
+      if (bounded(s)) {
+        // Saved only describes the acknowledged generation. Keep failures and
+        // recovery instructions visible, but mark fresh work pending at once.
+        if (!s.message || s.message === 'saved' || s.message === 'cancelled') say(s, 'saving');
+        schedule(s);
+      }
     });
     controls.querySelector('[data-draft-check]').addEventListener('click', () => check(s));
     controls.querySelector('[data-draft-cancel]').addEventListener('click', () => {

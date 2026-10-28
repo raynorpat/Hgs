@@ -9,16 +9,17 @@ const source = fs.readFileSync(path.join(__dirname, '../public/js/app/drafts.js'
 
 async function harness(outcome = 'unknown', kind = 'issue_comment') {
   const handlers = {}, formHandlers = {}, timers = new Map(), calls = [];
-  let timer = 0, sessionCode = 'ok', checkCode = 'ok', saveCode = 'ok';
+  let timer = 0, sessionCode = 'ok', checkCode = 'ok', saveCode = 'ok', releaseSave = null, heldSave = null;
   const body = {name: 'content', tagName: 'TEXTAREA', defaultValue: '', value: '', setCustomValidity() {}, disabled: false};
   const selectedSource = {name: 'source_repository', tagName: 'INPUT', defaultValue: 'owner/source', value: 'owner/source', setCustomValidity() {}, disabled: false};
-  const inputs = kind === 'pull_new' ? [body, selectedSource] : [body];
+  const title = {name: 'title', tagName: 'INPUT', defaultValue: '', value: '', setCustomValidity() {}, removeAttribute() {}, disabled: false};
+  const inputs = kind === 'pull_new' ? [body, title, selectedSource] : [body];
   const status = {textContent: ''}, auth = {hidden: true}, result = {hidden: true};
   const check = {}, cancel = {};
   for (const button of [check, cancel]) button.addEventListener = (event, fn) => { button[event] = fn; };
   const controls = {
     dataset: {draftApi: '/code/user/drafts', draftActor: '1', draftRepository: '2', draftSessionEstablished: 'true',
-      failed: 'Save failed', cleared: 'Cleared', unknown: 'Unknown', partial: 'Partial', expired: 'Expired', saved: 'Saved'},
+      saving: 'Saving', failed: 'Save failed', cleared: 'Cleared', unknown: 'Unknown', partial: 'Partial', expired: 'Expired', saved: 'Saved', invalid: 'Invalid', unavailable: 'Unavailable'},
     querySelector: q => ({'[data-draft-status]': status, '[data-draft-auth]': auth, '[data-draft-result]': result,
       '[data-draft-check]': check, '[data-draft-cancel]': cancel})[q]
   };
@@ -44,7 +45,7 @@ async function harness(outcome = 'unknown', kind = 'issue_comment') {
     if (url.endsWith('/open')) return response({code: 'ok', grant: {PageID: 'page', PageSecret: 'secret', DisposalToken: 'dispose'}});
     if (url.endsWith('/check')) return response({code: checkCode});
     if (url.endsWith('/restore')) return response({code: checkCode, snapshot: {Version: 1, Payload: {Body: 'OLD SERVER TEXT'}}});
-    if (url.endsWith('/save')) return response({code: saveCode, snapshot: {Version: 1}});
+    if (url.endsWith('/save')) { if (heldSave) await heldSave; return response({code: saveCode, snapshot: {Version: 1}}); }
     if (url.endsWith('/discard')) return response({code: 'ok'});
     throw Error('unexpected request');
   };
@@ -60,12 +61,44 @@ async function harness(outcome = 'unknown', kind = 'issue_comment') {
   await flush();
   body.value = 'LATEST LOCAL TEXT'; formHandlers.input({target: body});
   return {body, status, calls, flush,
+    edit: (name, value) => {const input = inputs.find(input => input.name === name); input.value = value; formHandlers.input({target: input});},
+    holdSave: () => {heldSave = new Promise(resolve => {releaseSave = resolve;});},
+    releaseSave: () => {releaseSave(); heldSave = null;},
     setSession: code => {sessionCode = code;}, setAccess: code => {checkCode = code;}, setSave: code => {saveCode = code;},
     submit: async () => {await formHandlers.submit({preventDefault() {}}); await flush();},
     check: async () => {await check.click(); await flush();},
     focus: async () => {handlers.focus(); await flush();},
     save: async () => {const fn = timers.values().next().value; if (fn) await fn(); await flush();}
   };
+}
+for (const field of ['title', 'content', 'source_repository']) {
+  test(`unacknowledged ${field} immediately stops claiming Saved`, async () => {
+    const h = await harness('unknown', 'pull_new'); await h.save();
+    assert.equal(h.status.textContent, 'Saved');
+    h.edit(field, 'new unsaved value');
+    assert.equal(h.status.textContent, 'Saving');
+    assert.equal(h.calls.filter(([url]) => url.endsWith('/save')).length, 1, 'typing must retain debounce');
+  });
+}
+test('old in-flight acknowledgement cannot mark newer input Saved', async () => {
+  const h = await harness(); await h.save();
+  h.edit('content', 'version two'); h.holdSave();
+  const pending = h.save(); await h.flush();
+  h.edit('content', 'version three');
+  assert.equal(h.status.textContent, 'Saving');
+  await h.save();
+  assert.equal(h.calls.filter(([url]) => url.endsWith('/save')).length, 2, 'single in-flight save');
+  h.releaseSave(); await pending;
+  assert.equal(h.status.textContent, 'Saving', 'old acknowledgement is not latest acknowledgement');
+  await h.save(); assert.equal(h.status.textContent, 'Saved');
+});
+for (const [code, status] of [['save_failed', 'Save failed'], ['unauthenticated', 'Expired'], ['recovery_unavailable', 'Unavailable'], ['invalid_payload', 'Invalid']]) {
+  test(`new typing preserves ${code} explanation`, async () => {
+    const h = await harness(); h.setSave(code); await h.save();
+    assert.equal(h.status.textContent, status);
+    h.edit('content', 'new text while recovery is uncertain');
+    assert.equal(h.status.textContent, status);
+  });
 }
 for (const outcome of ['unknown', 'partial']) {
   for (const revoked of ['account', 'permission']) {

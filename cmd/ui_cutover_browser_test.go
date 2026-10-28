@@ -3,19 +3,117 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/go-xorm/xorm"
 	"github.com/gogits/gogs/models"
 	"github.com/gogits/gogs/modules/collaboration"
 	"github.com/gogits/gogs/modules/setting"
 	"github.com/gogits/gogs/routers/user"
 )
+
+// Startup-only options for owned disposable browser failure-injection fixtures.
+type draftFixtureOptions struct {
+	idle            int64
+	prefix, failure string
+}
+
+func parseDraftFixtureOptions(idle, prefix, failure string) (draftFixtureOptions, error) {
+	o := draftFixtureOptions{idle: 45, prefix: "/code", failure: failure}
+	var err error
+	if idle != "" {
+		o.idle, err = strconv.ParseInt(idle, 10, 64)
+	}
+	if err != nil || o.idle < 10 || o.idle > 300 {
+		return o, fmt.Errorf("fixture idle must be10..300 seconds")
+	}
+	if prefix == "root" {
+		o.prefix = ""
+	} else if prefix != "" {
+		if !regexp.MustCompile(`^/draft-[a-z]+$`).MatchString(prefix) {
+			return o, fmt.Errorf("fixture prefix must be root or /draft-<letters>")
+		}
+		o.prefix = prefix
+	}
+	switch failure {
+	case "", "save-outage", "reject-cookie", "delay-save":
+	default:
+		return o, fmt.Errorf("unknown fixture failure mode")
+	}
+	return o, nil
+}
+func installDraftFixtureOutage(db *xorm.Engine) error {
+	_, err := db.Exec("CREATE TRIGGER draft_fixture_save_outage BEFORE UPDATE OF payload_json ON editor_draft WHEN NEW.discarded = 0 BEGIN SELECT RAISE(ABORT, 'fixture draft save unavailable'); END")
+	return err
+}
+
+type draftFixtureResponse struct {
+	http.ResponseWriter
+	ctx                          context.Context
+	delay                        time.Duration
+	rejectCookie, wrote, aborted bool
+}
+
+func (w *draftFixtureResponse) WriteHeader(status int) {
+	if w.wrote {
+		return
+	}
+	w.wrote = true
+	if status == http.StatusOK && w.delay > 0 {
+		timer := time.NewTimer(w.delay)
+		defer timer.Stop()
+		select {
+		case <-w.ctx.Done():
+			w.aborted = true
+			return
+		case <-timer.C:
+		}
+	}
+	if w.rejectCookie {
+		cookies := w.Header().Values("Set-Cookie")
+		w.Header().Del("Set-Cookie")
+		for _, cookie := range cookies {
+			if strings.HasPrefix(cookie, "hgs_draft=") {
+				cookie += "; Domain=draft-cookie-rejected.invalid"
+			}
+			w.Header().Add("Set-Cookie", cookie)
+		}
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+func (w *draftFixtureResponse) Write(body []byte) (int, error) {
+	if !w.wrote {
+		w.WriteHeader(http.StatusOK)
+	}
+	if w.aborted {
+		return 0, w.ctx.Err()
+	}
+	return w.ResponseWriter.Write(body)
+}
+func draftFixtureHandler(base http.Handler, o draftFixtureOptions) http.Handler {
+	if o.failure != "reject-cookie" && o.failure != "delay-save" {
+		return base
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := &draftFixtureResponse{ResponseWriter: w, ctx: r.Context(), rejectCookie: o.failure == "reject-cookie"}
+		if o.failure == "delay-save" && r.Method == "POST" && strings.HasPrefix(r.URL.Path, o.prefix+"/user/drafts/") && strings.HasSuffix(r.URL.Path, "/save") {
+			// Native auth and model commit run normally. Only acknowledgement
+			// emission waits while the real memory session expires naturally.
+			response.delay = time.Duration(o.idle+3) * time.Second
+		}
+		base.ServeHTTP(response, r)
+	})
+}
 
 // Opt-in, owned real production router fixture. Test-only stop handling wraps
 // the handler rather than registering any production fixture API.
@@ -27,16 +125,23 @@ func TestSharedUICutoverBrowserFixture(t *testing.T) {
 	if executable == "" {
 		t.Fatal("GOGS_TEST_HG required")
 	}
+	options, err := parseDraftFixtureOptions("", "", "")
+	if os.Getenv("UI_DRAFT_FIXTURE") == "1" {
+		options, err = parseDraftFixtureOptions(os.Getenv("UI_DRAFT_IDLE_SECONDS"), os.Getenv("UI_DRAFT_PREFIX"), os.Getenv("UI_DRAFT_FAILURE"))
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
 	oldAvatar, oldGravatar := setting.AvatarUploadPath, setting.DisableGravatar
 	setting.AvatarUploadPath = filepath.Join(t.TempDir(), "avatars")
 	setting.DisableGravatar = true
 	t.Cleanup(func() { setting.AvatarUploadPath = oldAvatar; setting.DisableGravatar = oldGravatar })
-	a := newViewAppPrefix(t, executable, "/code")
+	a := newViewAppPrefix(t, executable, options.prefix)
 	setting.Langs = []string{"en-US", "de-DE"}
 	setting.Names = []string{"English", "Deutsch"}
 	setting.SessionConfig.CookieName = "cutover_" + filepath.Base(filepath.Dir(a.root))
 	if os.Getenv("UI_DRAFT_FIXTURE") == "1" {
-		setting.SessionConfig.Maxlifetime = 45
+		setting.SessionConfig.Maxlifetime = options.idle
 		setting.SessionConfig.Gclifetime = 2
 	}
 	writer := &models.User{Name: "writer", Email: "writer@example.invalid", Passwd: "password", IsActive: true}
@@ -113,9 +218,22 @@ func TestSharedUICutoverBrowserFixture(t *testing.T) {
 	}
 	a.handler = newWebHandler(a.holder)
 	if os.Getenv("UI_DRAFT_FIXTURE") == "1" {
+		if options.failure == "save-outage" {
+			db := draftFixtureDB(t)
+			if err := installDraftFixtureOutage(db); err != nil {
+				t.Fatal(err)
+			}
+		}
+		a.handler = draftFixtureHandler(a.handler, options)
 		stopDrafts := startDraftPurger(user.NewDraftService().PurgeExpired, func() bool { return a.holder.Service() != nil })
 		defer stopDrafts()
-		t.Log("DRAFT_FIXTURE: normal login only; memory session lifetime=45s idle, GC interval=2s; draft TTL remains production 30m; owned purger active until fixture exit")
+		t.Logf("DRAFT_FIXTURE: normal login only; memory session lifetime=%ds idle, GC interval=2s; failure=%q; prefix=%q; draft TTL remains production30m; owned purger active until fixture exit", options.idle, options.failure, options.prefix)
+		if options.failure == "delay-save" {
+			t.Log("DELAY: real save commits first; successful acknowledgement waits idle+3 seconds before emission; context cancellation aborts emission")
+		}
+		if options.failure == "reject-cookie" {
+			t.Log("COOKIE: browser rejection simulation via nonmatching Domain on ONLY hgs_draft; native auth/CSRF cookies unchanged")
+		}
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -123,7 +241,9 @@ func TestSharedUICutoverBrowserFixture(t *testing.T) {
 	}
 	stop := make(chan struct{})
 	var once sync.Once
-	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	requests, cancelRequests := context.WithCancel(ctx)
+	defer cancelRequests()
+	server := &http.Server{BaseContext: func(net.Listener) context.Context { return requests }, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" && r.URL.Path == "/fixture/stop" {
 			w.Write([]byte("stopping owned fixture"))
 			once.Do(func() { close(stop) })
@@ -133,11 +253,12 @@ func TestSharedUICutoverBrowserFixture(t *testing.T) {
 	})}
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()
-	t.Logf("CUTOVER_BROWSER_URL=http://%s/code/; sign in /code/user/login; alice/admin, writer/write, bob/read; passwords=password; guest=POST logout. Locales ?lang=en-US or ?lang=de-DE; PR /code/alice/project/pulls/1 comparison=%d; issues /code/alice/project/issues/1; organization /code/org/laboratory; shutdown http://%s/fixture/stop; root=%s", listener.Addr(), comparison.ID, listener.Addr(), a.root)
+	t.Logf("CUTOVER_BROWSER_URL=http://%s%s/; sign in %s/user/login; alice/admin, writer/write, bob/read; passwords=password; guest=POST logout. Locales ?lang=en-US or ?lang=de-DE; PR %s/alice/project/pulls/1 comparison=%d; issues %s/alice/project/issues/1; organization %s/org/laboratory; shutdown http://%s/fixture/stop; root=%s", listener.Addr(), options.prefix, options.prefix, options.prefix, comparison.ID, options.prefix, options.prefix, listener.Addr(), a.root)
 	select {
 	case <-stop:
 	case <-time.After(60 * time.Minute):
 	}
+	cancelRequests()
 	shutdown, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	if err = server.Shutdown(shutdown); err != nil {
