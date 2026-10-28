@@ -103,6 +103,11 @@ func (r *Runner) Landing(ctx context.Context, path string) (NodeID, error) {
 	if err != nil {
 		return "", err
 	}
+	return LandingOf(refs)
+}
+
+// LandingOf is Landing for references the caller already holds.
+func LandingOf(refs []Reference) (NodeID, error) {
 	ref, ok := best(refs, func(ref Reference) bool { return ref.Kind == RefBranch })
 	if !ok {
 		return "", ErrEmptyRepository

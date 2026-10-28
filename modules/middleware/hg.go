@@ -215,7 +215,10 @@ func RepoRef(action string) macaron.Handler {
 				return
 			}
 		} else {
-			node, err = ctx.Repo.HgRunner.Landing(ctx.Repo.HgContext, ctx.Repo.HgPath)
+			ctx.Repo.References, err = ctx.Repo.HgRunner.References(ctx.Repo.HgContext, ctx.Repo.HgPath)
+			if err == nil {
+				node, err = hg.LandingOf(ctx.Repo.References)
+			}
 		}
 		if errors.Is(err, hg.ErrEmptyRepository) {
 			ctx.Repo.FinishRead()

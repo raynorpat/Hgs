@@ -32,8 +32,8 @@ var (
 // Issue represents an issue or pull request of repository.
 type Issue struct {
 	Id              int64
-	RepoId          int64 `xorm:"INDEX"`
-	Index           int64 // Index in one repository.
+	RepoId          int64 `xorm:"UNIQUE(r) INDEX"`
+	Index           int64 `xorm:"UNIQUE(r)"` // Index in one repository.
 	Name            string
 	Repo            *Repository `xorm:"-"`
 	PosterId        int64
@@ -120,13 +120,32 @@ func NewIssue(issue *Issue) (err error) {
 		return err
 	}
 
-	if _, err = sess.Insert(issue); err != nil {
+	res, err := sess.Exec("UPDATE `repository` SET num_issues = num_issues + 1 WHERE id = ?", issue.RepoId)
+	if err != nil {
 		sess.Rollback()
 		return err
 	}
-
-	rawSql := "UPDATE `repository` SET num_issues = num_issues + 1 WHERE id = ?"
-	if _, err = sess.Exec(rawSql, issue.RepoId); err != nil {
+	n, err := res.RowsAffected()
+	if err != nil {
+		sess.Rollback()
+		return err
+	}
+	if n != 1 {
+		sess.Rollback()
+		return ErrRepoNotExist
+	}
+	var repo Repository
+	has, err := sess.Id(issue.RepoId).Get(&repo)
+	if err != nil {
+		sess.Rollback()
+		return err
+	}
+	if !has {
+		sess.Rollback()
+		return ErrRepoNotExist
+	}
+	issue.Index = int64(repo.NumIssues)
+	if _, err = sess.Insert(issue); err != nil {
 		sess.Rollback()
 		return err
 	}

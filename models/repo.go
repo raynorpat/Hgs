@@ -239,9 +239,9 @@ func TransferOwnership(u *User, newOwner string, repo *Repository) error {
 		}
 	}
 
-	// Update repository.
+	// Update repository. Only the owner column: the loaded row is stale.
 	repo.OwnerId = newUser.Id
-	if n, err := sess.Id(repo.Id).Where("state = ?", RepositoryReady).Update(repo); err != nil {
+	if n, err := sess.Id(repo.Id).Where("state = ?", RepositoryReady).Cols("owner_id").Update(&Repository{OwnerId: newUser.Id}); err != nil {
 		sess.Rollback()
 		return err
 	} else if n != 1 {

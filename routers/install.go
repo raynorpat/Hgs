@@ -249,6 +249,9 @@ func InstallPost(ctx *middleware.Context, form auth.InstallForm, initialize Init
 	cfg.Section("").Key("RUN_MODE").SetValue("prod")
 
 	cfg.Section("session").Key("PROVIDER").SetValue("file")
+	if setting.SessionCookieSecure(form.AppUrl, false) {
+		cfg.Section("session").Key("COOKIE_SECURE").SetValue("true")
+	}
 
 	cfg.Section("log").Key("MODE").SetValue("file")
 

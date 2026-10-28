@@ -49,7 +49,7 @@ func Issues(ctx *middleware.Context) {
 		view = "all"
 	}
 	if view != "all" && !ctx.IsSigned {
-		ctx.Redirect(setting.AppSubUrl + "/user/login")
+		ctx.RedirectToLogin()
 		return
 	}
 	uid := int64(0)
@@ -238,7 +238,6 @@ func CreateIssuePost(ctx *middleware.Context, form auth.CreateIssueForm) {
 
 	issue := &models.Issue{
 		RepoId:      ctx.Repo.Repository.Id,
-		Index:       int64(ctx.Repo.Repository.NumIssues) + 1,
 		Name:        form.IssueName,
 		PosterId:    ctx.User.Id,
 		MilestoneId: form.MilestoneId,

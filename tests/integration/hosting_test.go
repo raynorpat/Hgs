@@ -39,6 +39,7 @@ type application struct {
 	server                                                              *hg.Runner
 	child                                                               *hg.Child
 	lastCleanStop                                                       bool
+	databaseClosed                                                      bool
 	direct                                                              bool
 	output                                                              sync.WaitGroup
 	users                                                               map[string]*models.User
@@ -59,8 +60,30 @@ func freeAddress(t *testing.T) string {
 }
 
 func newApplication(t *testing.T, v versions) *application {
+	return newConfiguredApplication(t, v, nil, 30*time.Minute)
+}
+
+// newConfiguredApplication permits test-only workload settings before startup.
+// Existing acceptance callers retain their original limits.
+func newConfiguredApplication(t *testing.T, v versions, editConfig func(string) string, supervisorDeadline time.Duration) *application {
+	return newConfiguredApplicationAt(t, v, editConfig, supervisorDeadline, "")
+}
+
+// A supplied root is created exclusively and retained after cleanup. Ordinary
+// callers still get t.TempDir and its automatic removal.
+func newConfiguredApplicationAt(t *testing.T, v versions, editConfig func(string) string, supervisorDeadline time.Duration, root string) *application {
 	t.Helper()
-	a := &application{t: t, root: t.TempDir(), users: map[string]*models.User{}, keys: map[string]string{}, keyIDs: map[string]int64{}, repos: map[string]*models.Repository{}}
+	if root == "" {
+		root = t.TempDir()
+	} else {
+		if !filepath.IsAbs(root) {
+			t.Fatal("retained application root must be absolute")
+		}
+		if err := os.Mkdir(root, 0700); err != nil {
+			t.Fatal("retained application root must be new: ", err)
+		}
+	}
+	a := &application{t: t, root: root, users: map[string]*models.User{}, keys: map[string]string{}, keyIDs: map[string]int64{}, repos: map[string]*models.Repository{}}
 	a.address, a.sshAddress = freeAddress(t), freeAddress(t)
 	assets := os.Getenv("GOGS_TEST_ASSETS")
 	if os.Getenv("GOGS_TEST_BINARY") != "" && assets == "" {
@@ -120,6 +143,7 @@ func newApplication(t *testing.T, v versions) *application {
 	t.Cleanup(func() {
 		a.stop()
 		models.CloseEngine()
+		a.databaseClosed = true
 		models.DbCfg, setting.LogRootPath, setting.RepoRootPath = oldDB, oldLog, oldRoot
 	})
 	// The first administrator must not accidentally be an acceptance principal.
@@ -199,11 +223,14 @@ ROOT_PATH = %s
 	if a.direct {
 		config = strings.Replace(config, "PROVIDER = memory", "PROVIDER = file\nPROVIDER_CONFIG = "+filepath.ToSlash(filepath.Join(a.root, "sessions")), 1)
 	}
+	if editConfig != nil {
+		config = editConfig(config)
+	}
 	if err = os.WriteFile(a.config, []byte(config), 0600); err != nil {
 		t.Fatal(err)
 	}
 	helper, _ := os.Executable()
-	a.server, err = hg.NewRunner(hg.Config{Executable: helper, ConfigPath: filepath.Join(a.root, "supervisor", "hgrc"), SessionTimeout: 30 * time.Minute, IdleTimeout: 30 * time.Minute})
+	a.server, err = hg.NewRunner(hg.Config{Executable: helper, ConfigPath: filepath.Join(a.root, "supervisor", "hgrc"), SessionTimeout: supervisorDeadline, IdleTimeout: supervisorDeadline})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -327,10 +354,17 @@ func (a *application) stop() {
 	cancel()
 	a.output.Wait()
 	a.child = nil
-	if killed, err := reapApplicationOrphans(a.binary, a.repoRoot); err != nil || len(killed) != 0 {
+	// Direct package fixtures may share an executable, so only their unique state
+	// paths identify them. Other fixtures own a private binary copy, which also
+	// appears in the command line of their hook children.
+	owner := a.binary
+	if a.direct {
+		owner = a.config
+	}
+	if killed, err := reapApplicationOrphans(owner, a.repoRoot); err != nil || len(killed) != 0 {
 		a.t.Errorf("application required orphan cleanup: %v %v", killed, err)
 	}
-	if left := waitNoProcesses(a.binary, a.repoRoot); len(left) != 0 {
+	if left := waitNoProcesses(owner, a.repoRoot); len(left) != 0 {
 		a.t.Errorf("owned process tree survived: %v", left)
 	}
 }

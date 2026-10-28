@@ -50,6 +50,7 @@ type Context struct {
 		HgPath      string
 		Node        hg.NodeID
 		Changeset   hg.Changeset
+		References  []hg.Reference // set when the landing page selection already listed them
 		FinishRead  func()
 		IsOwner     bool
 		IsTrueOwner bool

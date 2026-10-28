@@ -100,6 +100,22 @@ func fakeHg(args []string) int {
 			return 255
 		}
 		fmt.Print(m)
+	case "files":
+		recordFakeCall()
+		body := fixture("fake-files", "")
+		if body == "EXIT" {
+			return 1
+		}
+		fmt.Print(body)
+	case "debugdata":
+		recordFakeCall()
+		name := "fake-debugdata"
+		for i, a := range args {
+			if a == "--dir" && i+1 < len(args) {
+				name = "fake-debugdata-" + strings.ReplaceAll(args[i+1], "/", "_")
+			}
+		}
+		fmt.Print(fixture(name, ""))
 	case "branches":
 		recordFakeCall()
 		fmt.Print(fixture("fake-branches", ""))
@@ -160,6 +176,11 @@ func fakeHg(args []string) int {
 				fmt.Print(result)
 				return 0
 			}
+		}
+		if strings.Contains(strings.Join(args, " "), "{manifest") {
+			recordFakeCall()
+			fmt.Print(fixture("fake-manifest-node", ""))
+			break
 		}
 		if len(args) == 5 && args[4] == "{node}" {
 			recordFakeCall()

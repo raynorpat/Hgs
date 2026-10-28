@@ -7,6 +7,7 @@ package hg
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,6 +22,37 @@ func (r *Runner) reviewManifest(ctx context.Context, path string, node NodeID) (
 		return nil, err
 	}
 	return parseManifest(out.Bytes())
+}
+
+// parseManifest reads "hg manifest -v" lines of mode, type and raw path, as
+// in "644   a", "755 * a" and "644 @ a". Mercurial forbids newlines in file
+// names, so the output is lossless in any encoding.
+func parseManifest(b []byte) ([]ManifestEntry, error) {
+	entries := []ManifestEntry{}
+	s, ok := strings.CutSuffix(string(b), "\n")
+	if !ok {
+		if s == "" {
+			return entries, nil
+		}
+		return nil, errors.New("hg: unterminated manifest output")
+	}
+	for _, line := range strings.Split(s, "\n") {
+		if len(line) < 7 {
+			return nil, fmt.Errorf("hg: unrecognized manifest line %q", line)
+		}
+		e := ManifestEntry{Path: line[6:]}
+		switch line[:6] {
+		case "644   ":
+		case "755 * ":
+			e.Executable = true
+		case "644 @ ":
+			e.Symlink = true
+		default:
+			return nil, fmt.Errorf("hg: unrecognized manifest line %q", line)
+		}
+		entries = append(entries, e)
+	}
+	return entries, nil
 }
 
 // Deliberately conservative: symlinks and subrepositories remain browsable but

@@ -5,7 +5,6 @@
 package user
 
 import (
-	"net/url"
 	"strings"
 
 	"github.com/macaron-contrib/captcha"
@@ -78,13 +77,7 @@ func SignIn(ctx *middleware.Context) {
 
 	ctx.Session.Set("uid", u.Id)
 	ctx.Session.Set("uname", u.Name)
-	if redirectTo, _ := url.QueryUnescape(ctx.GetCookie("redirect_to")); len(redirectTo) > 0 {
-		ctx.SetCookie("redirect_to", "", -1, setting.AppSubUrl)
-		ctx.Redirect(redirectTo)
-		return
-	}
-
-	ctx.Redirect(setting.AppSubUrl + "/")
+	redirectSignedIn(ctx)
 }
 
 func SignInPost(ctx *middleware.Context, form auth.SignInForm) {
@@ -136,13 +129,16 @@ func SignInPost(ctx *middleware.Context, form auth.SignInForm) {
 
 	ctx.Session.Set("uid", u.Id)
 	ctx.Session.Set("uname", u.Name)
-	if redirectTo, _ := url.QueryUnescape(ctx.GetCookie("redirect_to")); len(redirectTo) > 0 {
-		ctx.SetCookie("redirect_to", "", -1, setting.AppSubUrl)
-		ctx.Redirect(redirectTo)
-		return
-	}
+	redirectSignedIn(ctx)
+}
 
-	ctx.Redirect(setting.AppSubUrl + "/")
+func redirectSignedIn(ctx *middleware.Context) {
+	to, ok := middleware.LoginRedirect(ctx.GetCookie("redirect_to"))
+	ctx.SetCookie("redirect_to", "", -1, setting.AppSubUrl)
+	if !ok {
+		to = setting.AppSubUrl + "/"
+	}
+	ctx.Redirect(to)
 }
 
 func SignOut(ctx *middleware.Context) {

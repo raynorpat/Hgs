@@ -57,15 +57,22 @@ func Home(ctx *middleware.Context) {
 	ctx.Data["Title"] = ctx.Repo.Repository.Name
 	ctx.Data["IsRepoToolbarSource"] = true
 	p := ctx.Repo.TreeName
-	manifest, err := ctx.Repo.HgRunner.Manifest(ctx.Repo.HgContext, ctx.Repo.HgPath, ctx.Repo.Node)
+	entries, file, err := browseTree(ctx, p)
 	if err != nil {
-		ctx.Handle(404, "Manifest", err)
+		if errors.Is(err, hg.ErrNotFound) {
+			ctx.Handle(404, "ListDirectory", err)
+		} else {
+			ctx.Handle(500, "ListDirectory", err)
+		}
 		return
 	}
-	refs, err := ctx.Repo.HgRunner.References(ctx.Repo.HgContext, ctx.Repo.HgPath)
-	if err != nil {
-		ctx.Handle(500, "References", err)
-		return
+	refs := ctx.Repo.References
+	if refs == nil {
+		refs, err = ctx.Repo.HgRunner.References(ctx.Repo.HgContext, ctx.Repo.HgPath)
+		if err != nil {
+			ctx.Handle(500, "References", err)
+			return
+		}
 	}
 	ctx.Data["References"] = referenceRows(ctx.Repo.RepoLink, refs)
 	ctx.Data["SourceURL"] = middleware.HgPathURL(ctx.Repo.RepoLink, "src", ctx.Repo.Node, "")
@@ -77,55 +84,23 @@ func Home(ctx *middleware.Context) {
 		}
 	}
 	ctx.Data["Breadcrumbs"] = crumbs
-	for _, e := range manifest {
-		if e.Path == p {
-			ctx.Data["IsFile"] = true
-			if !renderHgFile(ctx, e, false) {
-				return
-			}
-			ctx.Repo.FinishRead()
-			ctx.HTML(200, HOME)
+	if file != nil {
+		ctx.Data["IsFile"] = true
+		if !renderHgFile(ctx, hg.ManifestEntry{Path: p, Executable: file.Executable, Symlink: file.Symlink}, false) {
 			return
 		}
+		ctx.Repo.FinishRead()
+		ctx.HTML(200, HOME)
+		return
 	}
-	prefix := p
-	if prefix != "" {
-		prefix += "/"
-	}
-	rows := []hgTreeRow{}
-	seen := map[string]bool{}
-	var readme *hg.ManifestEntry
-	for i, e := range manifest {
-		rel, ok := strings.CutPrefix(e.Path, prefix)
-		if !ok {
-			continue
-		}
-		name, _, dir := strings.Cut(rel, "/")
-		if seen[name] {
-			continue
-		}
-		seen[name] = true
-		rows = append(rows, hgTreeRow{displayPath(name), middleware.HgPathURL(ctx.Repo.RepoLink, "src", ctx.Repo.Node, prefix+name), dir, e.Executable, e.Symlink})
-		if !dir && readme == nil && base.IsReadmeFile(name) {
-			readme = &manifest[i]
-		}
-	}
-	if p != "" && len(rows) == 0 {
+	if p != "" && len(entries) == 0 {
 		ctx.Error(404)
 		return
 	}
-	sort.Slice(rows, func(i, j int) bool {
-		if rows[i].Directory != rows[j].Directory {
-			return rows[i].Directory
-		}
-		return rows[i].Name < rows[j].Name
-	})
+	rows, readme := treeRows(ctx, p, entries)
 	ctx.Data["Files"] = rows
 	if p != "" {
-		parent := ""
-		if i := strings.LastIndex(p, "/"); i >= 0 {
-			parent = p[:i]
-		}
+		parent, _ := splitTree(p)
 		ctx.Data["ParentURL"] = middleware.HgPathURL(ctx.Repo.RepoLink, "src", ctx.Repo.Node, parent)
 	}
 	if readme != nil && !renderHgFile(ctx, *readme, true) {
@@ -133,6 +108,46 @@ func Home(ctx *middleware.Context) {
 	}
 	ctx.Repo.FinishRead()
 	ctx.HTML(200, HOME)
+}
+
+func splitTree(p string) (parent, name string) {
+	if i := strings.LastIndex(p, "/"); i >= 0 {
+		return p[:i], p[i+1:]
+	}
+	return "", p
+}
+
+func browseTree(ctx *middleware.Context, p string) ([]hg.TreeEntry, *hg.TreeEntry, error) {
+	return ctx.Repo.HgRunner.ListPath(ctx.Repo.HgContext, ctx.Repo.HgPath, ctx.Repo.Node, p)
+}
+
+func treeRows(ctx *middleware.Context, dir string, entries []hg.TreeEntry) ([]hgTreeRow, *hg.ManifestEntry) {
+	prefix := dir
+	if prefix != "" {
+		prefix += "/"
+	}
+	rows := make([]hgTreeRow, 0, len(entries))
+	var readme *hg.ManifestEntry
+	var readmeName string
+	for _, e := range entries {
+		rows = append(rows, hgTreeRow{displayPath(e.Name), middleware.HgPathURL(ctx.Repo.RepoLink, "src", ctx.Repo.Node, prefix+e.Name), e.Directory, e.Executable, e.Symlink})
+		if e.Directory || !base.IsReadmeFile(e.Name) {
+			continue
+		}
+		if readme != nil && e.Name >= readmeName {
+			continue
+		}
+		chosen := hg.ManifestEntry{Path: prefix + e.Name, Executable: e.Executable, Symlink: e.Symlink}
+		readme = &chosen
+		readmeName = e.Name
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Directory != rows[j].Directory {
+			return rows[i].Directory
+		}
+		return rows[i].Name < rows[j].Name
+	})
+	return rows, readme
 }
 
 var errRenderedLimit = errors.New("rendered file limit")

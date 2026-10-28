@@ -1,8 +1,0 @@
-644   .hgtags
-644   A
-644   [ab]
-644   a
-644   café
-644   d/x
-644 @ link
-755 * run.sh

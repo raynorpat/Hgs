@@ -17,19 +17,16 @@ type DiffResult struct {
 	Truncated, Binary bool
 }
 
-// Diff compares node with its ordered parent (0 or 1). A root's parent 0
-// is the null revision. Mercurial's extended patch preserves copy/mode data;
-// binary content is summarized instead of base85-encoded into a patch.
-func (r *Runner) Diff(ctx context.Context, path string, node NodeID, parentIndex int) (DiffResult, error) {
+// Diff compares a served changeset with its ordered parent (0 or 1). A root's
+// parent 0 is the null revision. Mercurial's extended patch preserves
+// copy/mode data; binary content is summarized instead of base85-encoded into
+// a patch. The caller has already looked cs up with Changeset.
+func (r *Runner) Diff(ctx context.Context, path string, cs Changeset, parentIndex int) (DiffResult, error) {
 	if parentIndex < 0 || parentIndex > 1 {
 		return DiffResult{}, fmt.Errorf("hg: invalid diff parent %d", parentIndex)
 	}
 	ctx, cancel := context.WithTimeout(ctx, BrowserCommandTimeout)
 	defer cancel()
-	cs, err := r.Changeset(ctx, path, node)
-	if err != nil {
-		return DiffResult{}, err
-	}
 	parent := strings.Repeat("0", 40)
 	if len(cs.Parents) > 0 {
 		if parentIndex >= len(cs.Parents) {
@@ -40,7 +37,7 @@ func (r *Runner) Diff(ctx context.Context, path string, node NodeID, parentIndex
 		return DiffResult{}, fmt.Errorf("hg: root changeset has no parent %d", parentIndex)
 	}
 	w := newDiffWriter()
-	err = r.run(ctx, path, []string{"diff", "--git", "--nodates", "--no-binary", "-r", parent, "-r", string(cs.Node)}, nil, w, -1)
+	err := r.run(ctx, path, []string{"diff", "--git", "--nodates", "--no-binary", "-r", parent, "-r", string(cs.Node)}, nil, w, -1)
 	if err != nil && !errors.Is(err, ErrOutputLimit) {
 		return DiffResult{}, err
 	}

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -16,40 +17,9 @@ import (
 	"testing"
 )
 
-func parseGoldenManifest(t *testing.T, name string) []ManifestEntry {
-	t.Helper()
-	b, err := os.ReadFile(filepath.Join("testdata", name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	entries, err := parseManifest(b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return entries
-}
-
 func TestReadFileNeverChecksOut(t *testing.T) {
 	ctx := context.Background()
 	r, repo := newBrowseRunner(t, "")
-	b, err := os.ReadFile(filepath.Join("testdata", "browse-manifest.txt"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeFakeFixture(t, r, "fake-manifest", string(b))
-
-	entries, err := r.Manifest(ctx, repo, newerDefaultNode)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []ManifestEntry{
-		{Path: ".hgtags"}, {Path: "A"}, {Path: "[ab]"}, {Path: "a"}, {Path: "caf\xe9"}, {Path: "d/x"},
-		{Path: "link", Symlink: true}, {Path: "run.sh", Executable: true},
-	}
-	if !reflect.DeepEqual(entries, want) {
-		t.Errorf("manifest %#v; want %#v", entries, want)
-	}
-
 	// The fake cat prints the literal pattern files it was given.
 	for file, patterns := range map[string]string{
 		"A":       "rootfilesin:\x00path:A\x00",
@@ -87,19 +57,9 @@ func TestReadFileNeverChecksOut(t *testing.T) {
 		if err := r.ReadFile(ctx, repo, node, "A", io.Discard); !errors.Is(err, ErrNotFound) {
 			t.Errorf("ReadFile at %q: %v", node, err)
 		}
-		if _, err := r.Manifest(ctx, repo, node); !errors.Is(err, ErrNotFound) {
-			t.Errorf("Manifest at %q: %v", node, err)
-		}
 	}
 	if after := len(fakeCalls(t, r)); after != before {
 		t.Errorf("rejected input ran %d Mercurial commands", after-before)
-	}
-
-	// A changeset Mercurial does not serve (unknown or secret) aborts the
-	// command; the follow-up lookup turns that into ErrNotFound.
-	os.Remove(filepath.Join(filepath.Dir(r.cfg.ConfigPath), "fake-manifest"))
-	if _, err := r.Manifest(ctx, repo, newerDefaultNode); !errors.Is(err, ErrNotFound) {
-		t.Errorf("manifest of an unserved node: %v", err)
 	}
 
 	for _, call := range fakeCalls(t, r) {
@@ -114,4 +74,217 @@ func TestReadFileNeverChecksOut(t *testing.T) {
 	if checkoutCreated := err != nil || len(ls) != 1 || ls[0].Name() != ".hg"; checkoutCreated {
 		t.Errorf("repository directory now holds %v, %v", ls, err)
 	}
+}
+
+func TestListDirectoryFlat(t *testing.T) {
+	ctx := context.Background()
+	r, repo := newBrowseRunner(t, "")
+	writeFakeFixture(t, r, "fake-manifest", "644   a.txt\n755 * bin\n644 @ link\n644   my file.txt\n644   only/nested/c.txt\n644   only/d.txt\n")
+	root, err := r.ListDirectory(ctx, repo, newerDefaultNode, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(root, []TreeEntry{
+		{Name: "a.txt"},
+		{Name: "bin", Executable: true},
+		{Name: "link", Symlink: true},
+		{Name: "my file.txt"},
+		{Name: "only", Directory: true},
+	}) {
+		t.Fatalf("root %+v", root)
+	}
+	sub, err := r.ListDirectory(ctx, repo, newerDefaultNode, "only")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(sub, []TreeEntry{{Name: "d.txt"}, {Name: "nested", Directory: true}}) {
+		t.Fatalf("only %+v", sub)
+	}
+	sawFiles := false
+	for _, call := range fakeCalls(t, r) {
+		if call[2] == "debugdata" {
+			t.Fatalf("flat listing used %v", call)
+		}
+		if call[2] == "files" {
+			t.Fatalf("flat listing used the per-file flags template: %v", call)
+		}
+		if call[2] == "manifest" && strings.Contains(strings.Join(call, " "), " -v") {
+			sawFiles = true
+		}
+	}
+	if !sawFiles {
+		t.Fatal("flat listing did not ask manifest -v for flags and paths")
+	}
+
+	writeFakeFixture(t, r, "fake-manifest", "644   a.txt")
+	if _, err := r.ListDirectory(ctx, repo, newerDefaultNode, ""); err == nil || errors.Is(err, ErrNotFound) {
+		t.Fatalf("unterminated list: %v", err)
+	}
+	writeFakeFixture(t, r, "fake-manifest", "")
+	if entries, err := r.ListDirectory(ctx, repo, newerDefaultNode, ""); err != nil || len(entries) != 0 {
+		t.Fatalf("empty list: %v %+v", err, entries)
+	}
+	writeFakeFixture(t, r, "fake-manifest", "644   a.txt\n")
+	if entries, err := r.ListDirectory(ctx, repo, newerDefaultNode, "only"); err != nil || len(entries) != 0 {
+		t.Fatalf("no match: %v %+v", err, entries)
+	}
+}
+
+func TestListDirectoryTree(t *testing.T) {
+	ctx := context.Background()
+	r, repo := newBrowseRunner(t, "")
+	if err := os.MkdirAll(filepath.Join(repo, ".hg", "store"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".hg", "store", "requires"), []byte("share-safe\ntreemanifest\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	manifestNode := strings.Repeat("d", 40)
+	child := strings.Repeat("b", 40)
+	fileNode := strings.Repeat("c", 40)
+	writeFakeFixture(t, r, "fake-manifest-node", manifestNode+"\n")
+	writeFakeFixture(t, r, "fake-debugdata", "a.txt\x00"+fileNode+"\nonly\x00"+child+"t\n")
+	writeFakeFixture(t, r, "fake-debugdata-only", "d.txt\x00"+fileNode+"x\n")
+	root, err := r.ListDirectory(ctx, repo, newerDefaultNode, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(root, []TreeEntry{{Name: "a.txt"}, {Name: "only", Directory: true}}) {
+		t.Fatalf("root %+v", root)
+	}
+	sub, err := r.ListDirectory(ctx, repo, newerDefaultNode, "only")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(sub, []TreeEntry{{Name: "d.txt", Executable: true}}) {
+		t.Fatalf("only %+v", sub)
+	}
+	if _, err := r.ListDirectory(ctx, repo, newerDefaultNode, "missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing directory: %v", err)
+	}
+	for _, call := range fakeCalls(t, r) {
+		if call[2] == "files" || call[2] == "manifest" {
+			t.Fatalf("tree listing used %v", call)
+		}
+	}
+	sawData := false
+	for _, call := range fakeCalls(t, r) {
+		if call[2] == "debugdata" {
+			sawData = true
+		}
+	}
+	if !sawData {
+		t.Fatal("tree listing did not read manifest text")
+	}
+
+	writeFakeFixture(t, r, "fake-debugdata", "a.txt\x00"+fileNode)
+	if _, err := r.ListDirectory(ctx, repo, newerDefaultNode, ""); err == nil || errors.Is(err, ErrNotFound) {
+		t.Fatalf("unterminated manifest text: %v", err)
+	}
+}
+
+func TestListPathFlatReadsManifestOnce(t *testing.T) {
+	ctx := context.Background()
+	r, repo := newBrowseRunner(t, "")
+	writeFakeFixture(t, r, "fake-manifest", "644   a.txt\n755 * only/run.sh\n644   only/nested/c.txt\n")
+	entries, file, err := r.ListPath(ctx, repo, newerDefaultNode, "only")
+	if err != nil || file != nil || !reflect.DeepEqual(entries, []TreeEntry{{Name: "nested", Directory: true}, {Name: "run.sh", Executable: true}}) {
+		t.Fatalf("directory: %+v %+v %v", entries, file, err)
+	}
+	entries, file, err = r.ListPath(ctx, repo, newerDefaultNode, "only/run.sh")
+	if err != nil || len(entries) != 0 || file == nil || *file != (TreeEntry{Name: "run.sh", Executable: true}) {
+		t.Fatalf("file: %+v %+v %v", entries, file, err)
+	}
+	for _, missing := range []string{"nope", "only/nope", "a.txt/x"} {
+		if _, _, err = r.ListPath(ctx, repo, newerDefaultNode, missing); !errors.Is(err, ErrNotFound) {
+			t.Errorf("ListPath(%q): %v", missing, err)
+		}
+	}
+	if _, _, err = r.ListPath(ctx, repo, newerDefaultNode, "../a"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("escaping path: %v", err)
+	}
+	calls := fakeCalls(t, r)
+	if len(calls) != 5 {
+		t.Errorf("five accepted lookups ran %d Mercurial commands, want one manifest each: %v", len(calls), calls)
+	}
+	for _, call := range calls {
+		if call[2] != "manifest" {
+			t.Errorf("flat lookup ran %v", call)
+		}
+	}
+}
+
+func TestListPathTree(t *testing.T) {
+	ctx := context.Background()
+	r, repo := newBrowseRunner(t, "")
+	if err := os.MkdirAll(filepath.Join(repo, ".hg", "store"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".hg", "store", "requires"), []byte("share-safe\ntreemanifest\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	child, fileNode := strings.Repeat("b", 40), strings.Repeat("c", 40)
+	writeFakeFixture(t, r, "fake-manifest-node", strings.Repeat("d", 40)+"\n")
+	writeFakeFixture(t, r, "fake-debugdata", "a.txt\x00"+fileNode+"\nonly\x00"+child+"t\n")
+	writeFakeFixture(t, r, "fake-debugdata-only", "d.txt\x00"+fileNode+"x\n")
+	entries, file, err := r.ListPath(ctx, repo, newerDefaultNode, "only")
+	if err != nil || file != nil || !reflect.DeepEqual(entries, []TreeEntry{{Name: "d.txt", Executable: true}}) {
+		t.Fatalf("directory: %+v %+v %v", entries, file, err)
+	}
+	if _, file, err = r.ListPath(ctx, repo, newerDefaultNode, "a.txt"); err != nil || file == nil || file.Name != "a.txt" {
+		t.Fatalf("file: %+v %v", file, err)
+	}
+	if _, _, err = r.ListPath(ctx, repo, newerDefaultNode, "missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing: %v", err)
+	}
+}
+
+func TestListPathStreamsManifestPastOldScanLimit(t *testing.T) {
+	ctx := context.Background()
+	r, repo := newBrowseRunner(t, "")
+	var m strings.Builder
+	m.WriteString("644   a.txt\n755 * only/run.sh\n")
+	filler := "644   bulk/" + strings.Repeat("d/", 40) + "file\n"
+	for m.Len() < 33<<20 {
+		m.WriteString(filler)
+	}
+	m.WriteString("644 @ zlink\n")
+	writeFakeFixture(t, r, "fake-manifest", m.String())
+	entries, file, err := r.ListPath(ctx, repo, newerDefaultNode, "only")
+	if err != nil || file != nil || !reflect.DeepEqual(entries, []TreeEntry{{Name: "run.sh", Executable: true}}) {
+		t.Fatalf("directory: %+v %+v %v", entries, file, err)
+	}
+	if _, file, err = r.ListPath(ctx, repo, newerDefaultNode, "zlink"); err != nil || file == nil || *file != (TreeEntry{Name: "zlink", Symlink: true}) {
+		t.Fatalf("file after the old limit: %+v %v", file, err)
+	}
+	root, err := r.ListDirectory(ctx, repo, newerDefaultNode, "")
+	if err != nil || !reflect.DeepEqual(root, []TreeEntry{{Name: "a.txt"}, {Name: "bulk", Directory: true}, {Name: "only", Directory: true}, {Name: "zlink", Symlink: true}}) {
+		t.Fatalf("root: %+v %v", root, err)
+	}
+}
+
+func TestListDirectoryBoundsStreamedScan(t *testing.T) {
+	ctx := context.Background()
+	r, repo := newBrowseRunner(t, "")
+	writeFakeFixture(t, r, "fake-manifest", "644   "+strings.Repeat("x", maxFlatLine)+"\n")
+	if _, err := r.ListDirectory(ctx, repo, newerDefaultNode, ""); err == nil || errors.Is(err, ErrNotFound) {
+		t.Errorf("over-long line: %v", err)
+	}
+	var m strings.Builder
+	for i := 0; i <= maxFlatChildren; i++ {
+		fmt.Fprintf(&m, "644   f%d\n", i)
+	}
+	writeFakeFixture(t, r, "fake-manifest", m.String())
+	if _, err := r.ListDirectory(ctx, repo, newerDefaultNode, ""); !errors.Is(err, ErrOutputLimit) {
+		t.Errorf("too many children: %v", err)
+	}
+}
+
+// diffNode looks node up the way the commit page does before diffing it.
+func diffNode(r *Runner, ctx context.Context, repo string, node NodeID, parentIndex int) (DiffResult, error) {
+	cs, err := r.Changeset(ctx, repo, node)
+	if err != nil {
+		return DiffResult{}, err
+	}
+	return r.Diff(ctx, repo, cs, parentIndex)
 }

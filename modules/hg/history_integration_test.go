@@ -77,7 +77,7 @@ func TestHistoryDoesNotShiftOnPush(t *testing.T) {
 		if _, err := r.Changeset(ctx, repo, n); !errors.Is(err, ErrNotFound) {
 			t.Errorf("Changeset(%s): %v", n, err)
 		}
-		if _, err := r.Diff(ctx, repo, n, 0); !errors.Is(err, ErrNotFound) {
+		if _, err := diffNode(r, ctx, repo, n, 0); !errors.Is(err, ErrNotFound) {
 			t.Errorf("Diff(%s): %v", n, err)
 		}
 	}
@@ -173,7 +173,7 @@ func TestHistoryRejectsHiddenAndExpiredSnapshot(t *testing.T) {
 	if _, err := r.Changeset(ctx, repo, first.Snapshot); !errors.Is(err, ErrNotFound) {
 		t.Errorf("hidden changeset: %v", err)
 	}
-	if _, err := r.Diff(ctx, repo, first.Snapshot, 0); !errors.Is(err, ErrNotFound) {
+	if _, err := diffNode(r, ctx, repo, first.Snapshot, 0); !errors.Is(err, ErrNotFound) {
 		t.Errorf("hidden diff: %v", err)
 	}
 	if _, err := r.History(ctx, repo, HistoryQuery{Snapshot: first.Snapshot, SnapshotRevision: first.SnapshotRevision, BeforeRevision: 0}); !errors.Is(err, ErrInvalidCursor) {

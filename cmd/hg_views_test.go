@@ -289,11 +289,64 @@ func TestRawPathIdentity(t *testing.T) {
 			t.Fatalf("raw %s %d %v %q", p, w.Code, w.Header(), w.Body.String())
 		}
 	}
+	a.fixture(t, "content", "")
 	for _, p := range []string{"a%20%23%3F%25.txt", "%2f", "%5c", "x?path=eA"} {
 		w := a.request(t, "GET", "/gogs/alice/project/raw/"+viewNode+"/"+p, "", "")
 		if w.Code != 400 && w.Code != 404 {
 			t.Errorf("invalid raw %s: %d", p, w.Code)
 		}
+		if w.Header().Get("Content-Disposition") != "" {
+			t.Errorf("failed raw %s was served as an attachment", p)
+		}
+	}
+}
+func TestRawFileWithManifestOverCommandLimit(t *testing.T) {
+	a := newViewApp(t)
+	a.populate(t, 1)
+	a.fixture(t, "manifest", "644   big\n"+strings.Repeat("644   "+strings.Repeat("d/", 40)+"f\n", 1<<16))
+	a.fixture(t, "content", "raw")
+	w := a.request(t, "GET", "/gogs/alice/project/raw/"+viewNode+"/big", "", "")
+	if w.Code != 200 || w.Body.String() != "raw" {
+		t.Fatalf("raw with a manifest above the command output limit: %d %q", w.Code, w.Body.String())
+	}
+}
+
+// commands counts the fake Mercurial invocations whose arguments contain all of parts.
+func (a *viewApp) commands(parts ...string) int {
+	b, _ := os.ReadFile(filepath.Join(a.config, "arguments"))
+	n := 0
+lines:
+	for _, line := range strings.Split(string(b), "\n") {
+		for _, part := range parts {
+			if !strings.Contains(line, part) {
+				continue lines
+			}
+		}
+		n++
+	}
+	return n
+}
+
+func TestHomeListsReferencesOnce(t *testing.T) {
+	a := newViewApp(t)
+	a.populate(t, 1)
+	if w := a.request(t, "GET", "/gogs/alice/project", "", ""); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if n := a.commands("branches"); n != 1 {
+		t.Errorf("home ran branches %d times, want once", n)
+	}
+}
+
+func TestCommitPageLooksUpChangesetOnce(t *testing.T) {
+	a := newViewApp(t)
+	a.populate(t, 1)
+	a.fixture(t, "patch", "diff --git a/f000.txt b/f000.txt\n")
+	if w := a.request(t, "GET", "/gogs/alice/project/commit/"+viewNode, "", ""); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if n := a.commands("log", "id("+viewNode+")"); n != 1 {
+		t.Errorf("commit page looked the changeset up %d times, want once", n)
 	}
 }
 func TestIssueWorkflowSurvivesMercurialCutover(t *testing.T) {

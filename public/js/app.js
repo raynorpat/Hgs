@@ -421,7 +421,7 @@ function initRepository() {
             if ($watch.hasClass("watching")) {
                 return false;
             }
-            $.get(watchLink, function (json) {
+            $.post(watchLink, function (json) {
                 if (json.ok) {
                     $watch.find('.text-primary').removeClass('text-primary');
                     $watch.find('.to-watch h4').addClass('text-primary');
@@ -434,7 +434,7 @@ function initRepository() {
             if ($watch.hasClass("no-watching")) {
                 return false;
             }
-            $.get(unwatchLink, function (json) {
+            $.post(unwatchLink, function (json) {
                 if (json.ok) {
                     $watch.find('.text-primary').removeClass('text-primary');
                     $watch.find('.to-unwatch h4').addClass('text-primary');

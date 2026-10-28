@@ -5,8 +5,6 @@
 package middleware
 
 import (
-	"net/url"
-
 	"github.com/Unknwon/macaron"
 
 	"github.com/gogits/gogs/models"
@@ -84,8 +82,7 @@ func RequireTrueOwner() macaron.Handler {
 	return func(ctx *Context) {
 		if !ctx.Repo.IsTrueOwner && !ctx.Repo.IsAdmin {
 			if !ctx.IsSigned {
-				ctx.SetCookie("redirect_to", "/"+url.QueryEscape(setting.AppSubUrl+ctx.Req.RequestURI), 0, setting.AppSubUrl)
-				ctx.Redirect(setting.AppSubUrl + "/user/login")
+				ctx.RedirectToLogin()
 				return
 			}
 			ctx.Handle(404, ctx.Req.RequestURI, nil)

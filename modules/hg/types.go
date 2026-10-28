@@ -64,3 +64,11 @@ type ManifestEntry struct {
 	Executable bool
 	Symlink    bool
 }
+
+// TreeEntry is one child of a directory. Name is a single path segment.
+type TreeEntry struct {
+	Name       string
+	Directory  bool
+	Executable bool
+	Symlink    bool
+}

@@ -1,14 +1,13 @@
 filesets:
     includes:
         - conf
-        - etc
         - public
         - scripts
         - templates
         - LICENSE
         - README.md
-        - README_ZH.md
     excludes:
+        - \.hg
         - \.git
     depth: 5
 settings:
