@@ -48,8 +48,10 @@ func fakeViewHg(args []string) int {
 					return 1
 				}
 			}
+		} else if content := read("content"); content == "" {
+			return 1 // hg cat exits 1 when no file matched
 		} else {
-			fmt.Print(read("content"))
+			fmt.Print(content)
 		}
 	case "files":
 		if strings.Contains(strings.Join(args, " "), "{if(flags") {
