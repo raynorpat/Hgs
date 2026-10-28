@@ -53,3 +53,7 @@ After root's explicit safe-to-stop handoff, the implementer requested GET /fixtu
 After capture cleanup, browser visibility was deliberately set true solely to bring the previously stuck Task15 tab into view for the pending user-cancellation request. No further interaction was attempted, and its cancellation/cleanup remains unconfirmed. Capture-time visibility and geometry above are unchanged.
 
 After the final separately named PR UI regression completed, an owned-path process audit found0active processes. Exact Task16 temp target/containment and zero-reparse checks preceded removal of its remaining12owned scratch entries; final temp existence=false. No process kill or unrelated temp removal occurred.
+
+## Direct watcher URL amendment provenance
+
+These twelve captures precede Task16 review fix round1, which changes only direct watcher-email content URL resolution and its tests. They do not establish the amended mention/issue/changeset hrefs. No shared mail template, image, CSS, landing layout or browser interaction changed; the exact generated root/sub-URL hrefs and unchanged fake-mail delivery/escaping have separate focused test receipts. No new screenshot or actual email-client compatibility evidence is claimed.

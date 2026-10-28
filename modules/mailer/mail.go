@@ -5,11 +5,16 @@
 package mailer
 
 import (
+	"bytes"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"html"
+	"io"
+	"net/url"
 	"path"
+
+	mailhtml "golang.org/x/net/html"
 
 	"github.com/Unknwon/com"
 	"github.com/Unknwon/macaron"
@@ -180,16 +185,64 @@ func SendIssueNotifyMail(u, owner *models.User, repo *models.Repository, issue *
 	}
 
 	subject := fmt.Sprintf("[%s] %s(#%d)", repo.Name, issue.Name, issue.Index)
+	issueBody, err := renderIssueMailContent(issue.Content, owner.Name+"/"+repo.Name)
+	if err != nil {
+		return nil, fmt.Errorf("mail.NotifyWatchers(render issue links): %w", err)
+	}
 	// This existing notification path has no Macaron renderer. Escape user and
 	// instance data before composing its compact inline mail presentation.
 	content := fmt.Sprintf(`<!doctype html><html><body style="margin:0;padding:24px 12px;background:#FAFBFC;color:#172B4D;font:16px/1.6 Arial,sans-serif;"><div style="max-width:600px;margin:auto;background:#FFFFFF;border:1px solid #DFE1E6;padding:24px;"><a href="%s" style="font-size:22px;font-weight:bold;color:#172B4D;text-decoration:none;"><img src="%simg/favicon-32.png" width="32" height="32" alt="" style="vertical-align:middle;margin-right:8px;">%s</a><p style="white-space:pre-wrap;">%s</p><p><a href="%s%s/%s/issues/%d" style="color:#0052CC;font-weight:bold;">View the issue on %s</a></p></div><p style="max-width:600px;margin:16px auto;font-size:12px;color:#5E6C84;">© 2014 <a href="http://gogits.org">GoGits</a> · Based on Gogs. Existing project copyright and license notices apply.</p></body></html>`,
 		html.EscapeString(setting.AppUrl), html.EscapeString(setting.AppUrl), html.EscapeString(setting.AppName),
-		base.RenderSpecialLink([]byte(html.EscapeString(issue.Content)), owner.Name+"/"+repo.Name),
+		issueBody,
 		html.EscapeString(setting.AppUrl), html.EscapeString(owner.Name), html.EscapeString(repo.Name), issue.Index, html.EscapeString(setting.AppName))
 	msg := NewMailMessageFrom(tos, u.Email, subject, content)
 	msg.Info = fmt.Sprintf("Subject: %s, send issue notify emails", subject)
 	SendAsync(&msg)
 	return tos, nil
+}
+
+// renderIssueMailContent resolves the web renderer's reference links for email
+// without changing its route-relative behavior in web pages.
+func renderIssueMailContent(raw, repoPath string) (string, error) {
+	appURL, err := url.Parse(setting.AppUrl)
+	if err != nil {
+		return "", err
+	}
+	rendered := base.RenderSpecialLink([]byte(html.EscapeString(raw)), repoPath)
+	tokens := mailhtml.NewTokenizer(bytes.NewReader(rendered))
+	var body bytes.Buffer
+	for {
+		switch tokens.Next() {
+		case mailhtml.ErrorToken:
+			if err := tokens.Err(); err != io.EOF {
+				return "", err
+			}
+			return body.String(), nil
+		case mailhtml.StartTagToken:
+			token := tokens.Token()
+			if token.Data != "a" {
+				body.Write(tokens.Raw())
+				continue
+			}
+			attributes := token.Attr[:0]
+			for _, attribute := range token.Attr {
+				if attribute.Key == "href" {
+					target, err := url.Parse(attribute.Val)
+					if err != nil {
+						// A malformed user-authored reference must not cancel delivery.
+						// Keep its rendered text without an unusable link.
+						continue
+					}
+					attribute.Val = appURL.ResolveReference(target).String()
+				}
+				attributes = append(attributes, attribute)
+			}
+			token.Attr = attributes
+			body.WriteString(token.String())
+		default:
+			body.Write(tokens.Raw())
+		}
+	}
 }
 
 // SendIssueMentionMail sends mail notification for who are mentioned in issue.

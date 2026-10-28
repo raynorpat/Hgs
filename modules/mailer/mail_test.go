@@ -3,8 +3,10 @@ package mailer
 import (
 	"html/template"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -93,10 +95,10 @@ func TestExistingMailBranding(t *testing.T) {
 
 func TestExistingMailBrandingIssueWatchers(t *testing.T) {
 	root := t.TempDir()
-	oldDB, oldHas, oldLog, oldName, oldURL, oldMail, oldQueue := models.DbCfg, models.HasEngine, setting.LogRootPath, setting.AppName, setting.AppUrl, setting.MailService, mailQueue
+	oldDB, oldHas, oldLog, oldName, oldURL, oldSub, oldMail, oldQueue := models.DbCfg, models.HasEngine, setting.LogRootPath, setting.AppName, setting.AppUrl, setting.AppSubUrl, setting.MailService, mailQueue
 	t.Cleanup(func() {
 		models.CloseEngine()
-		models.DbCfg, models.HasEngine, setting.LogRootPath, setting.AppName, setting.AppUrl, setting.MailService, mailQueue = oldDB, oldHas, oldLog, oldName, oldURL, oldMail, oldQueue
+		models.DbCfg, models.HasEngine, setting.LogRootPath, setting.AppName, setting.AppUrl, setting.AppSubUrl, setting.MailService, mailQueue = oldDB, oldHas, oldLog, oldName, oldURL, oldSub, oldMail, oldQueue
 	})
 	models.DbCfg.Type, models.DbCfg.Path, setting.LogRootPath = "sqlite3", filepath.Join(root, "mail.db"), root
 	if err := models.NewEngine(); err != nil {
@@ -119,9 +121,9 @@ func TestExistingMailBrandingIssueWatchers(t *testing.T) {
 		t.Fatal(err)
 	}
 	mailQueue = make(chan *Message, 10)
-	setting.AppName, setting.AppUrl = "Operator <Lab>", "https://mail.example.invalid/code/"
+	setting.AppName = "Operator <Lab>"
 	setting.MailService = &setting.Mailer{From: "service@example.invalid"}
-	issue := &models.Issue{Index: 4, Name: "Issue", Content: "hello <script>alert(1)</script> & text"}
+	issue := &models.Issue{Index: 4, Name: "Issue", Content: "hello <script>alert(1)</script> & text @watcher #12 0123456789abcdef0123456789abcdef01234567\nhttps://external.example.invalid/commit/abc1234#L9\nhttps://bad%zz.invalid/commit/abcdef0"}
 	if tos, err := SendIssueNotifyMail(actor, actor, repo, issue); err != nil || len(tos) != 0 {
 		t.Fatalf("empty watchers %v %v", tos, err)
 	}
@@ -130,25 +132,53 @@ func TestExistingMailBrandingIssueWatchers(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	tos, err := SendIssueNotifyMail(actor, actor, repo, issue)
-	if err != nil || !reflect.DeepEqual(tos, []string{watcher.Email}) {
-		t.Fatalf("watchers %v %v", tos, err)
-	}
-	select {
-	case msg := <-mailQueue:
-		if !reflect.DeepEqual(msg.To, []string{watcher.Email}) || msg.From != actor.Email || msg.Subject != "[lab] Issue(#4)" {
-			t.Fatalf("delivery changed: %+v", msg)
-		}
-		for _, want := range []string{"Operator &lt;Lab&gt;", "https://mail.example.invalid/code/img/favicon-32.png", `href="https://mail.example.invalid/code/actor/lab/issues/4"`, "View the issue on", "&lt;script&gt;", "GoGits"} {
-			if !strings.Contains(msg.Body, want) {
-				t.Errorf("issue notify missing %q", want)
+	for _, tc := range []struct {
+		name, appURL, subURL                     string
+		action, image, mention, issue, changeset string
+	}{
+		{"root", "https://mail.example.invalid/", "", "https://mail.example.invalid/actor/lab/issues/4", "https://mail.example.invalid/img/favicon-32.png", "https://mail.example.invalid/watcher", "https://mail.example.invalid/actor/lab/issues/12", "https://mail.example.invalid/actor/lab/commit/0123456789abcdef0123456789abcdef01234567"},
+		{"subURL", "https://mail.example.invalid/code/", "/code", "https://mail.example.invalid/code/actor/lab/issues/4", "https://mail.example.invalid/code/img/favicon-32.png", "https://mail.example.invalid/code/watcher", "https://mail.example.invalid/code/actor/lab/issues/12", "https://mail.example.invalid/code/actor/lab/commit/0123456789abcdef0123456789abcdef01234567"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setting.AppUrl, setting.AppSubUrl = tc.appURL, tc.subURL
+			tos, err := SendIssueNotifyMail(actor, actor, repo, issue)
+			if err != nil || !reflect.DeepEqual(tos, []string{watcher.Email}) {
+				t.Fatalf("watchers %v %v", tos, err)
 			}
-		}
-		if strings.Contains(msg.Body, "<script>") {
-			t.Fatal("unescaped issue content")
-		}
-	case <-time.After(time.Second):
-		t.Fatal("no watcher mail")
+			select {
+			case msg := <-mailQueue:
+				if !reflect.DeepEqual(msg.To, []string{watcher.Email}) || msg.From != actor.Email || msg.Subject != "[lab] Issue(#4)" {
+					t.Fatalf("delivery changed: %+v", msg)
+				}
+				for _, want := range []string{"Operator &lt;Lab&gt;", tc.image, `href="` + tc.action + `"`, `href="` + tc.mention + `"`, `href="` + tc.issue + `"`, `href="` + tc.changeset + `"`, `href="https://external.example.invalid/commit/abc1234#L9"`, ">abcdef0</a>", "View the issue on", "&lt;script&gt;", "&amp; text", "GoGits"} {
+					if !strings.Contains(msg.Body, want) {
+						t.Errorf("issue notify missing %q", want)
+					}
+				}
+				for _, match := range regexp.MustCompile(`href="([^"]+)"`).FindAllStringSubmatch(msg.Body, -1) {
+					u, err := url.Parse(match[1])
+					if err != nil || !u.IsAbs() || u.Host == "" || strings.Contains(u.Path, "/code/code/") {
+						t.Errorf("unusable or duplicated-prefix email href %q", match[1])
+					}
+				}
+				if strings.Contains(msg.Body, "<script>") {
+					t.Fatal("unescaped issue content")
+				}
+				if strings.Contains(msg.Body, `href="https://bad%zz.invalid`) {
+					t.Error("malformed content reference retained a broken link")
+				}
+			case <-time.After(time.Second):
+				t.Fatal("no watcher mail")
+			}
+			// This amendment is email-scoped: the existing web renderer keeps its
+			// route-relative links and still uses the configured sub-URL for mentions.
+			web := string(base.RenderSpecialLink([]byte("@watcher #12 0123456789abcdef0123456789abcdef01234567"), "actor/lab"))
+			for _, want := range []string{`href="` + tc.subURL + `/watcher"`, `href="actor/lab/issues/12"`, `href="actor/lab/commit/0123456789abcdef0123456789abcdef01234567"`} {
+				if !strings.Contains(web, want) {
+					t.Errorf("web reference behavior changed: missing %q", want)
+				}
+			}
+		})
 	}
 	select {
 	case <-mailQueue:
