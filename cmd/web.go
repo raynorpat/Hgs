@@ -36,6 +36,7 @@ import (
 	"github.com/gogits/gogs/modules/auth/apiv1"
 	"github.com/gogits/gogs/modules/avatar"
 	"github.com/gogits/gogs/modules/base"
+	"github.com/gogits/gogs/modules/collaboration"
 	"github.com/gogits/gogs/modules/hg"
 	"github.com/gogits/gogs/modules/hosting"
 	"github.com/gogits/gogs/modules/log"
@@ -271,6 +272,7 @@ func runWebServer(ctx *cli.Context) error {
 func newWebHandler(holder *hostingHolder) http.Handler {
 	m := newMacaron()
 	m.MapTo(holder, (*hosting.Provider)(nil))
+	m.Map(collaboration.New(holder))
 	m.Map(routers.InitializeHosting(holder.Initialize))
 
 	reqSignIn := middleware.Toggle(&middleware.ToggleOptions{SignInRequire: true})
@@ -292,6 +294,7 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 		Post(protectedPOST, bindIgnErr(auth.InstallForm{}), routers.InstallPost)
 	m.Group("", func() {
 		m.Get("/issues", user.Issues)
+		m.Get("/pulls", repo.Pulls)
 	}, reqSignIn)
 
 	// API.
@@ -469,6 +472,25 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 			m.Route("/collaboration", "GET,POST", repo.SettingsCollaboration)
 		})
 	}, reqSignIn, middleware.RepoAssignment(true), reqTrueOwner)
+
+	m.Group("/:username/:reponame/pulls", func() {
+		m.Get("/new", reqSignIn, repo.PullNew)
+		m.Post("/new", reqSignIn, protectedPOST, bindIgnErr(repo.PullForm{}), repo.PullNewPost)
+		m.Get("/:number/operations/:operation", repo.PullOperation)
+		m.Get("/:number/comparisons/:comparison/files/*", repo.PullDownload)
+		m.Get("/:number/comparisons/:comparison/files/", repo.PullDownload)
+		m.Post("/:number/edit", reqSignIn, protectedPOST, bindIgnErr(repo.PullForm{}), repo.PullEdit)
+		m.Post("/:number/state", reqSignIn, protectedPOST, bindIgnErr(repo.PullForm{}), repo.PullState)
+		m.Post("/:number/refresh", reqSignIn, protectedPOST, bindIgnErr(repo.PullForm{}), repo.PullRefresh)
+		m.Post("/:number/reviewers", reqSignIn, protectedPOST, bindIgnErr(repo.PullForm{}), repo.PullReviewers)
+		m.Post("/:number/review", reqSignIn, protectedPOST, bindIgnErr(repo.PullForm{}), repo.PullReview)
+		m.Post("/:number/review/dismiss", reqSignIn, protectedPOST, bindIgnErr(repo.PullForm{}), repo.PullDismiss)
+		m.Post("/:number/comments", reqSignIn, protectedPOST, bindIgnErr(repo.PullForm{}), repo.PullComment)
+		m.Post("/:number/threads/:thread/resolve", reqSignIn, protectedPOST, bindIgnErr(repo.PullForm{}), repo.PullResolve)
+		m.Post("/:number/merge", reqSignIn, protectedPOST, bindIgnErr(repo.PullForm{}), repo.PullMerge)
+		m.Get("/:number", repo.PullView)
+		m.Get("", repo.Pulls)
+	}, ignSignIn, middleware.RepoAssignment(true), repo.PullRequestLimits)
 
 	m.Group("/:username/:reponame", func() {
 		m.Get("/fork", repo.Fork)

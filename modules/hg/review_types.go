@@ -37,6 +37,15 @@ type ReviewComparison struct {
 	Changesets           []Changeset
 	Diff                 DiffResult
 }
+
+type MergeStrategy string
+
+const (
+	MergeAlreadyIntegrated MergeStrategy = "already_integrated"
+	MergeFastForward       MergeStrategy = "fast_forward"
+	MergeTwoParent         MergeStrategy = "two_parent"
+)
+
 type PreparedMerge struct {
 	Path                        string
 	Source, Target, Result      NodeID

@@ -1,0 +1,1 @@
+<section id="changesets"><h3>{{.i18n.Tr "pulls.changesets"}}</h3><ul class="hg-issue-list">{{range .Pull.Changesets}}<li><code>{{.Node}}</code> <p>{{.Message}}</p><p class="hg-meta">{{.Date.UTC.Format "2006-01-02 15:04 UTC"}}</p></li>{{else}}<li>{{.i18n.Tr "pulls.no_changesets"}}</li>{{end}}</ul></section>

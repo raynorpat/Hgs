@@ -143,15 +143,12 @@ func (r *Runner) PrepareReviewMerge(ctx context.Context, s ReviewSnapshot, outpu
 	if metadata.TargetSelection.Ref.Kind == RefBookmark {
 		result.Bookmark = metadata.TargetSelection.Ref.Name
 	}
-	switch {
-	case s.Base == s.Source:
-		result.Mode = "already_integrated"
+	result.Mode = string(reviewMergeStrategy(s, source, target))
+	switch MergeStrategy(result.Mode) {
+	case MergeAlreadyIntegrated:
 		result.Result = s.Target
-	case s.Base == s.Target && source.Branch == target.Branch:
-		result.Mode = "fast_forward"
+	case MergeFastForward:
 		result.Result = s.Source
-	default:
-		result.Mode = "two_parent"
 	}
 	if result.Mode == "two_parent" {
 		var checkoutEntries []ManifestEntry

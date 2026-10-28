@@ -102,7 +102,7 @@ func TestSharedShellPermissionsAndSubURL(t *testing.T) {
 				if !strings.Contains(html, `data-drawer="hg-context"`) || !strings.Contains(html, `aria-controls="hg-context"`) {
 					t.Fatal("missing narrow navigation opener")
 				}
-				if strings.Contains(html, "/pulls") || strings.Contains(html, "/help") || strings.Contains(html, "/logout") {
+				if strings.Contains(html, "/help") || strings.Contains(html, "/logout") {
 					t.Fatal("unimplemented or unsafe action exposed")
 				}
 				if !strings.Contains(html, `href="`+sub+`/css/app.css"`) {
@@ -113,7 +113,7 @@ func TestSharedShellPermissionsAndSubURL(t *testing.T) {
 					for _, n := range s.Navigation {
 						keys = append(keys, n.Key)
 					}
-					expected := "workspace,source,changesets,branches,issues"
+					expected := "workspace,source,changesets,branches,pull_requests,issues"
 					if tc.settings {
 						expected += ",settings"
 					}

@@ -47,7 +47,7 @@ func comparisonRandomID() (string, error) {
 // The caller must exclusively allocate and mark its wrapper before native work.
 // Both current reads and an enabled actor are required; it grants no write or
 // publication authority. A pending current version disables prior readiness.
-func ReservePullComparison(ctx context.Context, actor, pullID int64) (c PullComparison, err error) {
+func ReservePullComparison(ctx context.Context, actor, pullID int64, expected ...PullRequest) (c PullComparison, err error) {
 	c.PullID = pullID
 	c.State = "pending"
 	c.Created = time.Now().UTC()
@@ -58,6 +58,17 @@ func ReservePullComparison(ctx context.Context, actor, pullID int64) (c PullComp
 		return PullComparison{}, err
 	}
 	err = mutatePull(ctx, actor, pullID, func(sess *xorm.Session, p PullRequest, _, _ RepositoryAccess) error {
+		if p.State == PullMerged {
+			return ErrPullState
+		}
+		if len(expected) > 0 && !SamePullSelection(p, expected[0]) {
+			return ErrPullConflict
+		}
+		if active, err := sess.Where("active_key = ?", mergeActiveKey(p.ID)).Get(new(MergeOperation)); err != nil {
+			return err
+		} else if active {
+			return ErrMergeActive
+		}
 		var last PullComparison
 		query := "SELECT * FROM pull_comparison WHERE pull_id = ? ORDER BY revision DESC LIMIT 1"
 		if DbCfg.Type != "sqlite3" {

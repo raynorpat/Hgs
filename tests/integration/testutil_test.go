@@ -56,6 +56,35 @@ import (
 var gogsExe string
 
 func TestMain(m *testing.M) {
+	executable, executableErr := os.Executable()
+	if executableErr != nil {
+		panic(executableErr)
+	}
+	hookBinary := executable + ".hook.exe"
+	if len(os.Args) > 1 && os.Args[1] == hgbridge.HookCommand {
+		command := exec.Command(hookBinary, os.Args[1:]...)
+		command.Stdout, command.Stderr = os.Stdout, os.Stderr
+		if err := command.Run(); err != nil {
+			if result, ok := err.(*exec.ExitError); ok {
+				os.Exit(result.ExitCode())
+			}
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+	runTests := func() int {
+		binary, err := os.ReadFile(gogsExe)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		if err = os.WriteFile(hookBinary, binary, 0700); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		defer os.Remove(hookBinary)
+		return m.Run()
+	}
 	if os.Getenv("GOGS_HG_APPLICATION_BINARY") != "" {
 		os.Exit(m.Run())
 	}
@@ -76,7 +105,7 @@ func TestMain(m *testing.M) {
 				fmt.Fprintln(os.Stderr, err)
 				return 1
 			}
-			return m.Run()
+			return runTests()
 		}
 		// Hook commands are quoted for the platform shell; the path has a
 		// space and a non-ASCII (ANSI-representable) letter.
@@ -91,7 +120,7 @@ func TestMain(m *testing.M) {
 			fmt.Fprintf(os.Stderr, "build gogs: %v\n%s", err, out)
 			return 1
 		}
-		return m.Run()
+		return runTests()
 	}()
 	os.Exit(code)
 }

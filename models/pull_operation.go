@@ -59,6 +59,18 @@ type MergeAdmission struct {
 
 func mergeActiveKey(pull int64) string { return "pull:" + strconv.FormatInt(pull, 10) }
 
+func LatestPullMerge(ctx context.Context, actor, pull int64) (MergeOperation, error) {
+	if _, err := GetPullRecordByID(ctx, actor, pull); err != nil {
+		return MergeOperation{}, err
+	}
+	var op MergeOperation
+	if found, err := x.Where("active_key = ?", mergeActiveKey(pull)).Get(&op); err != nil || found {
+		return op, err
+	}
+	_, err := x.Where("pull_id = ?", pull).Desc("created", "id").Get(&op)
+	return op, err
+}
+
 // BeginMergeOperation admits a merge under current authority and durable state,
 // or returns the existing operation for the same actor, key and payload.
 func BeginMergeOperation(ctx context.Context, actor int64, in MergeAdmission) (op MergeOperation, err error) {

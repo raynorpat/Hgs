@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"html"
 	htmltemplate "html/template"
@@ -43,6 +44,7 @@ type uiFixture struct {
 	m                         *macaron.Macaron
 	prefix, node, merge, root string
 	db                        *xorm.Engine
+	host                      *hosting.Service
 	owner, reader             *models.User
 	public, private, empty    *models.Repository
 }
@@ -85,7 +87,7 @@ func newUIFixture(t *testing.T, prefix string) *uiFixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { f.db.Close() })
-	service, err := hosting.New(context.Background(), hosting.Config{Mercurial: hg.Config{Executable: hgPath(t), ConfigPath: filepath.Join(root, "managed", "hgrc")}, RepositoryRoot: setting.RepoRootPath, HostKeyPath: filepath.Join(root, "host-key"), PublicURL: setting.AppUrl, AppSubURL: prefix})
+	service, err := hosting.New(context.Background(), hosting.Config{Mercurial: hg.Config{Executable: hgPath(t), ConfigPath: filepath.Join(root, "managed", "hgrc"), MaxProcesses: 1}, ReviewArtifactRoot: filepath.Join(root, "comparisons"), RepositoryRoot: setting.RepoRootPath, HostKeyPath: filepath.Join(root, "host-key"), PublicURL: setting.AppUrl, AppSubURL: prefix})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,6 +96,7 @@ func newUIFixture(t *testing.T, prefix string) *uiFixture {
 		defer cancel()
 		service.Shutdown(ctx)
 	})
+	f.host = service
 	for i, name := range []string{"repository-with-a-long-name-for-the-shared-navigation", "private-lab", "empty-lab"} {
 		r, err := models.CreateHgRepository(context.Background(), service.Runner(), service.RepositoryRoot(), models.CreateHgRepositoryOptions{OwnerID: f.owner.Id, Name: name, Private: i == 1})
 		if err != nil {
@@ -166,8 +169,12 @@ func newUIFixture(t *testing.T, prefix string) *uiFixture {
 	m.Use(macaron.Renderer(macaron.RenderOptions{Directory: "../../templates", Funcs: []htmltemplate.FuncMap{base.TemplateFuncs}}))
 	m.Use(middleware.Localization(i18n.Options{Directory: "../../conf/locale", Langs: []string{"en-US", "de-DE"}, Names: []string{"English", "Deutsch"}}))
 	m.Use(cache.Cacher())
-	m.Use(session.Sessioner(session.Options{Provider: "memory", CookieName: "ui_fixture", CookiePath: prefix}))
-	m.Use(csrf.Csrfer(csrf.Options{Secret: "disposable-ui-fixture", CookiePath: prefix, SetCookie: true}))
+	// Loopback ports share browser cookies. Isolate each disposable fixture's
+	// session and CSRF cookies from prior fixtures and other local applications.
+	cookieSuffix := fmt.Sprintf("%x", sha256.Sum256([]byte(root)))[:12]
+	csrfCookie := "ui_csrf_" + cookieSuffix
+	m.Use(session.Sessioner(session.Options{Provider: "memory", CookieName: "ui_session_" + cookieSuffix, CookiePath: prefix}))
+	m.Use(csrf.Csrfer(csrf.Options{Secret: "disposable-ui-fixture", Cookie: csrfCookie, CookiePath: prefix, SetCookie: true}))
 	m.Use(middleware.Contexter())
 	m.Use(func(ctx *middleware.Context) {
 		ctx.PrepareHTML = user.PrepareDiscovery
@@ -187,6 +194,7 @@ func newUIFixture(t *testing.T, prefix string) *uiFixture {
 	m.Get("/repo/create", guard, repo.Create)
 	m.Post("/repo/create", guard, binding.BindIgnErr(auth.CreateRepoForm{}), repo.CreatePost)
 	m.Get("/fixture/account/:name", func(ctx *middleware.Context) {
+		ctx.Resp.Header().Set("Cache-Control", "no-store")
 		id := f.owner.Id
 		if ctx.Params(":name") == "reader" {
 			id = f.reader.Id
@@ -240,7 +248,7 @@ func requireUI(t *testing.T, w *httptest.ResponseRecorder, active string) {
 	if active != "" && !regexp.MustCompile(`<a class="hg-nav-item" href="`+regexp.QuoteMeta(active)+`"[^>]*aria-current="page"`).MatchString(body) {
 		t.Errorf("missing navigation %s", active)
 	}
-	for _, old := range []string{"ng/css", "ng/js", "ZeroClipboard", "/pulls", "git clone", "git init"} {
+	for _, old := range []string{"ng/css", "ng/js", "ZeroClipboard", "git clone", "git init"} {
 		if strings.Contains(body, old) {
 			t.Errorf("obsolete/unavailable UI %q", old)
 		}

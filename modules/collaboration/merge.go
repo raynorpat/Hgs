@@ -98,23 +98,62 @@ func (s *Service) MergePull(ctx context.Context, actor int64, in MergeRequest) (
 	if err != nil {
 		return MergeResult{}, err
 	}
-	if !idempotencyKey.MatchString(in.IdempotencyKey) {
-		return MergeResult{}, models.ErrPullInvalid
-	}
-	for _, n := range []hg.NodeID{in.Source, in.Target} {
-		if _, err := hg.ParseNodeID(string(n)); err != nil {
-			return MergeResult{}, models.ErrPullInvalid
-		}
-	}
-	var raw [16]byte
-	if _, err := rand.Read(raw[:]); err != nil {
-		return MergeResult{}, err
-	}
-	op, err := models.BeginMergeOperation(ctx, actor, models.MergeAdmission{ID: hex.EncodeToString(raw[:]), IdempotencyKey: in.IdempotencyKey, PullID: in.PullID, ComparisonID: in.ComparisonID, SourceNode: in.Source, TargetNode: in.Target})
+	op, err := admitMerge(ctx, actor, in)
 	if err != nil {
 		return MergeResult{}, err
 	}
 	return s.driveMerge(ctx, host, op)
+}
+
+func admitMerge(ctx context.Context, actor int64, in MergeRequest) (models.MergeOperation, error) {
+	if !idempotencyKey.MatchString(in.IdempotencyKey) {
+		return models.MergeOperation{}, models.ErrPullInvalid
+	}
+	for _, n := range []hg.NodeID{in.Source, in.Target} {
+		if _, err := hg.ParseNodeID(string(n)); err != nil {
+			return models.MergeOperation{}, models.ErrPullInvalid
+		}
+	}
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return models.MergeOperation{}, err
+	}
+	return models.BeginMergeOperation(ctx, actor, models.MergeAdmission{ID: hex.EncodeToString(raw[:]), IdempotencyKey: in.IdempotencyKey, PullID: in.PullID, ComparisonID: in.ComparisonID, SourceNode: in.Source, TargetNode: in.Target})
+}
+
+func (s *Service) StartMerge(ctx context.Context, actor int64, in MergeRequest) (MergeResult, error) {
+	host, err := s.host()
+	if err != nil {
+		return MergeResult{}, err
+	}
+	var op models.MergeOperation
+	_, err = host.StartReviewOperation(ctx, func() (string, error) {
+		var e error
+		op, e = admitMerge(ctx, actor, in)
+		if e != nil {
+			return "", e
+		}
+		if op.State == models.MergeFinalized || op.State == models.MergeFailed || !claimMergeWorker(op.ID) {
+			return "", nil
+		}
+		return op.ID, nil
+	}, func() bool {
+		p, e := models.GetPullRecordByID(context.Background(), actor, in.PullID)
+		if e != nil || models.ValidateRepositoryCredential(actor, 0, 0) != nil {
+			return false
+		}
+		a, e := models.RepositoryAccessFor(actor, p.TargetRepoID)
+		return e == nil && a.Write
+	}, func(worker context.Context) {
+		defer releaseMergeWorker(op.ID)
+		if _, e := s.driveMergeClaimed(worker, host, op); e != nil {
+			log.Warn("merge operation %s: %v", op.ID, e)
+		}
+	})
+	if err != nil {
+		return MergeResult{}, err
+	}
+	return mergeResult(op), nil
 }
 
 func (s *Service) MergeStatus(ctx context.Context, actor, pullID int64, operationID string) (MergeResult, error) {

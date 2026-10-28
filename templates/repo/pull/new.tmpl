@@ -1,0 +1,11 @@
+{{template "shared/start" .}}{{template "repo/header" .}}
+<h2>{{.i18n.Tr "pulls.create"}}</h2>{{if .PullError}}<p class="hg-alert hg-alert-danger" role="alert">{{.PullError}}</p>{{end}}
+<form method="post" action="{{.RepoLink}}/pulls/new" class="hg-issue-form hg-pull-page" data-prevent-duplicate>{{.CsrfTokenHtml}}
+<div class="hg-field"><label for="pull-source-repo">{{.i18n.Tr "pulls.source_repo"}}</label><input id="pull-source-repo" name="source_repository" required maxlength="512" value="{{.PullForm.SourceRepository}}" aria-describedby="pull-source-help"><p id="pull-source-help" class="hg-meta">{{.i18n.Tr "pulls.source_repo_help"}}</p></div>
+<p>{{.i18n.Tr "pulls.target_repo"}}: {{.Owner.Name}} / {{.Repository.Name}}</p>
+{{template "repo/pull/selectors" .}}
+<div class="hg-field"><label for="pull-title">{{.i18n.Tr "ui.title"}}</label><input id="pull-title" name="title" required maxlength="255" value="{{.PullForm.Title}}"></div>
+{{template "shared/markdown_editor" .PullEditor}}
+<div class="hg-field"><label for="pull-reviewers">{{.i18n.Tr "pulls.reviewers"}}</label><input id="pull-reviewers" name="reviewers" value="{{.PullForm.Reviewers}}" maxlength="4096"><p class="hg-meta">{{.i18n.Tr "pulls.reviewers_help"}}</p></div>
+<button class="hg-button hg-button-primary">{{.i18n.Tr "pulls.create"}}</button></form>
+{{template "shared/end" .}}

@@ -86,6 +86,9 @@ func (s *Service) RefreshComparison(ctx context.Context, actor, pullID int64) (c
 		return c, err
 	}
 	defer finish()
+	if p.State == models.PullMerged {
+		return c, models.ErrPullState
+	}
 	if err := models.ValidateRepositoryCredential(actor, 0, 0); err != nil {
 		return c, err
 	}
@@ -94,6 +97,13 @@ func (s *Service) RefreshComparison(ctx context.Context, actor, pullID int64) (c
 		old, err := models.GetPullComparison(ctx, actor, pullID, p.CurrentComparisonID)
 		if err == nil && old.SnapshotComplete && old.SourceNode == source.Node && old.TargetNode == target.Node && (old.State == "ready" || old.Failure == "comparison-too-large") {
 			if _, err := comparisonSnapshot(host.ReviewArtifactRoot(), old); err == nil {
+				current, err := models.GetPullRecordByID(ctx, actor, pullID)
+				if err != nil {
+					return c, err
+				}
+				if !models.SamePullSelection(current, p) {
+					return c, models.ErrPullConflict
+				}
 				if old.State == "ready" {
 					return old, nil
 				}
@@ -101,7 +111,7 @@ func (s *Service) RefreshComparison(ctx context.Context, actor, pullID int64) (c
 			}
 		}
 	}
-	c, err = models.ReservePullComparison(ctx, actor, pullID)
+	c, err = models.ReservePullComparison(ctx, actor, pullID, p)
 	if err != nil {
 		return c, err
 	}
@@ -214,6 +224,12 @@ func (w *comparisonWriter) Write(p []byte) (int, error) {
 // cancellation and abort responses on post-write errors, like RawFile does.
 // Per-write authority cannot recall bytes already sent before revocation.
 func (s *Service) ReadComparisonFile(ctx context.Context, actor, pullID, id int64, side, path string, out io.Writer) error {
+	return s.ReadComparisonFileWithLifecycle(ctx, actor, pullID, id, side, path, out, nil)
+}
+
+// The callback observes the actual managed read context, including permission
+// revocation. Its stop/join runs before normal lease cancellation.
+func (s *Service) ReadComparisonFileWithLifecycle(ctx context.Context, actor, pullID, id int64, side, path string, out io.Writer, lifecycle func(context.Context) func()) error {
 	if side != "source" && side != "target" && side != "base" {
 		return hg.ErrNotFound
 	}
@@ -241,6 +257,12 @@ func (s *Service) ReadComparisonFile(ctx context.Context, actor, pullID, id int6
 		node = c.BaseNode
 	}
 	writer := &comparisonWriter{ctx: ctx, actor: actor, pullID: pullID, out: out}
+	if lifecycle != nil {
+		stop := lifecycle(ctx)
+		if stop != nil {
+			defer stop()
+		}
+	}
 	err = host.Runner().ReadFile(ctx, snapshot.Path, node, path, writer)
 	if writer.err != nil {
 		return writer.err
@@ -248,5 +270,6 @@ func (s *Service) ReadComparisonFile(ctx context.Context, actor, pullID, id int6
 	if err != nil {
 		return comparisonError(err)
 	}
-	return nil
+	_, err = models.GetPullRecordByID(ctx, actor, pullID)
+	return err
 }

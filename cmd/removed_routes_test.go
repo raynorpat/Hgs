@@ -18,7 +18,7 @@ func TestGitAndDeferredRoutesAbsent(t *testing.T) {
 		"/alice/project.git/info/refs?service=git-upload-pack", "/alice/project.git/git-upload-pack", "/alice/project.git/git-receive-pack",
 		"/alice/project/info/refs?service=git-receive-pack", "/alice/project/git-upload-pack", "/alice/project/git-receive-pack",
 		"/alice/project/archive/main.zip", "/repo/fork/1", "/repo/migrate", "/repo/mirror",
-		"/alice/project/releases", "/alice/project/releases/new", "/alice/project/releases/edit/v1", "/alice/project/pulls", "/alice/project/pulls/1", "/pulls",
+		"/alice/project/releases", "/alice/project/releases/new", "/alice/project/releases/edit/v1",
 		"/alice/project/settings/hooks", "/alice/project/settings/hooks/new", "/alice/project/settings/hooks/gogs/new", "/alice/project/settings/hooks/slack/new",
 		"/alice/project/settings/hooks/1", "/alice/project/settings/hooks/gogs/1", "/alice/project/settings/hooks/slack/1", "/alice/project/settings/hooks/1/delete",
 		"/alice/project/settings/hooks/git", "/alice/project/settings/hooks/git/update",
@@ -57,7 +57,7 @@ func TestDashboardRetainedFeedLinksAndNavigation(t *testing.T) {
 				t.Fatalf("dashboard: %d %s", w.Code, w.Body)
 			}
 			body := w.Body.String()
-			if strings.Contains(body, "/gogs//gogs/") || strings.Contains(body, "dashboard-my-mirror") || strings.Contains(body, "/repo/migrate") || strings.Contains(body, "href=\"/gogs/pulls\"") {
+			if strings.Contains(body, "/gogs//gogs/") || strings.Contains(body, "dashboard-my-mirror") || strings.Contains(body, "/repo/migrate") {
 				t.Fatalf("dashboard retains broken feed URL or deferred navigation: %s", body)
 			}
 			if !strings.Contains(body, `created repository <a href="`+prefix+`/alice/project"`) {

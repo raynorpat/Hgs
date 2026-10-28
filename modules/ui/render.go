@@ -13,6 +13,12 @@ import (
 // BuildShell does not query storage: repository authority is supplied by RepoAssignment.
 // Anonymous is a genuinely reduced layout for authentication and installation.
 func BuildShell(ctx *middleware.Context, kind ContextKind, active string) Shell {
+	if _, set := ctx.Data[PullRequestsURL]; !set {
+		ctx.Data[PullRequestsURL] = setting.AppSubUrl + "/pulls"
+		if kind == Repository && ctx.Repo.HasAccess && ctx.Repo.Repository != nil {
+			ctx.Data[PullRequestsURL] = ctx.Repo.RepoLink + "/pulls"
+		}
+	}
 	s := Shell{Kind: kind, SubURL: setting.AppSubUrl}
 	// Macaron strips AppSubUrl from URL.Path, but leaves RequestURI untouched.
 	// Keep only navigation filters: password-reset/login tokens must not be copied.

@@ -302,10 +302,10 @@ func ListPullRecords(ctx context.Context, actor int64, q PullQuery) (PullPage, e
 	if q.State != "" && q.State != "all" && q.State != string(PullOpen) && q.State != string(PullMerged) && q.State != string(PullDeclined) {
 		return out, ErrPullInvalid
 	}
-	if q.Filter != "" && q.Filter != "all" && q.Filter != "created" && q.Filter != "assigned" {
+	if q.Filter != "" && q.Filter != "all" && q.Filter != "created" && q.Filter != "assigned" && q.Filter != "needs_review" {
 		return out, ErrPullFilter
 	}
-	if (q.Filter == "created" || q.Filter == "assigned") && actor <= 0 {
+	if (q.Filter == "created" || q.Filter == "assigned" || q.Filter == "needs_review") && actor <= 0 {
 		return out, ErrInvalidCredential
 	}
 	if q.RepoID > 0 {
@@ -339,6 +339,13 @@ func ListPullRecords(ctx context.Context, actor int64, q PullQuery) (PullPage, e
 			return PullPage{}, err
 		}
 		for _, p := range batch {
+			if q.Filter == "needs_review" {
+				if ok, err := needsPullReview(p, actor); err != nil {
+					return PullPage{}, err
+				} else if !ok {
+					continue
+				}
+			}
 			if q.Filter == "assigned" {
 				if ok, err := assignedPullReview(p, actor); err != nil {
 					return PullPage{}, err

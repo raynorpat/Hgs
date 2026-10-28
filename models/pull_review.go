@@ -296,3 +296,31 @@ func assignedPullReview(p PullRequest, actor int64) (bool, error) {
 	}
 	return pullReviewEligible(x, p, actor)
 }
+
+// Needs-review uses persisted pins, not native scans. Same-pin comparison
+// replacement retains a decision; unresolved changes wait for changed pins.
+func needsPullReview(p PullRequest, actor int64) (bool, error) {
+	if p.State != PullOpen {
+		return false, nil
+	}
+	if eligible, err := assignedPullReview(p, actor); err != nil || !eligible {
+		return false, err
+	}
+	var review PullReview
+	if _, err := x.Where("pull_id = ? AND reviewer_id = ?", p.ID, actor).Get(&review); err != nil {
+		return false, err
+	}
+	var current PullComparison
+	if found, err := x.Where("id = ? AND pull_id = ? AND state = ? AND snapshot_complete = ?", p.CurrentComparisonID, p.ID, "ready", true).Get(&current); err != nil || !found {
+		return false, err
+	}
+	if review.State == "" || review.State == ReviewInactive || review.ComparisonID == 0 {
+		return true, nil
+	}
+	var decided PullComparison
+	found, err := x.Where("id = ? AND pull_id = ?", review.ComparisonID, p.ID).Get(&decided)
+	if err != nil {
+		return false, err
+	}
+	return !found || decided.SourceNode != current.SourceNode || decided.TargetNode != current.TargetNode, nil
+}
