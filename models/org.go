@@ -218,7 +218,7 @@ func DeleteOrganization(org *User) (err error) {
 		sess.Rollback()
 		return err
 	}
-	return sess.Commit()
+	return commitRetiringReviews(sess)
 }
 
 // ________                ____ ___
@@ -388,7 +388,7 @@ func RemoveOrgUser(orgId, uid int64) error {
 		}
 	}
 
-	return sess.Commit()
+	return commitRetiringReviews(sess)
 }
 
 // ___________
@@ -612,7 +612,7 @@ func (t *Team) RemoveRepository(repoId int64) error {
 		}
 	}
 
-	return sess.Commit()
+	return commitRetiringReviews(sess)
 }
 
 // NewTeam creates a record of new team.
@@ -774,7 +774,7 @@ func UpdateTeam(t *Team, authChanged bool) (err error) {
 		sess.Rollback()
 		return err
 	}
-	return sess.Commit()
+	return commitRetiringReviews(sess)
 }
 
 // DeleteTeam deletes given team.
@@ -843,7 +843,7 @@ func DeleteTeam(t *Team) error {
 		return err
 	}
 
-	return sess.Commit()
+	return commitRetiringReviews(sess)
 }
 
 // ___________                    ____ ___
@@ -1105,5 +1105,5 @@ func RemoveTeamMember(orgId, teamId, uid int64) error {
 		sess.Rollback()
 		return err
 	}
-	return sess.Commit()
+	return commitRetiringReviews(sess)
 }

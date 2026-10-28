@@ -298,7 +298,7 @@ func TransferOwnership(u *User, newOwner string, repo *Repository) error {
 		}
 	}
 
-	if err = sess.Commit(); err != nil {
+	if err = commitRetiringReviews(sess); err != nil {
 		return err
 	}
 
@@ -396,7 +396,7 @@ func UpdateRepository(repo *Repository) error {
 	if _, err := sess.Id(repo.Id).Cols("name", "lower_name", "description", "website", "is_private").Update(repo); err != nil {
 		return err
 	}
-	return sess.Commit()
+	return commitRetiringReviews(sess)
 }
 
 // DeleteRepository deletes the database rows of a repository for a user or

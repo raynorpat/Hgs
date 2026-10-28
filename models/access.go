@@ -27,7 +27,16 @@ type Access struct {
 
 // AddAccess adds new access record, or changes the mode of an existing one.
 func AddAccess(access *Access) error {
-	return addAccessWithAuthorize(x, &Access{UserId: access.UserId, RepoId: access.RepoId}, access.Mode)
+	sess := x.NewSession()
+	defer sess.Close()
+	defer sess.Rollback()
+	if err := sess.Begin(); err != nil {
+		return err
+	}
+	if err := addAccessWithAuthorize(sess, &Access{UserId: access.UserId, RepoId: access.RepoId}, access.Mode); err != nil {
+		return err
+	}
+	return commitRetiringReviews(sess)
 }
 
 // DeleteAccess deletes access record of given user and repository.
@@ -35,8 +44,16 @@ func DeleteAccess(access *Access) error {
 	if access.UserId == 0 || access.RepoId == 0 {
 		return errors.New("access user and repository must be given")
 	}
-	_, err := x.Delete(&Access{UserId: access.UserId, RepoId: access.RepoId})
-	return err
+	sess := x.NewSession()
+	defer sess.Close()
+	defer sess.Rollback()
+	if err := sess.Begin(); err != nil {
+		return err
+	}
+	if _, err := sess.Delete(&Access{UserId: access.UserId, RepoId: access.RepoId}); err != nil {
+		return err
+	}
+	return commitRetiringReviews(sess)
 }
 
 // HasAccess returns true if user has at least given mode of access record to repository.

@@ -99,6 +99,9 @@ func CompletePullComparison(ctx context.Context, actor int64, c PullComparison) 
 			return ErrPullInvalid
 		}
 		_, err = sess.Id(c.ID).Cols("source_node", "target_node", "base_node", "state", "failure", "snapshot_complete").Update(&c)
+		if err == nil && c.State == "ready" {
+			err = expirePullApprovals(sess, p.ID, c)
+		}
 		return err
 	})
 }

@@ -50,6 +50,8 @@ type PullRequest struct {
 	State               PullState `xorm:"VARCHAR(16) index"`
 	Created             time.Time `xorm:"created"`
 	Updated             time.Time `xorm:"updated"`
+	// ReviewerIDs is accepted only by CreatePullRecord; assignments live in PullReview.
+	ReviewerIDs []int64 `xorm:"-"`
 }
 type PullQuery struct {
 	RepoID         int64
@@ -236,8 +238,10 @@ func CreatePullRecord(ctx context.Context, actor int64, p PullRequest) (PullRequ
 		p.Number = last.Number + 1
 		p.AuthorID = actor
 		p.State = PullOpen
-		_, err := sess.Insert(&p)
-		return err
+		if _, err := sess.Insert(&p); err != nil {
+			return err
+		}
+		return assignPullReviewers(sess, actor, p, p.ReviewerIDs)
 	})
 	if err != nil {
 		return PullRequest{}, err
@@ -298,10 +302,10 @@ func ListPullRecords(ctx context.Context, actor int64, q PullQuery) (PullPage, e
 	if q.State != "" && q.State != "all" && q.State != string(PullOpen) && q.State != string(PullMerged) && q.State != string(PullDeclined) {
 		return out, ErrPullInvalid
 	}
-	if q.Filter != "" && q.Filter != "all" && q.Filter != "created" {
+	if q.Filter != "" && q.Filter != "all" && q.Filter != "created" && q.Filter != "assigned" {
 		return out, ErrPullFilter
 	}
-	if q.Filter == "created" && actor <= 0 {
+	if (q.Filter == "created" || q.Filter == "assigned") && actor <= 0 {
 		return out, ErrInvalidCredential
 	}
 	if q.RepoID > 0 {
@@ -335,6 +339,13 @@ func ListPullRecords(ctx context.Context, actor int64, q PullQuery) (PullPage, e
 			return PullPage{}, err
 		}
 		for _, p := range batch {
+			if q.Filter == "assigned" {
+				if ok, err := assignedPullReview(p, actor); err != nil {
+					return PullPage{}, err
+				} else if !ok {
+					continue
+				}
+			}
 			if _, _, err := pullReads(x, actor, p, false); errors.Is(err, ErrPullNotExist) {
 				continue
 			} else if err != nil {

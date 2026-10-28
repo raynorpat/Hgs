@@ -3,14 +3,10 @@ package collaboration
 import (
 	"context"
 	"encoding/json"
-	"errors"
 
 	"github.com/gogits/gogs/models"
 	"github.com/gogits/gogs/modules/hg"
 )
-
-// Task 11 must replace this explicit refusal with current validated assignments.
-var ErrReviewersUnsupported = errors.New("reviewer assignments are not available")
 
 type NewPull struct {
 	SourceRepoID, TargetRepoID int64
@@ -22,9 +18,6 @@ type PullQuery = models.PullQuery
 type PullPage = models.PullPage
 
 func (s *Service) CreatePull(ctx context.Context, actor int64, input NewPull) (models.PullRequest, error) {
-	if len(input.ReviewerIDs) > 0 {
-		return models.PullRequest{}, ErrReviewersUnsupported
-	}
 	if s == nil || s.Provider == nil {
 		return models.PullRequest{}, ErrUnavailable
 	}
@@ -34,7 +27,7 @@ func (s *Service) CreatePull(ctx context.Context, actor int64, input NewPull) (m
 	}
 	src, _ := json.Marshal(input.Source)
 	dst, _ := json.Marshal(input.Target)
-	p := models.PullRequest{SourceRepoID: input.SourceRepoID, TargetRepoID: input.TargetRepoID, Title: input.Title, Body: input.Body, SourceSelection: string(src), TargetSelection: string(dst)}
+	p := models.PullRequest{SourceRepoID: input.SourceRepoID, TargetRepoID: input.TargetRepoID, Title: input.Title, Body: input.Body, SourceSelection: string(src), TargetSelection: string(dst), ReviewerIDs: input.ReviewerIDs}
 	if err := models.ValidatePullCreation(actor, p); err != nil {
 		return models.PullRequest{}, err
 	}

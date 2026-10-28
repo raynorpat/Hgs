@@ -411,8 +411,16 @@ func UpdateUser(u *User) error {
 	u.Avatar = avatar.HashEmail(u.AvatarEmail)
 
 	u.FullName = base.Sanitizer.Sanitize(u.FullName)
-	_, err = x.Id(u.Id).AllCols().Update(u)
-	return err
+	sess := x.NewSession()
+	defer sess.Close()
+	defer sess.Rollback()
+	if err = sess.Begin(); err != nil {
+		return err
+	}
+	if _, err = sess.Id(u.Id).AllCols().Update(u); err != nil {
+		return err
+	}
+	return commitRetiringReviews(sess)
 }
 
 // FIXME: need some kind of mechanism to record failure. HINT: system notice

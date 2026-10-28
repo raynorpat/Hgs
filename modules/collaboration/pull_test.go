@@ -18,9 +18,6 @@ import (
 
 func TestPullCreateUnavailableAndReviewers(t *testing.T) {
 	service := New(&testProvider{})
-	if _, err := service.CreatePull(context.Background(), 1, NewPull{ReviewerIDs: []int64{2}}); !errors.Is(err, ErrReviewersUnsupported) {
-		t.Fatalf("reviewers silently discarded: %v", err)
-	}
 	if _, err := service.CreatePull(context.Background(), 1, NewPull{}); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("unavailable host: %v", err)
 	}

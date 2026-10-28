@@ -246,7 +246,7 @@ func TestPullVisibilityPublicAndPaging(t *testing.T) {
 	if page.Total != 0 {
 		t.Fatal("signin policy leaked counts")
 	}
-	for _, q := range []PullQuery{{State: "bogus"}, {Filter: "assigned"}, {RepoID: -1}} {
+	for _, q := range []PullQuery{{State: "bogus"}, {Filter: "bogus"}, {RepoID: -1}} {
 		if _, err := ListPullRecords(context.Background(), author.Id, q); err == nil {
 			t.Fatal("unsupported query accepted")
 		}
