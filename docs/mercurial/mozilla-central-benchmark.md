@@ -150,6 +150,38 @@ Tables are reproduced from `samples.jsonl` with `GOGS_TEST_MOZILLA_SAMPLES=<path
 
 Raw evidence: `F:/gogs-mozilla-smoke-20261027/raw/` (`TestMozillaCentral*` directories; earlier failed runs under `failed-run1..3`).
 
+## Browser page profile on the 98-changeset instance (2026-10-27)
+
+A user-run demo instance (shipping limits, the post-fix binary, 41,127-file default tip) was observed per request by polling the native `hg` child processes while `curl` fetched each page. Windows start/end times are polled at roughly 0.25s resolution, one cold request each, on a shared workstation with other work running, so they locate the cost and are not samples. **No Go CPU profile was taken:** each request's wall time is accounted for by native process windows plus about 0.3s of process starts, which leaves little for Go to explain.
+
+| Page | Wall s | Native processes | Where the time went |
+| --- | ---: | ---: | --- |
+| repo home (`/`) | 18.7 | 6 | `hg files -T '{if(flags, flags, ".")} {path}\n'` of the whole tree ran about 16.5s; five other commands (branches, refs, node lookup) about 0.3s each |
+| top-level directory (`/src/<node>/dom`) | 24.3 | 6 | the same whole-tree `files` ran **twice**: 16.4s for the parent listing (`browseTree` lists the parent to learn whether `dom` is a directory) and 6.4s with `path:dom` for the directory itself |
+| file view (`dom/base/AbstractRange.cpp`) | 3.0 | 5 | the parent directory listing about 1.3s; refs and node lookup about 0.3s each; `cat` fast |
+| repository history (`/commits`) | 0.9 | 2 | two process starts |
+| commit with diff, 4 files | 1.2 | 3 | the node lookup runs twice; `diff` about 0.3s |
+| commit with diff, 39 files (504KB page) | 1.5 | 3 | `diff` about 0.3s |
+| commit with diff, 155 files (322KB page) | 1.5 | 3 | `diff` about 0.3s |
+
+Native baseline on the same store, three runs each (min/median/max s): `files -T '{if(flags, flags, ".")} {path}\n'` 18.54/18.73/18.83; the same `files` without a template 0.32/0.33/0.33; `files` with `path:dom` and the template 7.00/7.08/7.11; `manifest -v` 0.57/0.57/0.58 (it includes the flags); `version` 0.24/0.24/0.30; `log -r <node>` 0.27/0.27/0.28.
+
+**Observed bottleneck:** the `flags` template keyword makes native Mercurial look up flags per file, which costs about 0.45ms per file here: 56x the cost of listing the same paths without it, and 33x the cost of `manifest -v`, which returns the same flags. It is the sole cause of the 18-24s home and directory times on this tree. Scaled linearly to the 485,689 paths of full mozilla-central it would be roughly 220s per listing, against the 5.4s measured for the plain native manifest. This comes from `Runner.listFlatDirectory` in `modules/hg/files.go`, which already filters entries by prefix in Go.
+
+**Ranked next work (hypotheses with the evidence above; none implemented):**
+
+| Rank | Change | Expected effect | Validation |
+| --- | --- | --- | --- |
+| 1 | List flat directories from `hg manifest -v` (about 0.57s here) instead of `files -T {flags}`; keep the prefix filtering in Go. Check the 32MiB scan limit at full scale (the full manifest is about 38MB) | home and directory about 18-24s down to about 1-2s on this tree | rerun the home and directory rows; native `ListDirectory` tests with symlink, executable and non-UTF-8 names |
+| 2 | `browseTree` lists the parent directory only to find whether the last path segment is a directory; it could read the target's listing directly and treat an empty result as a file check | removes the first listing, about 16s of the 24s directory time; a file view saves about 1.3s | directory and file rows; not-found and file-versus-directory tests |
+| 3 | Each page starts 2-6 `hg` processes at about 0.27s each (the node is resolved twice on commit pages; refs are fetched after the listing) | about 0.3-0.6s per page; needs a design if it means a long-lived process (out of scope) | process counts per page in the table above |
+
+The diff itself is cheap on these commits (about 0.3s for up to 155 files); commit pages are dominated by process starts. The converted root changeset (41,092 files) was not requested. Tree-manifest repositories take the `debugdata` path, which these numbers do not cover.
+
+Two `hg clone http://127.0.0.1:64676/ C:\src\mozilla-central-http` processes (started 20:27, scoop `hg`, not launched by this work) were running throughout. They did not change the native timings noticeably and were left alone.
+
+The full-history ordered run was stopped by the user's request during the source `hg verify`; the Mozilla clone had completed and no hosted push was attempted. Its one-shot lease at `F:/gogs-mozilla-full-20261027/ordered-run-lease.json` stays, so that root cannot be reused without review.
+
 ## Outstanding acceptance and follow-ups
 
 **Unverified/blocked:** hosted full node/ref/bookmark/requirements/manifests/content comparison; hosted/clone native verification; full clones and pulls on both transports; five hosted incremental/UI samples; reader/writer denial on full stores; rename/merge/history pagination during writes; large raw streaming/cancellation; full-history issues/attachments and restart persistence; beyond-capacity concurrency/queue behavior. Hosted/UI successful sample count is zero. The original compiled suite later exercised issues/attachments on an empty fixture after cached seed failures; those receipts are not full-history evidence. Linux/macOS, legacy native versions and unresolved Task14 filesystem failures retain their [compatibility statuses](compatibility.md).
