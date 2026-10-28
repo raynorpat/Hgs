@@ -1,0 +1,16 @@
+# Task18 browser entry evidence and limits
+
+Source: `2171aa877603bcff3c7f3662e69f9c1dc5f08bdc` (`feat: recover editor drafts after session expiry`), frozen before the owned fixture build. These captures show only the existing normal sign-in entry. They are **not evidence that authenticated draft recovery works in a browser**.
+
+The disposable production-router fixture ran at `http://127.0.0.1:65356/code/` with normal synthetic accounts, native Hg7.2.4 seed, no live data/SMTP, and no authentication/expiry-control shortcuts. Its optional test configuration used45-second idle memory sessions/2-second GC; production draft TTL stayed30minutes. The real owned purger joined at shutdown.
+
+The controller verified GET `/code/user/login` returned200, then opened fresh browser tab10. Its German locale came from the existing scoped locale cookie. Username/password fill succeeded. One semantic Sign in click returned without a visible page change; a fresh DOM and screenshot still showed sign-in with password focus, and the owned server log contained no login POST. This is consistent with the previously unresolved test-tab input blocker, but does not independently diagnose its cause or establish a new application defect. No keyboard/force-click retry, hidden state mutation, cookie extraction, auth helper or alternate browser backend was used.
+
+- [Desktop sign-in entry](login-entry-desktop.png),1440x900: actual DOM client/scroll width1440/1440. The form remains on `/code/user/login`; the synthetic password is masked.
+- [Narrow sign-in entry](login-entry-mobile.png),390x844: actual saved capture visually reviewed and fits the form/footer. The compound browser call timed out before returning its numeric metrics, so no numeric mobile document-width claim is made.
+
+No authenticated editor was reached. Autosave debounce/max delay, actual expiry and login in another tab, same-account restore/newer-local-text, cookie/WebLock/fallback behavior, account/permission loss clearing, save outage/unknown outcomes, two-tab isolation, Cancel, Preview retention, reload/duplicate/bfcache/unload, keyboard and zoom remain **unverified in a real browser**. `TestEditorDraftBrowserLifecycle` is explicitly skipped by the Go suite, not reported as a browser pass. The separate model/service/HTTP/production-router tests and exact receipts remain in the implementation report; neither those tests nor loading drafts.js200 closes this browser gap.
+
+Normal GET `/fixture/stop` succeeded. The owned fixture test exited naturally: fixture446.86s/package450.722s, exit0. Listener65356 and owned cmd.test process absence were verified. This proves shutdown only. Original receipt logs remain preserved for independent review.
+
+Tab10 closure was confirmed by inventory: only earlier Settings tab4 and connection-error tab8 remain. The compound capture/cleanup call timed out and reset the browser bindings; a subsequent standalone viewport reset also timed out, so viewport cleanup is **unconfirmed**. Browser visibility was then explicitly restored successfully for the pending manual cleanup handoff. No blocked data-URL tab access/close retry, old-tab input retry or native-app control occurred. The platform/database/race/full native release gaps documented earlier remain open.
