@@ -15,7 +15,11 @@
     if (meta) meta.content = token;
     document.querySelectorAll('input[name=_csrf]').forEach(input => { input.value = token; });
   };
-  function say(s, key) { s.message = key; s.status.textContent = s.controls.dataset[key] || s.controls.dataset.failed; }
+  function say(s, key) {
+    s.message = key;
+    const message = key ? s.controls.dataset[key] || s.controls.dataset.failed : '';
+    s.status.textContent = [message, s.reselectFiles ? s.controls.dataset.reselect : ''].filter(Boolean).join(' ');
+  }
   function timers(s) { clearTimeout(s.idle); clearTimeout(s.maximum); s.idle = s.maximum = null; }
   function busy(s, value) {
     s.submitting = value;
@@ -47,6 +51,14 @@
     const grant = s.grant; s.grant = null;
     disposeGrant(s, grant);
   }
+  function clearFiles(s, requireReselection = false) {
+    if (!requireReselection) s.reselectFiles = false;
+    s.form.querySelectorAll('input[type=file]').forEach(input => {
+      if (requireReselection && input.files.length) s.reselectFiles = true;
+      input.value = '';
+    });
+    s.form.dispatchEvent(new CustomEvent('hg:draft-clear', { bubbles: true }));
+  }
   function reset(s, sensitive = false) {
     for (const input of s.inputs) {
       if (sensitive) input.value = '';
@@ -57,8 +69,7 @@
       else input.value = '';
       input.setCustomValidity('');
     }
-    s.form.querySelectorAll('input[type=file]').forEach(input => { input.value = ''; });
-    s.form.dispatchEvent(new CustomEvent('hg:draft-clear', { bubbles: true }));
+    clearFiles(s);
     ++s.generation; s.acknowledged = s.generation; s.dirtySince = 0;
   }
   function denied(s, all) {
@@ -74,6 +85,7 @@
     if (code === 'account_changed') { denied(s, true); return; }
     if (code === 'forbidden') { denied(s, false); return; }
     if (code === 'unauthenticated' || code === 'csrf_invalid') {
+      clearFiles(s, true);
       s.blocked = true; s.auth.hidden = false; timers(s); say(s, 'expired'); return;
     }
     if (code === 'expired' || code === 'discarded') { dispose(s); s.auth.hidden = false; say(s, 'failed'); return; }
@@ -174,10 +186,11 @@
         }
         s.version = result.snapshot.Version;
       }
+      if (s.blocked) clearFiles(s, true);
       s.blocked = false; s.auth.hidden = true;
       if (s.generation > s.acknowledged) schedule(s);
       else if (s.grant && s.version > 0) say(s, 'saved');
-      else if (!s.unavailable) { s.status.textContent = ''; open(s); }
+      else if (!s.unavailable) { say(s, ''); open(s); }
     } catch (_) { if (epoch === s.epoch) say(s, 'failed'); }
     finally { if (epoch === s.epoch) s.checking = false; }
   }
@@ -208,6 +221,10 @@
         if (!s.message || s.message === 'saved' || s.message === 'cancelled') say(s, 'saving');
         schedule(s);
       }
+    });
+    form.addEventListener('change', event => {
+      if (event.target.type !== 'file' || !event.target.files.length || s.blocked || !s.reselectFiles) return;
+      s.reselectFiles = false; say(s, s.message);
     });
     controls.querySelector('[data-draft-check]').addEventListener('click', () => check(s));
     controls.querySelector('[data-draft-cancel]').addEventListener('click', () => {
