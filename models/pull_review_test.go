@@ -84,11 +84,27 @@ func TestPullReviewBlocksCannotBeBypassed(t *testing.T) {
 	if err := SubmitPullReview(ctx, r.Id, p.ID, c.ID, ReviewChangesRequested); err != nil {
 		t.Fatal(err)
 	}
-	if err := AssignPullReviewers(ctx, author.Id, p.ID, nil); err != nil {
-		t.Fatal(err)
+	if err := AssignPullReviewers(ctx, author.Id, p.ID, nil); err == nil {
+		t.Fatal("unresolved blocker was unassigned")
 	}
 	if got := reviewState(t, p.ID, r.Id); got != ReviewChangesRequested {
 		t.Fatalf("unassignment cleared block: %s", got)
+	}
+	var assigned PullReview
+	if ok, err := x.Where("pull_id = ? AND reviewer_id = ?", p.ID, r.Id).Get(&assigned); err != nil || !ok || !assigned.Assigned {
+		t.Fatalf("rejected removal lost assignment: %+v %v", assigned, err)
+	}
+	if err := SubmitPullReview(ctx, r.Id, p.ID, c.ID, ReviewApproved); err != nil {
+		t.Fatalf("reviewer cannot clear own block: %v", err)
+	}
+	if err := AssignPullReviewers(ctx, author.Id, p.ID, nil); err != nil {
+		t.Fatalf("cleared reviewer cannot be removed: %v", err)
+	}
+	if err := AssignPullReviewers(ctx, author.Id, p.ID, []int64{r.Id}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SubmitPullReview(ctx, r.Id, p.ID, c.ID, ReviewChangesRequested); err != nil {
+		t.Fatal(err)
 	}
 	if err := DismissPullReview(ctx, author.Id, p.ID, r.Id, "ignore"); err == nil {
 		t.Fatal("nonadmin dismissed")
@@ -105,6 +121,58 @@ func TestPullReviewBlocksCannotBeBypassed(t *testing.T) {
 	var events []PullEvent
 	if err := x.Where("pull_id = ? AND kind = ?", p.ID, "review-dismissed").Find(&events); err != nil || len(events) != 1 || events[0].Reason != "superseded discussion" {
 		t.Fatalf("audit %+v %v", events, err)
+	}
+}
+
+func TestPullReviewDismissTargetAdministrator(t *testing.T) {
+	for _, kind := range []string{"individual owner", "organization owner", "unrelated instance admin"} {
+		t.Run(kind, func(t *testing.T) {
+			owner, author, reviewer, p, c := reviewFixture(t, false)
+			ctx := context.Background()
+			owner.IsAdmin = false
+			if err := UpdateUser(owner); err != nil {
+				t.Fatal(err)
+			}
+			actor := owner
+			switch kind {
+			case "organization owner":
+				org := &User{Name: "review-org", LowerName: "review-org", Type: ORGANIZATION, IsActive: true}
+				if _, err := x.Insert(org); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := x.Id(p.TargetRepoID).Cols("owner_id").Update(&Repository{OwnerId: org.Id}); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := x.Insert(&OrgUser{Uid: owner.Id, OrgId: org.Id, IsOwner: true}); err != nil {
+					t.Fatal(err)
+				}
+			case "unrelated instance admin":
+				actor = newAccessTestUser(t, "instance-admin", true)
+				actor.IsAdmin = true
+				if err := UpdateUser(actor); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := AssignPullReviewers(ctx, author.Id, p.ID, []int64{reviewer.Id}); err != nil {
+				t.Fatal(err)
+			}
+			if err := SubmitPullReview(ctx, reviewer.Id, p.ID, c.ID, ReviewChangesRequested); err != nil {
+				t.Fatal(err)
+			}
+			err := DismissPullReview(ctx, actor.Id, p.ID, reviewer.Id, "reviewed by target administrator")
+			want := ReviewInactive
+			if kind == "unrelated instance admin" {
+				want = ReviewChangesRequested
+				if err == nil {
+					t.Error("unrelated instance administrator dismissed block")
+				}
+			} else if err != nil {
+				t.Errorf("target administrator rejected: %v", err)
+			}
+			if got := reviewState(t, p.ID, reviewer.Id); got != want {
+				t.Errorf("state = %s, want %s", got, want)
+			}
+		})
 	}
 }
 func TestPullReviewRevisionAndAccessLoss(t *testing.T) {
@@ -219,6 +287,78 @@ func TestPullReviewAlternateGrants(t *testing.T) {
 		if got := reviewState(t, p.ID, id); got != ReviewChangesRequested {
 			t.Fatalf("effective grant preserved, block lost: %s", got)
 		}
+	}
+}
+
+func TestPullReviewRetirementRollback(t *testing.T) {
+	for _, mutation := range []string{"downgrade", "delete access", "disable account"} {
+		t.Run(mutation, func(t *testing.T) {
+			_, author, reviewer, p, c := reviewFixture(t, true)
+			ctx := context.Background()
+			if err := AssignPullReviewers(ctx, author.Id, p.ID, []int64{reviewer.Id}); err != nil {
+				t.Fatal(err)
+			}
+			if err := SubmitPullReview(ctx, reviewer.Id, p.ID, c.ID, ReviewChangesRequested); err != nil {
+				t.Fatal(err)
+			}
+			// Fail after retirement updated the review, at its audit write. The
+			// permission mutation, decision and event must commit or roll back together.
+			if _, err := x.Exec("CREATE TRIGGER reject_review_retirement BEFORE INSERT ON pull_event WHEN NEW.kind = 'review-authority-lost' BEGIN SELECT RAISE(ABORT, 'retirement audit failure'); END"); err != nil {
+				t.Fatal(err)
+			}
+			var err error
+			switch mutation {
+			case "downgrade":
+				err = AddAccess(&Access{UserId: reviewer.Id, RepoId: p.TargetRepoID, Mode: READABLE})
+			case "delete access":
+				err = DeleteAccess(&Access{UserId: reviewer.Id, RepoId: p.SourceRepoID})
+			case "disable account":
+				reviewer.IsActive = false
+				err = UpdateUser(reviewer)
+			}
+			if err == nil || !strings.Contains(err.Error(), "retirement audit failure") {
+				t.Fatalf("retirement failure not propagated: %v", err)
+			}
+			if got := reviewState(t, p.ID, reviewer.Id); got != ReviewChangesRequested {
+				t.Fatalf("failed transaction changed review: %s", got)
+			}
+			if eligible, err := pullReviewEligible(x, p, reviewer.Id); err != nil || !eligible {
+				t.Fatalf("failed transaction changed authority: %v %v", eligible, err)
+			}
+			var events []PullEvent
+			if err := x.Where("pull_id = ? AND kind = ?", p.ID, "review-authority-lost").Find(&events); err != nil || len(events) != 0 {
+				t.Fatalf("failed transaction left audit events: %+v %v", events, err)
+			}
+		})
+	}
+}
+
+func TestPullReviewRemovalAfterAuthorityLossOrDismissal(t *testing.T) {
+	for _, kind := range []string{"authority loss", "dismissal"} {
+		t.Run(kind, func(t *testing.T) {
+			owner, author, reviewer, p, c := reviewFixture(t, false)
+			ctx := context.Background()
+			if err := AssignPullReviewers(ctx, author.Id, p.ID, []int64{reviewer.Id}); err != nil {
+				t.Fatal(err)
+			}
+			if err := SubmitPullReview(ctx, reviewer.Id, p.ID, c.ID, ReviewChangesRequested); err != nil {
+				t.Fatal(err)
+			}
+			if kind == "authority loss" {
+				if err := DeleteAccess(&Access{UserId: reviewer.Id, RepoId: p.TargetRepoID}); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := DismissPullReview(ctx, owner.Id, p.ID, reviewer.Id, "resolved by administrator"); err != nil {
+				t.Fatal(err)
+			}
+			if err := AssignPullReviewers(ctx, author.Id, p.ID, nil); err != nil {
+				t.Fatal(err)
+			}
+			var r PullReview
+			if ok, err := x.Where("pull_id = ? AND reviewer_id = ?", p.ID, reviewer.Id).Get(&r); err != nil || !ok || r.Assigned || r.State != ReviewInactive {
+				t.Fatalf("removal after %s: %+v %v", kind, r, err)
+			}
+		})
 	}
 }
 

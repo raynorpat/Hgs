@@ -32,16 +32,20 @@ type PullReview struct {
 // Eligibility deliberately excludes assignment: an unassigned live block is
 // retired only by real authority loss, a new decision, or audited dismissal.
 func pullReviewEligible(e Engine, p PullRequest, id int64) (bool, error) {
+	return pullReviewEligibleWithLock(e, p, id, false)
+}
+
+func pullReviewEligibleWithLock(e Engine, p PullRequest, id int64, locked bool) (bool, error) {
 	if id == p.AuthorID {
 		return false, nil
 	}
-	if _, err := enabledPolicyAccount(e, id, false); err != nil {
+	if _, err := enabledPolicyAccount(e, id, locked); err != nil {
 		if errors.Is(err, ErrInvalidCredential) {
 			return false, nil
 		}
 		return false, err
 	}
-	src, dst, err := pullReads(e, id, p, false)
+	src, dst, err := pullReads(e, id, p, locked)
 	if errors.Is(err, ErrPullNotExist) || errors.Is(err, ErrUserNotExist) {
 		return false, nil
 	}
@@ -57,7 +61,7 @@ func assignPullReviewers(e Engine, actor int64, p PullRequest, ids []int64) erro
 	}
 	wanted := map[int64]bool{}
 	for _, id := range ids {
-		ok, err := pullReviewEligible(e, p, id)
+		ok, err := pullReviewEligibleWithLock(e, p, id, true)
 		if err != nil {
 			return err
 		}
@@ -75,6 +79,15 @@ func assignPullReviewers(e Engine, actor int64, p PullRequest, ids []int64) erro
 		delete(wanted, r.ReviewerID)
 		if r.Assigned == assigned {
 			continue
+		}
+		if !assigned && r.State == ReviewChangesRequested {
+			eligible, err := pullReviewEligibleWithLock(e, p, r.ReviewerID, true)
+			if err != nil {
+				return err
+			}
+			if eligible {
+				return ErrPullConflict
+			}
 		}
 		r.Assigned = assigned
 		if _, err := e.Id(r.ID).Cols("assigned").Update(&r); err != nil {
@@ -111,7 +124,7 @@ func SubmitPullReview(ctx context.Context, actor, pull, comparison int64, state 
 		if p.State != PullOpen {
 			return ErrPullState
 		}
-		eligible, err := pullReviewEligible(s, p, actor)
+		eligible, err := pullReviewEligibleWithLock(s, p, actor, true)
 		if err != nil {
 			return err
 		}
@@ -146,12 +159,8 @@ func DismissPullReview(ctx context.Context, actor, pull, reviewer int64, reason 
 	if !utf8.ValidString(reason) || strings.TrimSpace(reason) == "" || len(reason) > 65536 {
 		return ErrPullInvalid
 	}
-	return mutatePull(ctx, actor, pull, func(s *xorm.Session, p PullRequest, _, _ RepositoryAccess) error {
-		u, err := enabledPolicyAccount(s, actor, false)
-		if err != nil {
-			return err
-		}
-		if !u.IsAdmin {
+	return mutatePull(ctx, actor, pull, func(s *xorm.Session, p PullRequest, _, target RepositoryAccess) error {
+		if !target.Admin {
 			return ErrInvalidCredential
 		}
 		var r PullReview
@@ -208,7 +217,7 @@ func ListPullReviews(ctx context.Context, actor, pull int64) (rows []PullReview,
 			return err
 		}
 		for i := range rows {
-			ok, err := pullReviewEligible(s, p, rows[i].ReviewerID)
+			ok, err := pullReviewEligibleWithLock(s, p, rows[i].ReviewerID, true)
 			if err != nil {
 				return err
 			}
@@ -231,19 +240,31 @@ func ListPullEvents(ctx context.Context, actor, pull int64) ([]PullEvent, error)
 // is not effectively eligible in e's final state. Callers run it inside the
 // transaction that changed account, access or ownership, so a later regrant
 // cannot revive the decision; alternate grants keep eligibility and the block.
-func retirePullReviewAuthority(e Engine) error {
+// Submission holds its current authority rows until commit. A permission write
+// waits on those rows before reaching this scan, which must see the resulting
+// decision even if that writer already established a repeatable-read snapshot.
+// All subsequent policy reads must also be current, including alternate grants.
+// Opposing lock orders may deadlock; callers must propagate failure and roll back
+// the permission change together with retirement and its audit events.
+func retirePullReviewAuthority(e *xorm.Session) error {
 	var live []PullReview
-	if err := e.Where("state = ? OR state = ?", ReviewApproved, ReviewChangesRequested).Find(&live); err != nil {
+	var query *xorm.Session
+	if DbCfg.Type == "sqlite3" {
+		query = e.Where("state = ? OR state = ?", ReviewApproved, ReviewChangesRequested).Asc("id")
+	} else {
+		query = e.Sql("SELECT * FROM pull_review WHERE state = ? OR state = ? ORDER BY id FOR UPDATE", ReviewApproved, ReviewChangesRequested)
+	}
+	if err := query.Find(&live); err != nil {
 		return err
 	}
 	for _, r := range live {
 		var p PullRequest
-		if ok, err := e.Id(r.PullID).Get(&p); err != nil {
+		if ok, err := policyGet(e, true, "pull_request", "id = ?", &p, r.PullID); err != nil {
 			return err
 		} else if !ok {
 			continue
 		}
-		if ok, err := pullReviewEligible(e, p, r.ReviewerID); err != nil {
+		if ok, err := pullReviewEligibleWithLock(e, p, r.ReviewerID, true); err != nil {
 			return err
 		} else if ok {
 			continue
@@ -260,6 +281,7 @@ func retirePullReviewAuthority(e Engine) error {
 }
 
 func commitRetiringReviews(sess *xorm.Session) error {
+	defer sess.Rollback()
 	if err := retirePullReviewAuthority(sess); err != nil {
 		return err
 	}
