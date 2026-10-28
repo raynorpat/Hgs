@@ -13,6 +13,7 @@ import (
 	"github.com/gogits/gogs/modules/collaboration"
 	"github.com/gogits/gogs/modules/hg"
 	"github.com/gogits/gogs/modules/hosting"
+	"github.com/gogits/gogs/modules/log"
 	"github.com/gogits/gogs/modules/middleware"
 	"github.com/gogits/gogs/modules/setting"
 	hgroutes "github.com/gogits/gogs/routers/hg"
@@ -38,6 +39,11 @@ func (h *hostingHolder) Service() *hosting.Service {
 	}
 	return h.service
 }
+
+type fixedProvider struct{ s *hosting.Service }
+
+func (p fixedProvider) Service() *hosting.Service { return p.s }
+
 func (h *hostingHolder) Initialize() error {
 	h.once.Do(func() {
 		h.mu.Lock()
@@ -61,6 +67,10 @@ func (h *hostingHolder) Initialize() error {
 			service.Shutdown(ctx)
 			h.err = err
 			return
+		}
+		// Hosting already concluded revoked publications; resume or settle the rest before admission.
+		if err := collaboration.New(fixedProvider{service}).ReconcileOperations(context.Background()); err != nil {
+			log.Warn("merge reconciliation: %v", err)
 		}
 		if cfg.SSHAddress != "" && !setting.DisableSSH {
 			ln, err := net.Listen("tcp", cfg.SSHAddress)
