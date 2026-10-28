@@ -3,8 +3,8 @@
 {{if .IssueUIError}}<p role="alert" class="hg-alert hg-alert-danger">{{.IssueUIError}}</p>{{end}}
 <nav class="hg-tabs" aria-label="{{.i18n.Tr "ui.issues"}}"><a href="{{.RepoLink}}/issues">{{.i18n.Tr "ui.issues"}}</a><a href="{{.RepoLink}}/issues/milestones">{{.i18n.Tr "ui.milestones"}}</a></nav>
 <h2>{{.i18n.Tr "ui.new_issue"}}</h2>
-<form class="hg-issue-form" action="{{.RepoLink}}/issues/new" method="post" enctype="multipart/form-data" data-prevent-duplicate>
-{{.CsrfTokenHtml}}<input type="hidden" name="ui" value="1">
+<form class="hg-issue-form" action="{{.RepoLink}}/issues/new" method="post" enctype="multipart/form-data" data-prevent-duplicate data-editor-draft="issue_new" data-draft-destination="{{.RepoLink}}/issues" data-draft-item="0" autocomplete="off">
+{{template "shared/editor_draft_controls" .}}{{.CsrfTokenHtml}}<input type="hidden" name="ui" value="1">
 <div class="hg-issue-layout"><div><div class="hg-field"><label for="issue-title">{{.i18n.Tr "ui.title"}}</label><input id="issue-title" name="title" required maxlength="255" value="{{.title}}"></div>
 {{template "shared/markdown_editor" .IssueEditor}}
 {{if .AttachmentsEnabled}}<div class="hg-field" data-issue-attachments><label for="attachments">{{.i18n.Tr "ui.attachments"}}</label><input type="file" id="attachments" name="attachments" multiple accept="{{.AllowedTypes}}" data-remove-label="{{.i18n.Tr "ui.remove_attachment"}}"><ul data-attachment-list></ul></div>{{end}}

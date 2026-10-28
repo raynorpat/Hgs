@@ -14,6 +14,7 @@ import (
 	"github.com/gogits/gogs/models"
 	"github.com/gogits/gogs/modules/collaboration"
 	"github.com/gogits/gogs/modules/setting"
+	"github.com/gogits/gogs/routers/user"
 )
 
 // Opt-in, owned real production router fixture. Test-only stop handling wraps
@@ -34,6 +35,10 @@ func TestSharedUICutoverBrowserFixture(t *testing.T) {
 	setting.Langs = []string{"en-US", "de-DE"}
 	setting.Names = []string{"English", "Deutsch"}
 	setting.SessionConfig.CookieName = "cutover_" + filepath.Base(filepath.Dir(a.root))
+	if os.Getenv("UI_DRAFT_FIXTURE") == "1" {
+		setting.SessionConfig.Maxlifetime = 45
+		setting.SessionConfig.Gclifetime = 2
+	}
 	writer := &models.User{Name: "writer", Email: "writer@example.invalid", Passwd: "password", IsActive: true}
 	if err := models.CreateUser(writer); err != nil {
 		t.Fatal(err)
@@ -107,6 +112,11 @@ func TestSharedUICutoverBrowserFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.handler = newWebHandler(a.holder)
+	if os.Getenv("UI_DRAFT_FIXTURE") == "1" {
+		stopDrafts := startDraftPurger(user.NewDraftService().PurgeExpired, func() bool { return a.holder.Service() != nil })
+		defer stopDrafts()
+		t.Log("DRAFT_FIXTURE: normal login only; memory session lifetime=45s idle, GC interval=2s; draft TTL remains production 30m; owned purger active until fixture exit")
+	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)

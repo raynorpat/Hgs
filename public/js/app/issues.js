@@ -13,6 +13,7 @@
   const input=group.querySelector('input[type=file]'),list=group.querySelector('[data-attachment-list]');
   if(!input||!list||typeof DataTransfer==='undefined')return;
   let files=[];
+  group.closest('form').addEventListener('hg:draft-clear',()=>{files=[];sync();render()});
   function render(){list.replaceChildren();files.forEach((file,index)=>{const li=document.createElement('li'),button=document.createElement('button');li.append(document.createTextNode(file.name+' '));button.type='button';button.className='hg-button';button.textContent=input.dataset.removeLabel;button.addEventListener('click',()=>{files.splice(index,1);sync();render()});li.append(button);list.append(li)})}
   function sync(){const dt=new DataTransfer();files.forEach(file=>dt.items.add(file));input.files=dt.files}
   input.addEventListener('change',()=>{const incoming=Array.from(input.files);files.push(...incoming);sync();render()});

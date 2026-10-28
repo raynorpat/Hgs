@@ -205,10 +205,14 @@ func pullDBError(err error) error {
 	return err
 }
 func pullTransaction(ctx context.Context, ids []int64, apply func(*xorm.Session) error) (err error) {
+	return pullTransactionEngine(x, ctx, ids, apply)
+}
+
+func pullTransactionEngine(engine *xorm.Engine, ctx context.Context, ids []int64, apply func(*xorm.Session) error) (err error) {
 	if err = ctx.Err(); err != nil {
 		return err
 	}
-	sess := x.NewSession()
+	sess := engine.NewSession()
 	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return pullDBError(err)

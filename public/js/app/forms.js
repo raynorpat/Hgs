@@ -16,6 +16,7 @@
   }, true);
   // Opt in only on forms whose native validation and response lifecycle support this.
   root.addEventListener('submit', e => {
+    if (e.defaultPrevented) return;
     const form = e.target.closest('form[data-prevent-duplicate]');
     if (!form) return;
     if (form.dataset.submitting) {

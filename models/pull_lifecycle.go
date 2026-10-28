@@ -169,6 +169,9 @@ func deleteRepositoryPullRows(s *xorm.Session, repoID int64) error {
 	if err := lockDeletingRepository(s, repoID); err != nil {
 		return err
 	}
+	if _, err := s.Where("repository_id = ? OR source_repository_id = ?", repoID, repoID).Delete(new(EditorDraft)); err != nil {
+		return err
+	}
 	rows, err := lifecyclePulls(s, repoID)
 	if err != nil {
 		return err

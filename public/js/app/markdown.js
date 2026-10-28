@@ -4,6 +4,16 @@
   if (!root || root.dataset.markdownReady) return;
   root.dataset.markdownReady = 'true';
   const requests = new WeakMap();
+  root.addEventListener('hg:draft-clear', event => {
+    event.target.querySelectorAll('[data-markdown-editor]').forEach(editor => {
+      requests.get(editor)?.abort(); requests.delete(editor);
+      editor.querySelector('textarea').hidden = false;
+      const preview = editor.querySelector('[data-markdown-output]'); preview.replaceChildren(); preview.hidden = true;
+      editor.querySelector('[data-markdown-write]').setAttribute('aria-pressed', 'true');
+      editor.querySelector('[data-markdown-preview]').setAttribute('aria-pressed', 'false');
+      editor.querySelector('[data-markdown-status]').textContent = '';
+    });
+  });
   root.addEventListener('click', async e => {
     const button = e.target.closest('[data-markdown-preview],[data-markdown-write]');
     if (!button) return;
@@ -35,6 +45,7 @@
       const response = await fetch(url, {
         method: 'POST',
         credentials: 'same-origin',
+        redirect: 'error',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'X-Csrf-Token': document.querySelector('meta[name=_csrf]')?.content || ''

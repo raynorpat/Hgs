@@ -448,6 +448,12 @@ func DeleteUser(u *User) error {
 		return err
 	}
 	defer sess.Rollback()
+	if err := lockDraftAccountDeletion(sess, u.Id); err != nil {
+		return err
+	}
+	if _, err := sess.Where("actor_id = ?", u.Id).Delete(new(EditorDraft)); err != nil {
+		return err
+	}
 	for _, bean := range []interface{}{&Follow{FollowId: u.Id}, &Oauth2{Uid: u.Id}, &Action{UserId: u.Id}, &Watch{UserId: u.Id}, &Access{UserId: u.Id}, &EmailAddress{Uid: u.Id}, &PublicKey{OwnerId: u.Id}, u} {
 		if _, err := sess.Delete(bean); err != nil {
 			return err
@@ -464,6 +470,18 @@ func DeleteInactivateUsers() error {
 		return err
 	}
 	defer sess.Rollback()
+	var inactive []User
+	if err := sess.Where("is_active = ?", false).Find(&inactive); err != nil {
+		return err
+	}
+	for _, u := range inactive {
+		if err := lockDraftAccountDeletion(sess, u.Id); err != nil {
+			return err
+		}
+		if _, err := sess.Where("actor_id = ?", u.Id).Delete(new(EditorDraft)); err != nil {
+			return err
+		}
+	}
 	if _, err := sess.Where("is_active=?", false).Delete(new(User)); err != nil {
 		return err
 	}

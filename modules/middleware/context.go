@@ -35,9 +35,10 @@ type Context struct {
 	Flash   *session.Flash
 	Session session.Store
 
-	User        *models.User
-	IsSigned    bool
-	IsBasicAuth bool
+	User             *models.User
+	IsSigned         bool
+	IsBasicAuth      bool
+	EditorSubmission bool
 
 	// PrepareHTML composes optional page utilities only after request authority exists.
 	PrepareHTML func(*Context) error
@@ -101,6 +102,10 @@ func (ctx *Context) HasError() bool {
 
 // HTML calls Context.HTML and converts template name to string.
 func (ctx *Context) HTML(status int, name base.TplName) {
+	if ctx.EditorSubmission {
+		ctx.editorFailure(status)
+		return
+	}
 	if ctx.PreparePage != nil {
 		ctx.PreparePage(ctx, name)
 	}
@@ -221,6 +226,7 @@ func Contexter() macaron.Handler {
 		}
 
 		ctx.Data["CsrfToken"] = x.GetToken()
+		ctx.Data["DraftSessionEstablished"] = EstablishedDraftSession(ctx)
 		ctx.Data["CsrfTokenHtml"] = template.HTML(`<input type="hidden" name="_csrf" value="` + x.GetToken() + `">`)
 
 		ctx.Data["ShowRegistrationButton"] = setting.Service.ShowRegistrationButton

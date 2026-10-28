@@ -152,8 +152,9 @@ func newMacaron() *macaron.Macaron {
 		}
 	})
 	m.Use(session.Sessioner(setting.SessionConfig))
-	m.Use(csrf.Csrfer(csrf.Options{
+	m.Use(middleware.FreshDraftCSRF(csrf.Options{
 		Secret:     setting.SecretKey,
+		Cookie:     "_csrf",
 		SetCookie:  true,
 		Header:     "X-Csrf-Token",
 		CookiePath: setting.AppSubUrl,
@@ -174,6 +175,7 @@ func newMacaron() *macaron.Macaron {
 		}
 	}
 	m.Use(middleware.Contexter())
+	m.Use(middleware.EditorSubmissionPolicy)
 	m.Use(func(ctx *middleware.Context) {
 		ctx.PrepareHTML = user.PrepareDiscovery
 		ctx.PreparePage = ui.PrepareAccountPage
@@ -199,7 +201,9 @@ func runWebServer(ctx *cli.Context) error {
 	// working directory. Validate them only after that configuration is loaded.
 	checkVersion()
 	holder := &hostingHolder{errors: make(chan error, 1)}
+	stopDrafts := func() {}
 	defer func() {
+		stopDrafts()
 		ctx, cancel := context.WithTimeout(context.Background(), hg.ShutdownTimeout)
 		defer cancel()
 		holder.Shutdown(ctx)
@@ -237,6 +241,7 @@ func runWebServer(ctx *cli.Context) error {
 			return err
 		}
 	}
+	stopDrafts = startDraftPurger(user.NewDraftService().PurgeExpired, func() bool { return holder.Service() != nil })
 	served := make(chan error, 1)
 	switch setting.Protocol {
 	case setting.HTTP:
@@ -281,6 +286,7 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 	m := newMacaron()
 	m.MapTo(holder, (*hosting.Provider)(nil))
 	m.Map(collaboration.New(holder))
+	m.Map(user.NewDraftService())
 	m.Map(routers.InitializeHosting(holder.Initialize))
 
 	reqSignIn := middleware.Toggle(&middleware.ToggleOptions{SignInRequire: true})
@@ -298,6 +304,11 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 	m.Get("/help", ignSignIn, routers.Help)
 	m.Get("/user/recent", reqSignIn, user.Recent)
 	m.Post("/user/recent/clear", reqSignIn, user.ClearRecent)
+	m.Get("/user/drafts/session", user.DraftSession)
+	m.Post("/user/drafts/open", user.DraftOpen)
+	m.Post("/user/drafts/:page/save", user.DraftSave)
+	m.Post("/user/drafts/:page/restore", user.DraftRestore)
+	m.Post("/user/drafts/:page/discard", user.DraftDiscard)
 	m.Combo("/install", routers.InstallInit).
 		Get(routers.Install).
 		Post(protectedPOST, bindIgnErr(auth.InstallForm{}), routers.InstallPost)

@@ -115,6 +115,10 @@ func issueResultURL(ctx *middleware.Context, index, commentID int64) string {
 // A failed supporting operation must not offer to create content already saved.
 // Only a genuinely unsaved comment remains in the reply editor.
 func renderSavedIssueFailure(ctx *middleware.Context, issue *models.Issue, commentID int64, stage string, unsavedComment bool) {
+	if ctx.EditorSubmission {
+		ctx.EditorResult("partial", issueResultURL(ctx, issue.Index, commentID), true, unsavedComment)
+		return
+	}
 	ctx.Data["IssueViewIndex"] = issue.Index
 	ctx.Data["IssueBodySaved"] = !unsavedComment
 	ctx.Data["IssueSavedResult"] = issueResultURL(ctx, issue.Index, commentID)

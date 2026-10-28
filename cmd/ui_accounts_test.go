@@ -102,9 +102,16 @@ func TestSharedUIAdminHeadingLocales(t *testing.T) {
 		return w
 	}
 	for _, tc := range []struct{ locale, path, title string }{{"en-US", "/admin/orgs", "Organizations"}, {"en-US", "/admin/config", "Configuration"}, {"de-DE", "/admin/orgs", "Organisationen"}, {"de-DE", "/admin/config", "Konfiguration"}} {
-		w := get("/gogs" + tc.path + "?lang=" + tc.locale)
-		if w.Code != 302 || w.Header().Get("Location") != "/gogs"+tc.path {
-			t.Errorf("locale redirect: %d %s", w.Code, w.Header().Get("Location"))
+		w := get("/gogs" + tc.path + "?lang=" + tc.locale + "&q=laboratory&page=2&token=private-marker")
+		if w.Code != 200 || w.Header().Get("Location") != "" || !strings.Contains(w.Body.String(), "<h1>"+tc.title+"</h1>") {
+			t.Errorf("direct locale selection: %d %s", w.Code, w.Header().Get("Location"))
+		}
+		if !strings.Contains(w.Body.String(), "page=2&amp;q=laboratory") || strings.Contains(w.Body.String(), "private-marker") {
+			t.Error("locale navigation lost safe context or copied sensitive query")
+		}
+		cookie := browser.cookies["lang"]
+		if cookie == nil || cookie.Value != tc.locale || cookie.Path != "/gogs" {
+			t.Errorf("selected locale cookie missing or incorrectly scoped: %v", cookie)
 		}
 		w = get("/gogs" + tc.path)
 		if w.Code != 200 || !strings.Contains(w.Body.String(), "<h1>"+tc.title+"</h1>") {
