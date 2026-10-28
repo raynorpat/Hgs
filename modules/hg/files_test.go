@@ -16,40 +16,9 @@ import (
 	"testing"
 )
 
-func parseGoldenManifest(t *testing.T, name string) []ManifestEntry {
-	t.Helper()
-	b, err := os.ReadFile(filepath.Join("testdata", name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	entries, err := parseManifest(b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return entries
-}
-
 func TestReadFileNeverChecksOut(t *testing.T) {
 	ctx := context.Background()
 	r, repo := newBrowseRunner(t, "")
-	b, err := os.ReadFile(filepath.Join("testdata", "browse-manifest.txt"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeFakeFixture(t, r, "fake-manifest", string(b))
-
-	entries, err := r.Manifest(ctx, repo, newerDefaultNode)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []ManifestEntry{
-		{Path: ".hgtags"}, {Path: "A"}, {Path: "[ab]"}, {Path: "a"}, {Path: "caf\xe9"}, {Path: "d/x"},
-		{Path: "link", Symlink: true}, {Path: "run.sh", Executable: true},
-	}
-	if !reflect.DeepEqual(entries, want) {
-		t.Errorf("manifest %#v; want %#v", entries, want)
-	}
-
 	// The fake cat prints the literal pattern files it was given.
 	for file, patterns := range map[string]string{
 		"A":       "rootfilesin:\x00path:A\x00",
@@ -87,19 +56,9 @@ func TestReadFileNeverChecksOut(t *testing.T) {
 		if err := r.ReadFile(ctx, repo, node, "A", io.Discard); !errors.Is(err, ErrNotFound) {
 			t.Errorf("ReadFile at %q: %v", node, err)
 		}
-		if _, err := r.Manifest(ctx, repo, node); !errors.Is(err, ErrNotFound) {
-			t.Errorf("Manifest at %q: %v", node, err)
-		}
 	}
 	if after := len(fakeCalls(t, r)); after != before {
 		t.Errorf("rejected input ran %d Mercurial commands", after-before)
-	}
-
-	// A changeset Mercurial does not serve (unknown or secret) aborts the
-	// command; the follow-up lookup turns that into ErrNotFound.
-	os.Remove(filepath.Join(filepath.Dir(r.cfg.ConfigPath), "fake-manifest"))
-	if _, err := r.Manifest(ctx, repo, newerDefaultNode); !errors.Is(err, ErrNotFound) {
-		t.Errorf("manifest of an unserved node: %v", err)
 	}
 
 	for _, call := range fakeCalls(t, r) {

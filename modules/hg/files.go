@@ -23,53 +23,6 @@ import (
 // scan of paths under that directory.
 const flatDirectoryScanLimit = 32 << 20
 
-// Manifest lists the files of a served changeset from the store; nothing is
-// checked out.
-func (r *Runner) Manifest(ctx context.Context, path string, node NodeID) ([]ManifestEntry, error) {
-	node, err := ParseNodeID(string(node))
-	if err != nil {
-		return nil, err
-	}
-	ctx, cancel := context.WithTimeout(ctx, BrowserCommandTimeout)
-	defer cancel()
-	var out bytes.Buffer
-	if err = r.Run(ctx, path, []string{"manifest", "-r", nodeRevset(node), "-v"}, nil, &out); err != nil {
-		return nil, r.notServed(ctx, path, node, err)
-	}
-	return parseManifest(out.Bytes())
-}
-
-// parseManifest reads "hg manifest -v" lines of mode, type and raw path, as
-// in "644   a", "755 * a" and "644 @ a". Mercurial forbids newlines in file
-// names, so the output is lossless in any encoding.
-func parseManifest(b []byte) ([]ManifestEntry, error) {
-	entries := []ManifestEntry{}
-	s, ok := strings.CutSuffix(string(b), "\n")
-	if !ok {
-		if s == "" {
-			return entries, nil
-		}
-		return nil, errors.New("hg: unterminated manifest output")
-	}
-	for _, line := range strings.Split(s, "\n") {
-		if len(line) < 7 {
-			return nil, fmt.Errorf("hg: unrecognized manifest line %q", line)
-		}
-		e := ManifestEntry{Path: line[6:]}
-		switch line[:6] {
-		case "644   ":
-		case "755 * ":
-			e.Executable = true
-		case "644 @ ":
-			e.Symlink = true
-		default:
-			return nil, fmt.Errorf("hg: unrecognized manifest line %q", line)
-		}
-		entries = append(entries, e)
-	}
-	return entries, nil
-}
-
 // ReadFile streams the stored content of file at a served changeset to out,
 // without an output limit; a symlink yields its link text. Rendering callers
 // bound what they read.

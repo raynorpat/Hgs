@@ -294,6 +294,9 @@ func TestRawPathIdentity(t *testing.T) {
 		if w.Code != 400 && w.Code != 404 {
 			t.Errorf("invalid raw %s: %d", p, w.Code)
 		}
+		if w.Header().Get("Content-Disposition") != "" {
+			t.Errorf("failed raw %s was served as an attachment", p)
+		}
 	}
 }
 func TestRawFileWithManifestOverCommandLimit(t *testing.T) {

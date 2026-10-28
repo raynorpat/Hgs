@@ -166,20 +166,10 @@ func TestBrowseRealMercurial(t *testing.T) {
 	if n, err := r.Resolve(ctx, storage, RefSelection{RefNode, strings.ToUpper(string(nodes["older"]))}); err != nil || n != nodes["older"] {
 		t.Errorf("node selection resolved to %q, %v", n, err)
 	}
-	if _, err := r.Manifest(ctx, storage, nodes["secret"]); !errors.Is(err, ErrNotFound) {
-		t.Errorf("secret manifest: %v; want ErrNotFound", err)
-	}
 	if err := r.ReadFile(ctx, storage, nodes["secret"], "secret.txt", io.Discard); !errors.Is(err, ErrNotFound) {
 		t.Errorf("secret file: %v; want ErrNotFound", err)
 	}
 
-	entries, err := r.Manifest(ctx, storage, selected)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if golden := parseGoldenManifest(t, "browse-manifest.txt"); !reflect.DeepEqual(entries, golden) {
-		t.Errorf("live manifest differs from testdata:\n%#v\n%#v", entries, golden)
-	}
 	for file, want := range map[string]string{
 		"A": "top\n", "a": "lower\n", "link": "d/x", "run.sh": "#!/bin/sh\n", "[ab]": "glob\n",
 		"caf\xe9": "latin-1 name\n", "d/x": "sub\n", ".hgtags": string(nodes["older"]) + " same\n",
@@ -271,9 +261,6 @@ func TestBrowseHiddenChangeset(t *testing.T) {
 	}
 	if n, err := r.Resolve(ctx, repo, RefSelection{RefNode, node.String()}); !errors.Is(err, ErrNotFound) {
 		t.Errorf("hidden node resolved to %s, %v", n, err)
-	}
-	if _, err := r.Manifest(ctx, repo, NodeID(node.String())); !errors.Is(err, ErrNotFound) {
-		t.Errorf("hidden manifest: %v", err)
 	}
 	if err := r.ReadFile(ctx, repo, NodeID(node.String()), "missing", io.Discard); !errors.Is(err, ErrNotFound) {
 		t.Errorf("hidden file: %v", err)

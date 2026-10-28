@@ -11,15 +11,32 @@ import (
 	"path"
 )
 
+type writerFunc func([]byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
+
 func SingleDownload(ctx *middleware.Context) {
-	ctx.Resp.Header().Set("Content-Type", "application/octet-stream")
-	ctx.Resp.Header().Set("X-Content-Type-Options", "nosniff")
-	ctx.Resp.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": displayPath(path.Base(ctx.Repo.TreeName))}))
+	// The attachment headers go out with the first byte, so a missing file gets a plain 404.
+	started := false
+	start := func() {
+		started = true
+		ctx.Resp.Header().Set("Content-Type", "application/octet-stream")
+		ctx.Resp.Header().Set("X-Content-Type-Options", "nosniff")
+		ctx.Resp.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": displayPath(path.Base(ctx.Repo.TreeName))}))
+	}
 	stopAbort := hgbridge.InterruptResponseOnCancel(ctx.Repo.HgContext, middleware.BrowserResponseController(ctx.Req.Request))
 	defer stopAbort()
 	// ReadFile joins the native process before the browse registration releases.
 	// ReadFile reports a missing file before writing, so no manifest scan is needed.
-	err := ctx.Repo.HgRunner.ReadFile(ctx.Repo.HgContext, ctx.Repo.HgPath, ctx.Repo.Node, ctx.Repo.TreeName, ctx.Resp)
+	err := ctx.Repo.HgRunner.ReadFile(ctx.Repo.HgContext, ctx.Repo.HgPath, ctx.Repo.Node, ctx.Repo.TreeName, writerFunc(func(p []byte) (int, error) {
+		if !started {
+			start()
+		}
+		return ctx.Resp.Write(p)
+	}))
+	if err == nil && !started {
+		start() // an empty file
+	}
 	if err != nil {
 		if !ctx.Written() {
 			ctx.Error(404)
