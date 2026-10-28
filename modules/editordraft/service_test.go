@@ -17,6 +17,36 @@ type memoryStore struct {
 	rows map[string]*models.EditorDraft
 }
 
+func TestEditorDraftAuthorizationOutagePreservesSnapshot(t *testing.T) {
+	m := &memoryStore{rows: map[string]*models.EditorDraft{}}
+	var unavailable bool
+	s := NewService(m, func(context.Context, int64, Target) error {
+		if unavailable {
+			return models.ErrEditorDraftStorage
+		}
+		return nil
+	}, time.Now)
+	g, err := s.Open(context.Background(), 1, "collection", Target{1, "pull_new", 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Save(context.Background(), 1, "collection", g.PageID, g.PageSecret, 0, Payload{Body: "saved"}); err != nil {
+		t.Fatal(err)
+	}
+	unavailable = true
+	if _, err = s.Save(context.Background(), 1, "collection", g.PageID, g.PageSecret, 1, Payload{Body: "latest"}); !errors.Is(err, models.ErrEditorDraftStorage) {
+		t.Fatal(err)
+	}
+	if m.rows[g.PageID].Discarded || m.rows[g.PageID].Version != 1 {
+		t.Fatal("outage disposed or advanced snapshot")
+	}
+	unavailable = false
+	snapshot, err := s.Restore(context.Background(), 1, "collection", g.PageID, g.PageSecret)
+	if err != nil || snapshot.Payload.Body != "saved" {
+		t.Fatalf("outage lost previous snapshot: %+v %v", snapshot, err)
+	}
+}
+
 func (m *memoryStore) Create(_ context.Context, r *models.EditorDraft, max int, now time.Time) error {
 	n := 0
 	for _, row := range m.rows {

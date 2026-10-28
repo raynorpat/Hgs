@@ -471,19 +471,27 @@ func DeleteInactivateUsers() error {
 	}
 	defer sess.Rollback()
 	var inactive []User
-	if err := sess.Where("is_active = ?", false).Find(&inactive); err != nil {
+	if err := sess.Where("is_active = ?", false).Asc("id").Find(&inactive); err != nil {
 		return err
 	}
 	for _, u := range inactive {
 		if err := lockDraftAccountDeletion(sess, u.Id); err != nil {
 			return err
 		}
+		var current User
+		found, err := policyGet(sess, true, "user", "id = ?", &current, u.Id)
+		if err != nil {
+			return err
+		}
+		if !found || current.IsActive {
+			continue
+		}
 		if _, err := sess.Where("actor_id = ?", u.Id).Delete(new(EditorDraft)); err != nil {
 			return err
 		}
-	}
-	if _, err := sess.Where("is_active=?", false).Delete(new(User)); err != nil {
-		return err
+		if _, err := sess.Where("id = ? AND is_active = ?", u.Id, false).Delete(new(User)); err != nil {
+			return err
+		}
 	}
 	if _, err := sess.Where("is_activated=?", false).Delete(new(EmailAddress)); err != nil {
 		return err

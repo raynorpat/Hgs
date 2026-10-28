@@ -272,3 +272,164 @@ func TestEditorDraftSourceDeletionCleanup(t *testing.T) {
 		t.Fatalf("cleanup followed by orphan save: %v", err)
 	}
 }
+
+// Fail one real SQLite query at each policy read boundary, with no production hook.
+type draftFailRead struct {
+	Engine
+	at, count int
+}
+
+func (e *draftFailRead) Where(q string, args ...interface{}) *xorm.Session {
+	e.count++
+	if e.count == e.at {
+		return x.Where("draft_outage_missing_column = 1")
+	}
+	return e.Engine.Where(q, args...)
+}
+func (e *draftFailRead) Id(id interface{}) *xorm.Session {
+	e.count++
+	if e.count == e.at {
+		return x.Where("draft_outage_missing_column = 1")
+	}
+	return e.Engine.Id(id)
+}
+func TestEditorDraftPolicyOutage(t *testing.T) {
+	a, repo, now := draftDatabase(t)
+	p := &PullRequest{SourceRepoID: repo, TargetRepoID: repo, AuthorID: a, Number: 1, State: PullOpen, Title: "review"}
+	if _, err := x.Insert(p); err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"pull_new", "pull_comment"} {
+		r := draftRow(a, repo, kind, now)
+		r.Kind, r.SourceRepositoryID = kind, repo
+		if kind != "pull_new" {
+			r.ItemID = p.ID
+		}
+		baseline := &draftFailRead{Engine: x}
+		if err := draftAuthority(baseline, r, editorDraftPayload{}, false); err != nil {
+			t.Fatal(err)
+		}
+		for n := 1; n <= baseline.count; n++ {
+			e := &draftFailRead{Engine: x, at: n}
+			err := draftStoreError(draftAuthority(e, r, editorDraftPayload{}, false))
+			if !errors.Is(err, ErrEditorDraftStorage) {
+				t.Errorf("%s query %d outage classified as %v", kind, n, err)
+			}
+		}
+	}
+}
+
+func TestEditorDraftInactiveDeletionSet(t *testing.T) {
+	for _, activate := range []bool{false, true} {
+		t.Run(fmt.Sprint("activate=", activate), func(t *testing.T) {
+			a, repo, now := draftDatabase(t)
+			b := &User{Name: "later", LowerName: "later", Email: "later@example.invalid", IsActive: true}
+			if _, err := x.Insert(b); err != nil {
+				t.Fatal(err)
+			}
+			for _, id := range []int64{a, b.Id} {
+				if _, err := x.Insert(draftRow(id, repo, fmt.Sprint(id), now)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := x.Id(a).Cols("is_active").Update(&User{IsActive: false}); err != nil {
+				t.Fatal(err)
+			}
+			trigger := fmt.Sprintf("CREATE TRIGGER draft_cleanup_interleave BEFORE DELETE ON editor_draft WHEN OLD.actor_id = %d BEGIN UPDATE user SET is_active = 0 WHERE id = %d; END", a, b.Id)
+			if activate {
+				trigger = fmt.Sprintf("CREATE TRIGGER draft_cleanup_interleave BEFORE UPDATE OF id ON user WHEN OLD.id = %d BEGIN UPDATE user SET is_active = 1 WHERE id = %d; END", a, a)
+			}
+			if _, err := x.Exec(trigger); err != nil {
+				t.Fatal(err)
+			}
+			if err := DeleteInactivateUsers(); err != nil {
+				t.Fatal(err)
+			}
+			var first, second User
+			hasA, err := x.Id(a).Get(&first)
+			if err != nil {
+				t.Fatal(err)
+			}
+			hasB, err := x.Id(b.Id).Get(&second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !hasB {
+				t.Error("account outside fenced set was deleted")
+			}
+			if hasA != activate {
+				t.Errorf("reactivated account preservation=%v want %v", hasA, activate)
+			}
+			var row EditorDraft
+			hasDraft, err := x.Id(fmt.Sprint(a)).Get(&row)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if hasDraft != activate {
+				t.Errorf("draft cleanup did not match rechecked deletion set: %v", hasDraft)
+			}
+		})
+	}
+}
+
+func TestEditorDraftCandidateVersusKnownSource(t *testing.T) {
+	a, target, now := draftDatabase(t)
+	if _, err := x.Id(target).Cols("is_private").Update(&Repository{IsPrivate: true}); err != nil {
+		t.Fatal(err)
+	}
+	owner := &User{Name: "source-owner", LowerName: "source-owner", IsActive: true, Email: "source@example.invalid"}
+	if _, err := x.Insert(owner); err != nil {
+		t.Fatal(err)
+	}
+	source := &Repository{OwnerId: owner.Id, Name: "source", LowerName: "source", IsPrivate: true, State: RepositoryReady}
+	if _, err := x.Insert(source); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := x.Insert(&ForkRelation{RepositoryID: source.Id, SourceID: target, FamilyID: target}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := x.Insert(&Access{UserId: a, RepoId: source.Id, Mode: WRITABLE}); err != nil {
+		t.Fatal(err)
+	}
+	store := NewEditorDraftStore()
+	ctx := context.Background()
+	known := draftRow(a, target, "known-source", now)
+	known.Kind = "pull_new"
+	known.PayloadJSON = `{"Body":"saved","Metadata":{"source_repository":"source-owner/source"}}`
+	if err := store.Create(ctx, known, 10, now); err != nil {
+		t.Fatal(err)
+	}
+	fresh := draftRow(a, target, "new-candidate", now)
+	fresh.Kind = "pull_new"
+	if err := store.Create(ctx, fresh, 10, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := x.Where("user_id = ? AND repo_id = ?", a, source.Id).Delete(new(Access)); err != nil {
+		t.Fatal(err)
+	}
+	for _, candidate := range []string{"source-owner/source", "missing/source"} {
+		payload := fmt.Sprintf(`{"Body":"local","Metadata":{"source_repository":%q}}`, candidate)
+		if err := store.SaveIfLive(ctx, fresh.PageID, 0, 1, payload, now.Add(time.Hour), now); !errors.Is(err, ErrEditorDraftInvalidPayload) {
+			t.Errorf("new candidate %s: %v", candidate, err)
+		}
+	}
+	if _, err := x.Id(source.Id).Cols("state").Update(&Repository{State: RepositoryDeleting}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveIfLive(ctx, fresh.PageID, 0, 1, known.PayloadJSON, now.Add(time.Hour), now); !errors.Is(err, ErrEditorDraftInvalidPayload) {
+		t.Fatalf("different candidate ready-lock denial: %v", err)
+	}
+	var unchanged EditorDraft
+	if _, err := x.Id(fresh.PageID).Get(&unchanged); err != nil {
+		t.Fatal(err)
+	}
+	if unchanged.Version != 0 || unchanged.SourceRepositoryID != 0 || unchanged.PayloadJSON != fresh.PayloadJSON {
+		t.Fatal("invalid candidate wrote payload/dependency")
+	}
+	if _, err := store.Find(ctx, known.PageID); !errors.Is(err, ErrEditorDraftForbidden) {
+		t.Fatalf("known source revocation: %v", err)
+	}
+	if err := store.SaveIfLive(ctx, known.PageID, 0, 1, `{"Metadata":{"source_repository":"missing/source"}}`, now.Add(time.Hour), now); !errors.Is(err, ErrEditorDraftForbidden) {
+		t.Fatalf("invalid replacement bypassed prior revocation: %v", err)
+	}
+}

@@ -1,12 +1,14 @@
 package middleware
 
 import (
+	"errors"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/Unknwon/macaron"
+	"github.com/gogits/gogs/models"
 	"github.com/gogits/gogs/modules/setting"
 	"github.com/macaron-contrib/csrf"
 )
@@ -52,6 +54,21 @@ func EditorSubmissionPolicy(ctx *Context, token csrf.CSRF) {
 func DraftRequestPolicy(ctx *Context, token csrf.CSRF, mutation bool) bool {
 	ctx.Resp.Header().Set("Cache-Control", "private, no-store")
 	if !ctx.IsSigned || ctx.User == nil {
+		// Only a server-side UID in the established incoming session can tell
+		// revocation from expiry. The expected-account header is not identity.
+		if EstablishedDraftSession(ctx) {
+			if id, ok := ctx.Session.Get("uid").(int64); ok && id > 0 {
+				u, err := models.GetUserById(id)
+				if errors.Is(err, models.ErrUserNotExist) || (err == nil && (!u.IsActive || u.IsOrganization())) {
+					ctx.JSON(403, map[string]string{"code": "forbidden"})
+					return false
+				}
+				if err != nil {
+					ctx.JSON(503, map[string]string{"code": "save_failed"})
+					return false
+				}
+			}
+		}
 		ctx.JSON(401, map[string]string{"code": "unauthenticated"})
 		return false
 	}

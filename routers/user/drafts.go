@@ -93,6 +93,32 @@ func DraftSession(ctx *middleware.Context, token csrf.CSRF) {
 	}
 	ctx.JSON(200, map[string]interface{}{"code": "ok", "actorID": ctx.User.Id, "csrf": token.GetToken(), "collectionPresent": draftCollection(ctx) != ""})
 }
+func DraftCheck(ctx *middleware.Context, token csrf.CSRF) {
+	if !middleware.DraftRequestPolicy(ctx, token, true) {
+		return
+	}
+	var in struct {
+		Target   editordraft.Target
+		Metadata map[string]string
+	}
+	ctx.Req.Request.Body = http.MaxBytesReader(ctx.Resp, ctx.Req.Request.Body, 8192)
+	d := json.NewDecoder(ctx.Req.Request.Body)
+	d.DisallowUnknownFields()
+	var extra interface{}
+	if err := d.Decode(&in); err != nil {
+		draftError(ctx, editordraft.ErrInvalidPayload)
+		return
+	}
+	if d.Decode(&extra) != io.EOF {
+		draftError(ctx, editordraft.ErrInvalidPayload)
+		return
+	}
+	if err := models.CheckEditorDraft(ctx.Req.Context(), ctx.User.Id, in.Target.RepositoryID, in.Target.Kind, in.Target.ItemID, in.Metadata); err != nil {
+		draftError(ctx, err)
+		return
+	}
+	ctx.JSON(200, map[string]string{"code": "ok"})
+}
 func DraftOpen(ctx *middleware.Context, token csrf.CSRF, s *editordraft.Service) {
 	if !middleware.DraftRequestPolicy(ctx, token, true) {
 		return

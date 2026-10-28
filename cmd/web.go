@@ -305,6 +305,7 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 	m.Get("/user/recent", reqSignIn, user.Recent)
 	m.Post("/user/recent/clear", reqSignIn, user.ClearRecent)
 	m.Get("/user/drafts/session", user.DraftSession)
+	m.Post("/user/drafts/check", user.DraftCheck)
 	m.Post("/user/drafts/open", user.DraftOpen)
 	m.Post("/user/drafts/:page/save", user.DraftSave)
 	m.Post("/user/drafts/:page/restore", user.DraftRestore)

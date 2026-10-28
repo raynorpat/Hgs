@@ -206,7 +206,11 @@ func pullFailureMessage(ctx *middleware.Context, err error) string {
 func loadPull(ctx *middleware.Context, s *collaboration.Service) (models.PullRequest, bool) {
 	p, e := s.GetPull(ctx.Req.Request.Context(), pullActor(ctx), ctx.Repo.Repository.Id, pullID(ctx.Params(":number")))
 	if e != nil {
-		pullError(ctx, e)
+		if ctx.EditorSubmission {
+			ctx.Error(pullErrorStatus(e))
+		} else {
+			pullError(ctx, e)
+		}
 		return p, false
 	}
 	return p, true
@@ -311,6 +315,23 @@ func PullNewPost(ctx *middleware.Context, s *collaboration.Service, f PullForm) 
 	ids, e := pullReviewerIDs(f.Reviewers)
 	if e == nil && f.SourceRepository != "" {
 		f.SourceRepoID, e = models.ResolvePullSource(ctx.Req.Request.Context(), pullActor(ctx), ctx.Repo.Repository.Id, f.SourceRepository)
+		if e != nil && ctx.EditorSubmission {
+			// A candidate name is editable input, not the established page
+			// authority. Recheck the target before reporting nondisclosing
+			// validation for an absent/inaccessible candidate.
+			if targetErr := models.AuthorizeEditorDraft(ctx.Req.Context(), pullActor(ctx), ctx.Repo.Repository.Id, "pull_new", 0); targetErr != nil {
+				if errors.Is(targetErr, models.ErrEditorDraftForbidden) {
+					ctx.Error(403)
+				} else {
+					ctx.JSON(503, map[string]string{"code": "save_failed"})
+				}
+			} else if errors.Is(e, models.ErrPullNotExist) || errors.Is(e, models.ErrPullInvalid) {
+				ctx.JSON(422, map[string]string{"code": "validation"})
+			} else {
+				ctx.JSON(503, map[string]string{"code": "save_failed"})
+			}
+			return
+		}
 	}
 	src, dst := pullSelections(f)
 	var p models.PullRequest

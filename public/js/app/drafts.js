@@ -138,7 +138,7 @@
     finally { if (epoch === s.epoch) { s.saving = false; if (saved && s.generation > s.acknowledged) schedule(s); } }
   }
   async function check(s) {
-    if (s.checking || s.saving || s.opening || s.submitting || s.stopped || s.unknown) return;
+    if (s.checking || s.saving || s.opening || (s.submitting && !s.unknown) || s.stopped) return;
     const epoch = s.epoch, generation = s.generation; s.checking = true;
     try {
       const session = await request(s, '/session');
@@ -146,6 +146,21 @@
       if (session.code !== 'ok') { failure(s, session.code); return; }
       if (String(session.actorID) !== s.actor) { denied(s, true); return; }
       refreshCSRF(session.csrf);
+      if (s.unknown) {
+        // A possibly committed mutation stays locked. Retained capabilities
+        // may check established source authority, never restore their text.
+        if (s.grant) {
+          const prior = await request(s, '/' + s.grant.PageID + '/restore', { PageSecret: s.grant.PageSecret });
+          if (epoch !== s.epoch) return;
+          if (prior.code === 'expired' || prior.code === 'discarded') s.grant = null;
+          else if (prior.code !== 'ok') { failure(s, prior.code); return; }
+        }
+        const metadata = s.kind === 'pull_new' ? { source_repository: s.form.elements.namedItem('source_repository')?.value || '' } : {};
+        const access = await request(s, '/check', { Target: s.target, Metadata: metadata });
+        if (epoch !== s.epoch) return;
+        if (access.code !== 'ok') failure(s, access.code);
+        return;
+      }
       if (s.grant) {
         const result = await request(s, '/' + s.grant.PageID + '/restore', { PageSecret: s.grant.PageSecret });
         if (epoch !== s.epoch) return;
@@ -213,11 +228,23 @@
         if (result.code === 'saved' && result.committed) { const destination = resultLink(s, result.destination); dispose(s); location.assign(destination); return; }
         if (result.code === 'partial' && result.committed) {
           resultLink(s, result.destination); dispose(s); if (!result.unsaved) reset(s);
-          s.unknown = true; say(s, 'partial'); return;
+          s.unknown = true; s.auth.hidden = false; say(s, 'partial'); return;
         }
-        if (['validation', 'unauthenticated', 'account_changed', 'forbidden', 'csrf_invalid'].includes(result.code)) { busy(s, false); failure(s, result.code); return; }
+        if (['validation', 'save_failed', 'unauthenticated', 'account_changed', 'forbidden', 'csrf_invalid'].includes(result.code)) {
+          if (result.code === 'validation' && s.kind === 'pull_new' && s.grant) {
+            // A typed candidate has no authority history. Only our retained
+            // grant can distinguish prior-source revocation from a typo.
+            // This request checks authority only; never apply its payload.
+            try {
+              const prior = await request(s, '/' + s.grant.PageID + '/restore', { PageSecret: s.grant.PageSecret });
+              if (epoch !== s.epoch) return;
+              if (prior.code !== 'ok') { busy(s, false); failure(s, prior.code); return; }
+            } catch (_) { if (epoch === s.epoch) { busy(s, false); say(s, 'failed'); } return; }
+          }
+          busy(s, false); failure(s, result.code); return;
+        }
         throw new Error('Unknown outcome');
-      } catch (_) { if (epoch === s.epoch) { s.unknown = true; say(s, 'unknown'); if (form.dataset.draftDestination) resultLink(s, form.dataset.draftDestination); } }
+      } catch (_) { if (epoch === s.epoch) { s.unknown = true; s.auth.hidden = false; say(s, 'unknown'); if (form.dataset.draftDestination) resultLink(s, form.dataset.draftDestination); } }
     });
     open(s);
   });

@@ -90,7 +90,7 @@ func draftPayload(raw string) (editorDraftPayload, error) {
 	return p, nil
 }
 func draftDenied(err error) error {
-	if errors.Is(err, ErrReviewReserved) || errors.Is(err, ErrInvalidCredential) || errors.Is(err, ErrRepoNotExist) || errors.Is(err, ErrUserNotExist) || errors.Is(err, ErrPullNotExist) || errors.Is(err, ErrForkLineage) {
+	if errors.Is(err, ErrReviewReserved) || errors.Is(err, ErrInvalidCredential) || errors.Is(err, ErrRepoNotExist) || errors.Is(err, ErrUserNotExist) || errors.Is(err, ErrPullNotExist) || errors.Is(err, ErrForkLineage) || errors.Is(err, ErrPullState) || errors.Is(err, ErrPullInvalid) {
 		return ErrEditorDraftForbidden
 	}
 	return err
@@ -160,7 +160,7 @@ func draftAuthority(e Engine, r *EditorDraft, p editorDraftPayload, locked bool)
 		}
 		if r.SourceRepositoryID > 0 {
 			if err := pullCreationAllowed(e, r.ActorID, PullRequest{SourceRepoID: r.SourceRepositoryID, TargetRepoID: r.RepositoryID}, locked); err != nil {
-				return ErrEditorDraftForbidden
+				return draftDenied(err)
 			}
 		}
 	case "pull_edit", "pull_comment", "pull_review":
@@ -176,7 +176,7 @@ func draftAuthority(e Engine, r *EditorDraft, p editorDraftPayload, locked bool)
 			return draftDenied(err)
 		}
 		if err = pullComparisonPrivacy(e, pull, locked); err != nil {
-			return ErrEditorDraftForbidden
+			return draftDenied(err)
 		}
 		if r.Kind == "pull_edit" && pull.AuthorID != r.ActorID {
 			return ErrEditorDraftForbidden
@@ -261,18 +261,55 @@ func draftAuthority(e Engine, r *EditorDraft, p editorDraftPayload, locked bool)
 }
 
 // AuthorizeEditorDraft checks the live canonical target, never client URL identity.
-func AuthorizeEditorDraft(ctx context.Context, actor, repo int64, kind string, item int64) error {
+func AuthorizeEditorDraft(ctx context.Context, actor, repo int64, kind string, item int64) (err error) {
+	defer func() { err = draftStoreError(err) }()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	r := &EditorDraft{ActorID: actor, RepositoryID: repo, Kind: kind, ItemID: item}
 	p := editorDraftPayload{}
-	source, err := draftSource(x, r, p)
+	e := draftEngine()
+	source, err := draftSource(e, r, p)
 	if err != nil {
 		return err
 	}
 	r.SourceRepositoryID = source
-	return draftAuthority(x, r, p, false)
+	return draftAuthority(e, r, p, false)
+}
+
+// CheckEditorDraft is a status-only check, including an optional editable new
+// PR candidate. A candidate is not a trusted previously-authorized dependency.
+func CheckEditorDraft(ctx context.Context, actor, repo int64, kind string, item int64, metadata map[string]string) (err error) {
+	defer func() { err = draftStoreError(err) }()
+	if err = AuthorizeEditorDraft(ctx, actor, repo, kind, item); err != nil {
+		return err
+	}
+	for key, value := range metadata {
+		if kind != "pull_new" || key != "source_repository" || len(value) > 512 {
+			return ErrEditorDraftInvalidPayload
+		}
+	}
+	if kind != "pull_new" || metadata["source_repository"] == "" {
+		return nil
+	}
+	e := draftEngine()
+	r := &EditorDraft{ActorID: actor, RepositoryID: repo, Kind: kind}
+	p := editorDraftPayload{Metadata: metadata}
+	source, err := draftSource(e, r, p)
+	if err != nil {
+		return err
+	}
+	if source == 0 {
+		return ErrEditorDraftInvalidPayload
+	}
+	r.SourceRepositoryID = source
+	if err = draftAuthority(e, r, p, false); errors.Is(err, ErrEditorDraftForbidden) {
+		if targetErr := AuthorizeEditorDraft(ctx, actor, repo, kind, item); targetErr != nil {
+			return targetErr
+		}
+		return ErrEditorDraftInvalidPayload
+	}
+	return err
 }
 func draftTransaction(ctx context.Context, r *EditorDraft, p editorDraftPayload, apply func(*xorm.Session) error) error {
 	e := draftEngine()
@@ -289,6 +326,14 @@ func draftTransaction(ctx context.Context, r *EditorDraft, p editorDraftPayload,
 		ids = append(ids, r.SourceRepositoryID)
 	}
 	err = pullTransactionEngine(e, ctx, ids, func(s *xorm.Session) error {
+		if r.Kind == "pull_new" {
+			// Input edits never bypass established target/source authority.
+			prior := *r
+			prior.SourceRepositoryID = previousSource
+			if err := draftAuthority(s, &prior, editorDraftPayload{}, true); err != nil {
+				return err
+			}
+		}
 		if previousSource > 0 {
 			a, err := repositoryAccessFor(s, r.ActorID, previousSource, true)
 			if err != nil {
@@ -305,12 +350,32 @@ func draftTransaction(ctx context.Context, r *EditorDraft, p editorDraftPayload,
 		if current != source {
 			return ErrEditorDraftForbidden
 		}
+		if r.Kind == "pull_new" && p.Metadata["source_repository"] != "" && source == 0 {
+			return ErrEditorDraftInvalidPayload
+		}
 		r.SourceRepositoryID = source
 		if err := draftAuthority(s, r, p, true); err != nil {
 			return err
 		}
 		return apply(s)
 	})
+	if r.Kind == "pull_new" && source != previousSource && errors.Is(draftDenied(err), ErrEditorDraftForbidden) {
+		// A different candidate can fail its ready-row lock before the write
+		// callback. Recheck only the established authority under its own sorted
+		// locks to classify that denial. Never call apply or retry a mutation.
+		prior := *r
+		prior.SourceRepositoryID = previousSource
+		priorIDs := []int64{r.RepositoryID}
+		if previousSource > 0 {
+			priorIDs = append(priorIDs, previousSource)
+		}
+		return draftDenied(pullTransactionEngine(e, ctx, priorIDs, func(s *xorm.Session) error {
+			if err := draftAuthority(s, &prior, editorDraftPayload{}, true); err != nil {
+				return err
+			}
+			return ErrEditorDraftInvalidPayload
+		}))
+	}
 	return draftDenied(err)
 }
 func (s *EditorDraftStore) Create(ctx context.Context, r *EditorDraft, maxLive int, now time.Time) (err error) {

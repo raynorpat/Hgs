@@ -46,8 +46,11 @@ func TestEditorDraftOwnerAndPermission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.Save(ctx, f.admin.Id, "collection", pg.PageID, pg.PageSecret, 0, editordraft.Payload{Metadata: map[string]string{"source_repository": f.admin.Name + "/unrelated-source"}}); !errors.Is(err, editordraft.ErrForbidden) {
+	if _, err = s.Save(ctx, f.admin.Id, "collection", pg.PageID, pg.PageSecret, 0, editordraft.Payload{Metadata: map[string]string{"source_repository": f.admin.Name + "/unrelated-source"}}); !errors.Is(err, editordraft.ErrInvalidPayload) {
 		t.Fatalf("unrelated source became recoverable: %v", err)
+	}
+	if snap, err := s.Restore(ctx, f.admin.Id, "collection", pg.PageID, pg.PageSecret); err != nil || snap.Version != 0 || len(snap.Payload.Metadata) != 0 {
+		t.Fatalf("candidate denial wrote a recovery payload: %+v %v", snap, err)
 	}
 	if _, err = db.Id(r.Id).Cols("state").Update(&models.Repository{State: models.RepositoryDeleting}); err != nil {
 		t.Fatal(err)

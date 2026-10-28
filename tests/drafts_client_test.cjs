@@ -1,0 +1,110 @@
+// Behavioral controller unit tests with a deliberately small DOM/transport double.
+// These do not prove actual browser timing, cookies, navigation, or bfcache.
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const vm = require('node:vm');
+const fs = require('node:fs');
+const path = require('node:path');
+const source = fs.readFileSync(path.join(__dirname, '../public/js/app/drafts.js'), 'utf8');
+
+async function harness(outcome = 'unknown', kind = 'issue_comment') {
+  const handlers = {}, formHandlers = {}, timers = new Map(), calls = [];
+  let timer = 0, sessionCode = 'ok', checkCode = 'ok', saveCode = 'ok';
+  const body = {name: 'content', tagName: 'TEXTAREA', defaultValue: '', value: '', setCustomValidity() {}, disabled: false};
+  const selectedSource = {name: 'source_repository', tagName: 'INPUT', defaultValue: 'owner/source', value: 'owner/source', setCustomValidity() {}, disabled: false};
+  const inputs = kind === 'pull_new' ? [body, selectedSource] : [body];
+  const status = {textContent: ''}, auth = {hidden: true}, result = {hidden: true};
+  const check = {}, cancel = {};
+  for (const button of [check, cancel]) button.addEventListener = (event, fn) => { button[event] = fn; };
+  const controls = {
+    dataset: {draftApi: '/code/user/drafts', draftActor: '1', draftRepository: '2', draftSessionEstablished: 'true',
+      failed: 'Save failed', cleared: 'Cleared', unknown: 'Unknown', partial: 'Partial', expired: 'Expired', saved: 'Saved'},
+    querySelector: q => ({'[data-draft-status]': status, '[data-draft-auth]': auth, '[data-draft-result]': result,
+      '[data-draft-check]': check, '[data-draft-cancel]': cancel})[q]
+  };
+  const form = {
+    dataset: {editorDraft: kind, draftItem: kind === 'pull_new' ? '0' : '3', draftDestination: '/code/a/b/issues/1'},
+    action: 'http://host/code/a/b/comment/new',
+    elements: {namedItem: name => inputs.find(input => input.name === name)},
+    querySelector: () => controls,
+    querySelectorAll: q => q === 'input,textarea,select' ? inputs : [],
+    addEventListener: (event, fn) => { formHandlers[event] = fn; },
+    setAttribute() {}, removeAttribute() {}, dispatchEvent() {}, reportValidity: () => true
+  };
+  const shell = {dataset: {}, querySelectorAll: () => [form]};
+  const response = value => ({headers: {get: () => 'application/json'}, json: async () => value});
+  const fetch = async (url, options) => {
+    calls.push([url, options]);
+    if (url === form.action) {
+      if (outcome === 'unknown') throw Error('lost response');
+      if (outcome === 'validation') return response({code: 'validation'});
+      return response({code: 'partial', committed: true, unsaved: true, destination: '/code/a/b/issues/1'});
+    }
+    if (url.endsWith('/session')) return response({code: sessionCode, actorID: 1, csrf: 'fresh', collectionPresent: true});
+    if (url.endsWith('/open')) return response({code: 'ok', grant: {PageID: 'page', PageSecret: 'secret', DisposalToken: 'dispose'}});
+    if (url.endsWith('/check')) return response({code: checkCode});
+    if (url.endsWith('/restore')) return response({code: checkCode, snapshot: {Version: 1, Payload: {Body: 'OLD SERVER TEXT'}}});
+    if (url.endsWith('/save')) return response({code: saveCode, snapshot: {Version: 1}});
+    if (url.endsWith('/discard')) return response({code: 'ok'});
+    throw Error('unexpected request');
+  };
+  vm.runInNewContext(source, {
+    document: {querySelector: q => q === '[data-hg-shell]' ? shell : {content: 'csrf'}, querySelectorAll: () => []},
+    navigator: {}, location: {href: 'http://host/code/a/b/issues/1', origin: 'http://host', assign() {throw Error('unexpected navigation');}},
+    fetch, URL, URLSearchParams, TextEncoder, CustomEvent: class {},
+    FormData: class {append() {}},
+    addEventListener: (event, fn) => { handlers[event] = fn; },
+    setTimeout: fn => { timers.set(++timer, fn); return timer; }, clearTimeout: id => timers.delete(id)
+  });
+  const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
+  await flush();
+  body.value = 'LATEST LOCAL TEXT'; formHandlers.input({target: body});
+  return {body, status, calls, flush,
+    setSession: code => {sessionCode = code;}, setAccess: code => {checkCode = code;}, setSave: code => {saveCode = code;},
+    submit: async () => {await formHandlers.submit({preventDefault() {}}); await flush();},
+    check: async () => {await check.click(); await flush();},
+    focus: async () => {handlers.focus(); await flush();},
+    save: async () => {const fn = timers.values().next().value; if (fn) await fn(); await flush();}
+  };
+}
+for (const outcome of ['unknown', 'partial']) {
+  for (const revoked of ['account', 'permission']) {
+    test(`${outcome} blocks mutation retry but clears on ${revoked} loss`, async () => {
+      const h = await harness(outcome); await h.submit();
+      assert.equal(h.body.value, 'LATEST LOCAL TEXT');
+      await h.check();
+      assert.equal(h.body.value, 'LATEST LOCAL TEXT', 'terminal check must never restore');
+      if (revoked === 'account') h.setSession('account_changed'); else h.setAccess('forbidden');
+      await h.focus();
+      assert.equal(h.body.value, ''); assert.equal(h.body.disabled, true);
+      await h.submit();
+      assert.equal(h.calls.filter(([url]) => url.endsWith('/comment/new')).length, 1);
+      if (outcome === 'partial') assert.equal(h.calls.filter(([url]) => url.endsWith('/restore')).length, 0);
+      assert.equal(h.calls.filter(([url]) => url.endsWith('/open')).length, 1, 'terminal checks must not reopen recovery');
+    });
+  }
+}
+test('operational save failure retains local fields; true permission loss clears', async () => {
+  const h = await harness(); h.setSave('save_failed'); await h.save();
+  assert.equal(h.body.value, 'LATEST LOCAL TEXT'); assert.equal(h.status.textContent, 'Save failed');
+  h.setAccess('forbidden'); await h.check(); assert.equal(h.body.value, '');
+});
+test('terminal expiry/outage checks retain local text and never unlock mutation', async () => {
+  const h = await harness('partial'); await h.submit();
+  h.setSession('unauthenticated'); await h.check();
+  assert.equal(h.body.value, 'LATEST LOCAL TEXT');
+  h.setSession('ok'); h.setAccess('save_failed'); await h.check();
+  assert.equal(h.body.value, 'LATEST LOCAL TEXT');
+  h.setAccess('ok'); await h.check(); await h.submit();
+  assert.equal(h.body.value, 'LATEST LOCAL TEXT');
+  assert.equal(h.calls.filter(([url]) => url.endsWith('/comment/new')).length, 1);
+});
+for (const code of ['ok', 'forbidden', 'save_failed']) {
+  test(`new PR validation checks prior source authority (${code}) without restoring`, async () => {
+    const h = await harness('validation', 'pull_new'); h.setAccess(code); await h.submit();
+    assert.equal(h.body.value, code === 'forbidden' ? '' : 'LATEST LOCAL TEXT');
+    assert.equal(h.calls.filter(([url]) => url.endsWith('/restore')).length, 1);
+    assert.equal(h.calls.filter(([url]) => url.endsWith('/comment/new')).length, 1);
+    assert.equal(h.calls.filter(([url]) => url.endsWith('/open')).length, 1);
+  });
+}

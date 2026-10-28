@@ -95,3 +95,18 @@ func TestEditorDraftHTTPPolicy(t *testing.T) {
 		t.Fatalf("discard restore %d %s", w.Code, w.Body)
 	}
 }
+
+func TestEditorDraftHTTPStorageUnavailable(t *testing.T) {
+	f := newDiscoveryFixture(t, "/code")
+	f.m.Map(editordraft.NewService(models.NewEditorDraftStore(), func(context.Context, int64, editordraft.Target) error { return models.ErrEditorDraftStorage }, time.Now))
+	f.m.Post("/user/drafts/open", user.DraftOpen)
+	r := httptest.NewRequest("POST", "http://host/code/user/drafts/open", strings.NewReader(fmt.Sprintf(`{"Target":{"RepositoryID":%d,"Kind":"pull_new"},"CollectionMode":"random"}`, f.repo.Id)))
+	r.SetBasicAuth(f.alice.Name, "fixture-password")
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("X-Csrf-Token", csrf.GenerateToken("disposable-discovery-fixture", "0", "POST"))
+	w := httptest.NewRecorder()
+	f.m.ServeHTTP(w, r)
+	if w.Code != 503 || !strings.Contains(w.Body.String(), `"save_failed"`) || strings.Contains(w.Body.String(), "forbidden") {
+		t.Fatalf("storage error became revocation: %d %s", w.Code, w.Body)
+	}
+}
