@@ -473,7 +473,10 @@ func renderPull(ctx *middleware.Context, s *collaboration.Service, p models.Pull
 	ctx.Data["Title"] = p.Title
 	ui.BuildShell(ctx, ui.Repository, "pull_requests")
 	ctx.Data["Pull"], ctx.Data["PullError"], ctx.Data["PullEditor"], ctx.Data["PullCommentEditor"] = d, message, issueEditor(ctx, "pull-edit", d.Form.Content), issueEditor(ctx, "pull-comment", "")
+	ctx.Data["PullCommentForm"] = PullForm{}
 	if submitted != nil && ctx.Data["PullCommentSubmitted"] == true {
+		ctx.Data["PullCommentForm"] = *submitted
+		ctx.Data["PullCommentInline"] = submitted.ComparisonID != 0 || submitted.Path != "" || submitted.Side != "" || submitted.Line != 0
 		ctx.Data["PullCommentEditor"] = issueEditor(ctx, "pull-comment", submitted.Content)
 	}
 	ctx.HTML(status, "repo/pull/view")

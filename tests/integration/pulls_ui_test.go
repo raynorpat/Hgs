@@ -126,6 +126,70 @@ func TestPullReviewerErrorRetainsText(t *testing.T) {
 		t.Fatalf("submitted reviewers changed: status=%d", w.Code)
 	}
 }
+
+func TestPullInlineCommentRetryRetainsAnchor(t *testing.T) {
+	f := seededPullHTTP(t)
+	p := f.create(t)
+	comparison, err := f.service.RefreshComparison(context.Background(), f.owner.Id, p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A newer pending allocation makes the intended historical identity
+	// different from the current comparison, without changing its artifact.
+	current, err := models.ReservePullComparison(context.Background(), f.owner.Id, p.ID)
+	if err != nil || current.ID == comparison.ID {
+		t.Fatalf("replacement comparison: %+v %v", current, err)
+	}
+	path := f.route + "/1/comments"
+	body := "Keep **this inline comment** <literal>"
+	w := f.post(t, path, "reader", url.Values{"content": {body}, "comparison_id": {fmt.Sprint(comparison.ID)}, "path": {"proposal.txt"}, "side": {"source"}, "line": {"999"}}, true)
+	if w.Code != 422 {
+		t.Fatalf("invalid inline line: %d %s", w.Code, w.Body.String())
+	}
+	form := regexp.MustCompile(`(?s)<form[^>]*action="` + regexp.QuoteMeta(f.prefix+path) + `"[^>]*>(.*?)</form>`).FindStringSubmatch(w.Body.String())
+	if len(form) != 2 {
+		t.Fatal("comment form missing on error")
+	}
+	values := url.Values{}
+	for name, id := range map[string]string{"comparison_id": "comment-comparison", "path": "comment-path", "line": "comment-line"} {
+		field := regexp.MustCompile(`<input\b[^>]*id="` + id + `"[^>]*\bvalue="([^"]*)"`).FindStringSubmatch(form[1])
+		if len(field) != 2 {
+			t.Fatalf("submitted anchor field %s was discarded", name)
+		}
+		values.Set(name, html.UnescapeString(field[1]))
+	}
+	if values.Get("comparison_id") != fmt.Sprint(comparison.ID) || values.Get("path") != "proposal.txt" || values.Get("line") != "999" {
+		t.Fatalf("anchor changed on error: %v", values)
+	}
+	selectField := regexp.MustCompile(`(?s)<select[^>]*id="comment-side"[^>]*>(.*?)</select>`).FindStringSubmatch(form[1])
+	if len(selectField) != 2 || !strings.Contains(selectField[1], `<option value="source" selected>`) || !strings.Contains(form[1], "<details open>") {
+		t.Fatal("inline section collapsed or source side selection lost")
+	}
+	textarea := regexp.MustCompile(`(?s)<textarea[^>]*id="pull-comment"[^>]*>(.*?)</textarea>`).FindStringSubmatch(form[1])
+	if len(textarea) != 2 || html.UnescapeString(textarea[1]) != body {
+		t.Fatal("submitted inline body was changed")
+	}
+	comments, err := models.ListPullComments(context.Background(), f.reader.Id, p.ID)
+	if err != nil || len(comments) != 0 {
+		t.Fatalf("failed inline comment saved: %+v %v", comments, err)
+	}
+	// Retry only the corrected line, preserving the rendered historical anchor.
+	values.Set("line", "1")
+	values.Set("side", "source")
+	values.Set("content", html.UnescapeString(textarea[1]))
+	w = f.post(t, path, "reader", values, true)
+	comments, err = models.ListPullComments(context.Background(), f.reader.Id, p.ID)
+	if w.Code != 303 || err != nil || len(comments) != 1 {
+		t.Fatalf("corrected retry: status=%d comments=%+v err=%v", w.Code, comments, err)
+	}
+	c := comments[0]
+	if c.ComparisonID != comparison.ID || c.Path != "proposal.txt" || c.Side != "source" || c.Line != 1 || c.Body != body || !c.Outdated {
+		t.Fatalf("retry became general or rebound to current comparison: %+v", c)
+	}
+	if w.Header().Get("Location") != f.prefix+f.route+fmt.Sprintf("/1#comment-%d", c.ID) {
+		t.Fatal("retry did not redirect to canonical anchored comment", w.Header().Get("Location"))
+	}
+}
 func expectPullPost(t *testing.T, f *uiFixture, path, who string, values url.Values, code int) *httptest.ResponseRecorder {
 	t.Helper()
 	w := f.post(t, path, who, values, true)
