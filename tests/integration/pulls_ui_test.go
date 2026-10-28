@@ -120,10 +120,22 @@ func TestPullReviewerErrorRetainsText(t *testing.T) {
 	if err = models.AssignPullReviewers(context.Background(), f.owner.Id, p.ID, []int64{f.reader.Id}); err != nil {
 		t.Fatal(err)
 	}
+	if err := models.ClearRepositoryVisits(context.Background(), f.owner.Id); err != nil {
+		t.Fatal(err)
+	}
 	text := "missing-reviewer"
 	w := f.post(t, "/fixtureowner/"+f.public.Name+"/pulls/1/reviewers", "owner", url.Values{"reviewers": {text}}, true)
 	if w.Code == 303 || hiddenPull(t, w.Body.String(), "reviewers") != text {
 		t.Fatalf("submitted reviewers changed: status=%d", w.Code)
+	}
+	for _, capability := range []string{`data-popout-target="hg-search"`, `data-popout-target="hg-recents"`} {
+		if !strings.Contains(w.Body.String(), capability) {
+			t.Errorf("validation response lost %s", capability)
+		}
+	}
+	visits, err := models.RecentRepositories(context.Background(), f.owner.Id)
+	if err != nil || len(visits) != 0 {
+		t.Fatalf("POST error recorded a visit: %v %v", visits, err)
 	}
 }
 
@@ -250,6 +262,9 @@ func TestPullHTTPWorkflow(t *testing.T) {
 	if w = f.get(t, detail, "owner"); !strings.Contains(w.Body.String(), `data-pull-state="unprepared"`) {
 		t.Fatal("new PR claims preparation is running", w.Code, w.Body.String())
 	}
+	if strings.Contains(w.Body.String(), `<dd><code></code></dd>`) || strings.Contains(w.Body.String(), "These full changeset IDs") {
+		t.Error("unprepared comparison shows empty pins")
+	}
 	expectPullPost(t, f.uiFixture, detail+"/refresh", "owner", url.Values{}, 303)
 	p, _ = f.service.GetPull(context.Background(), f.owner.Id, f.public.Id, 1)
 	if err := models.AddAccess(&models.Access{UserId: f.reader.Id, RepoId: f.public.Id, Mode: models.WRITABLE}); err != nil {
@@ -357,10 +372,13 @@ func TestPullUIStaleConflictAndBinary(t *testing.T) {
 	if !strings.Contains(body, "Binary changes") {
 		t.Fatal("binary notice missing", body)
 	}
-	for _, file := range []string{"binary.dat", "empty.txt", "proposal.txt"} {
+	for file, payload := range map[string]string{"binary.dat": "\x00changed\x01", "empty.txt": "", "proposal.txt": "line one\nline two\n"} {
 		response := f.get(t, fmt.Sprintf("%s/comparisons/%d/files/%s?side=source", detail, comparison.ID, file), "reader")
 		if response.Code != 200 || response.Header().Get("X-Content-Type-Options") != "nosniff" || !strings.Contains(response.Header().Get("Content-Disposition"), "attachment") {
 			t.Fatal("artifact download", file, response.Code, response.Header())
+		}
+		if response.Body.String() != payload {
+			t.Errorf("%s payload = %q, want %q", file, response.Body.String(), payload)
 		}
 	}
 	for _, file := range []string{"absent", "..%2f.hg%2fhgrc"} {

@@ -225,7 +225,7 @@ func sharedAccountPage(t *testing.T, w *httptest.ResponseRecorder, reduced bool)
 }
 func TestSharedUIAdminAuthorization(t *testing.T) {
 	f := accountApp(t, true)
-	for _, p := range []string{"/admin", "/admin/users", "/admin/config"} {
+	for _, p := range []string{"/admin", "/admin/users", "/admin/users/new", fmt.Sprintf("/admin/users/%d", f.member.Id), "/admin/config", "/admin/orgs", "/admin/repos", "/admin/monitor", "/admin/notices", "/admin/auths", "/admin/auths/new"} {
 		w := f.request(t, "GET", p, "member", nil, false)
 		if w.Code != 403 {
 			t.Errorf("nonadmin %s = %d", p, w.Code)
@@ -522,7 +522,7 @@ func TestSharedUIInstallerValidation(t *testing.T) {
 	setting.CustomConf = filepath.Join(f.root, "custom", "app.ini")
 	defer func() { setting.CustomConf = old }()
 	f.request(t, "GET", "/install", "", nil, false)
-	for _, tc := range []struct{ name, key, value string }{{"database", "db_type", "Unknown"}, {"path", "repo_root_path", filepath.Join(f.root, "blocked")}, {"administrator", "admin_name", "admin"}, {"password", "admin_confirm_passwd", "mismatch"}, {"URL", "app_url", "javascript:alert(1)"}, {"SSL", "ssl_mode", "invalid"}} {
+	for _, tc := range []struct{ name, key, value string }{{"database", "db_type", "Unknown"}, {"path", "repo_root_path", filepath.Join(f.root, "blocked")}, {"administrator", "admin_name", "admin"}, {"password", "admin_confirm_passwd", "mismatch"}, {"URL", "app_url", "javascript:alert(1)"}, {"SSL", "ssl_mode", "invalid"}, {"port", "http_port", "70000"}} {
 		t.Run(tc.name, func(t *testing.T) {
 			values := installerValues(f.root)
 			values.Set(tc.key, tc.value)
@@ -539,6 +539,9 @@ func TestSharedUIInstallerValidation(t *testing.T) {
 			sharedAccountPage(t, w, true)
 			if !strings.Contains(w.Body.String(), `role="alert"`) {
 				t.Fatal("invalid installer submission has no feedback")
+			}
+			if tc.name == "port" && !strings.Contains(accountControl(t, w.Body.String(), "http_port"), `aria-describedby="http_port-error"`) {
+				t.Error("invalid port has no field association")
 			}
 			if _, err := os.Stat(setting.CustomConf); !os.IsNotExist(err) {
 				t.Fatal("invalid setup wrote config", err)
@@ -647,19 +650,46 @@ func TestSharedUIAccountsCurrentReadPolicy(t *testing.T) {
 	if strings.Contains(wOwner.Body.String(), "private-team-project") {
 		t.Fatal("unready team repository exposed")
 	}
-	// An inactive actor must not gain a public metadata listing through profile.
+	// Rejected inactive credentials have anonymous authority on public pages;
+	// direct model reads must still reject the named inactive actor.
 	public := &models.Repository{OwnerId: f.admin.Id, Name: "public-profile-project", LowerName: "public-profile-project", State: models.RepositoryReady}
-	if _, err = db.Insert(public); err != nil {
+	private := &models.Repository{OwnerId: f.admin.Id, Name: "private-profile-project", LowerName: "private-profile-project", State: models.RepositoryReady, IsPrivate: true}
+	if _, err = db.Insert(public, private); err != nil {
 		t.Fatal(err)
 	}
+	f.request(t, "GET", "/user/login", "", nil, false)
+	login := f.request(t, "POST", "/user/login", "", url.Values{"uname": {"member"}, "password": {"password"}}, true)
+	if login.Code != 302 {
+		t.Fatalf("member session setup: %d", login.Code)
+	}
+	sessionCookies := f.cookies
 	f.member.IsActive = false
 	if err = models.UpdateUser(f.member); err != nil {
 		t.Fatal(err)
 	}
-	w := f.request(t, "GET", "/profile/administrator", "member", nil, false)
-	if strings.Contains(w.Body.String(), "public-profile-project") {
-		t.Fatal("profile bypassed current account policy")
+	access, err := models.RepositoryAccessFor(f.member.Id, public.Id)
+	if err != nil || access.Read {
+		t.Fatalf("named inactive actor gained model read: %+v %v", access, err)
 	}
+	for _, mode := range []string{"basic", "session"} {
+		who := "member"
+		f.cookies = map[string]*http.Cookie{}
+		if mode == "session" {
+			who = ""
+			f.cookies = sessionCookies
+		}
+		w := f.request(t, "GET", "/profile/administrator", who, nil, false)
+		sharedAccountPage(t, w, false)
+		if !strings.Contains(w.Body.String(), public.Name) {
+			t.Errorf("%s rejected credentials changed anonymous public access", mode)
+		}
+		for _, hidden := range []string{private.Name, f.admin.Email, `data-popout-target="hg-account"`} {
+			if strings.Contains(w.Body.String(), hidden) {
+				t.Errorf("%s rejected credentials retained private/signed authority: %s", mode, hidden)
+			}
+		}
+	}
+
 }
 func TestSharedUIAdminFormValidation(t *testing.T) {
 	f := accountApp(t, true)
@@ -672,10 +702,17 @@ func TestSharedUIAdminFormValidation(t *testing.T) {
 	}
 	path := fmt.Sprintf("/admin/auths/%d", source.Id)
 	sharedAccountPage(t, f.request(t, "GET", path, "administrator", nil, false), false)
-	w := f.request(t, "POST", path, "administrator", url.Values{"id": {fmt.Sprint(source.Id)}, "type": {"3"}, "name": {""}, "smtphost": {"preserved.example.invalid"}, "smtpport": {"587"}}, true)
+	w := f.request(t, "POST", path, "administrator", url.Values{"id": {fmt.Sprint(source.Id)}, "type": {"3"}, "name": {""}, "smtphost": {"preserved.example.invalid"}, "smtpport": {"587"}, "smtpauth": {"LOGIN"}}, true)
 	sharedAccountPage(t, w, false)
 	if !strings.Contains(w.Body.String(), `action="/code`+path+`"`) || !strings.Contains(w.Body.String(), `value="preserved.example.invalid"`) {
 		t.Error("authentication validation lost form/action")
+	}
+	if !regexp.MustCompile(`<option value="LOGIN"\s+selected`).MatchString(w.Body.String()) {
+		t.Error("submitted SMTP mechanism lost on edit")
+	}
+	w = f.request(t, "POST", "/admin/auths/new", "administrator", url.Values{"type": {"3"}, "name": {""}, "smtpauth": {"LOGIN"}}, true)
+	if !regexp.MustCompile(`<option value="LOGIN"\s+selected`).MatchString(w.Body.String()) {
+		t.Error("submitted SMTP mechanism lost on new")
 	}
 	path = fmt.Sprintf("/admin/users/%d", f.member.Id)
 	w = f.request(t, "POST", path, "administrator", url.Values{"email": {"invalid-email"}, "password": {"never-reflect-admin-password"}}, true)
@@ -1017,5 +1054,28 @@ func TestSharedUIAccountsTeamPermissionRetry(t *testing.T) {
 	}
 	if team.Authorize != models.ORG_READABLE {
 		t.Errorf("retry persisted %v, want read", team.Authorize)
+	}
+}
+
+func TestSharedUISignupAutocomplete(t *testing.T) {
+	f := accountApp(t, true)
+	w := f.request(t, "GET", "/user/sign_up", "", nil, false)
+	for name, token := range map[string]string{"uname": "username", "email": "email", "password": "new-password", "retype": "new-password"} {
+		if !strings.Contains(accountControl(t, w.Body.String(), name), `autocomplete="`+token+`"`) {
+			t.Errorf("%s missing autocomplete %s", name, token)
+		}
+	}
+}
+
+func TestSharedUIAdminTableContainers(t *testing.T) {
+	f := accountApp(t, true)
+	wrapper := regexp.MustCompile(`<div class="hg-table-scroll" tabindex="0" role="region" aria-label="[^"]+">\s*<table class="hg-table`)
+	for _, path := range []string{"/admin", "/admin/users", "/admin/orgs", "/admin/repos", "/admin/auths", "/admin/notices", "/admin/monitor"} {
+		w := f.request(t, "GET", path, "administrator", nil, false)
+		sharedAccountPage(t, w, false)
+		tables := strings.Count(w.Body.String(), `<table class="hg-table`)
+		if tables == 0 || len(wrapper.FindAllString(w.Body.String(), -1)) != tables {
+			t.Errorf("%s tables lack keyboard-focusable labelled containers", path)
+		}
 	}
 }

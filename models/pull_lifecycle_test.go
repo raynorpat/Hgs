@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 func TestCollaborationLifecycleMergeFence(t *testing.T) {
@@ -278,8 +279,16 @@ func TestCollaborationAcceptedProofAndTerminalDenial(t *testing.T) {
 	if err != nil || len(rows) != 1 || rows[0].AcceptedComparisonID != c.ID {
 		t.Fatalf("accepted proof: %+v %v", rows, err)
 	}
+	historical := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)
+	if _, err := x.NoAutoTime().Where("pull_id = ? AND reviewer_id = ?", p.ID, reviewer.Id).Cols("updated").Update(&PullReview{Updated: historical}); err != nil {
+		t.Fatal(err)
+	}
 	if err := DeleteHgRepository(ctx, t.TempDir(), p.SourceRepoID, func(context.Context, int64) error { return nil }, func(context.Context, int64) error { return nil }); err != nil {
 		t.Fatal(err)
+	}
+	var retainedReview PullReview
+	if _, err := x.Where("pull_id = ? AND reviewer_id = ?", p.ID, reviewer.Id).Get(&retainedReview); err != nil || retainedReview.Assigned || !retainedReview.Updated.Equal(historical) {
+		t.Fatalf("historical review timestamp changed: %+v %v", retainedReview, err)
 	}
 	if err := AddAccess(&Access{UserId: reviewer.Id, RepoId: p.TargetRepoID, Mode: WRITABLE}); err != nil {
 		t.Fatal(err)

@@ -187,7 +187,7 @@ func deleteRepositoryPullRows(s *xorm.Session, repoID int64) error {
 			if _, err := s.Where("pull_id = ? AND id <> ?", p.ID, d.AcceptedComparisonID).Cols("source_node", "target_node", "base_node", "state", "failure", "snapshot_complete").Update(&PullComparison{State: "unavailable", Failure: "source-deleted"}); err != nil {
 				return err
 			}
-			if _, err := s.Where("pull_id = ?", p.ID).Cols("assigned").Update(&PullReview{Assigned: false}); err != nil {
+			if _, err := s.NoAutoTime().Where("pull_id = ?", p.ID).Cols("assigned").Update(&PullReview{Assigned: false}); err != nil {
 				return err
 			}
 		}

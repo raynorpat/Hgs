@@ -76,7 +76,7 @@
                         </div>
                         <div class="hg-field">
                             <label class="req" for="http_port">{{.i18n.Tr "install.http_port"}}</label>
-                            <input  id="http_port" name="http_port" value="{{.http_port}}" required  {{if .Err_HttpPort}}aria-invalid="true" aria-describedby="http_port-error"{{end}}>{{if .Err_HttpPort}}<span class="hg-field-error" id="http_port-error">{{.Flash.ErrorMsg}}</span>{{end}}
+                            <input  id="http_port" name="http_port" value="{{.http_port}}" required  {{if .Err_HTTPPort}}aria-invalid="true" aria-describedby="http_port-error"{{end}}>{{if .Err_HTTPPort}}<span class="hg-field-error" id="http_port-error">{{.Flash.ErrorMsg}}</span>{{end}}
                             <span class="hg-meta">{{.i18n.Tr "install.http_port_helper"}}</span>
                         </div>
                         <div class="hg-field">

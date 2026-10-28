@@ -454,9 +454,6 @@ func (r *Runner) CloneVisible(ctx context.Context, sourcePath, outputPath string
 		if err != nil || desired[tag.Tag] != node {
 			continue
 		} // Secret/hidden local targets stay out.
-		if copied[tag.Tag] == node {
-			continue
-		}
 		if err = CheckPath(tag.Tag); err != nil {
 			return err
 		}

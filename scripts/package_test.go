@@ -35,7 +35,7 @@ func TestMain(m *testing.M) {
 func fixture(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	for _, name := range []string{"public/css/site.css", "templates/.VERSION", "conf/app.ini", "conf/locale/TRANSLATORS.md", "LICENSE", "README.md", "README_ZH.md", "CONTRIBUTORS.md", "docs/mercurial/installation.md", "docs/mercurial/operations.md", "docs/mercurial/compatibility.md", "docs/mercurial/operator-notes.md", "docs/mercurial/transport-evidence.md", "docs/mercurial/removed-features.md", "docs/mercurial/build-baseline.md"} {
+	for _, name := range []string{"public/css/site.css", "templates/.VERSION", "conf/app.ini", "conf/locale/TRANSLATORS.md", "LICENSE", "README.md", "README_ZH.md", "CONTRIBUTORS.md", "docs/mercurial/installation.md", "docs/mercurial/operations.md", "docs/mercurial/compatibility.md", "docs/mercurial/operator-notes.md", "docs/mercurial/transport-evidence.md", "docs/mercurial/removed-features.md", "docs/mercurial/build-baseline.md", "docs/mercurial/shared-ui-evidence.md", "docs/mercurial/review-operation-evidence.md"} {
 		put(t, filepath.Join(root, name), name)
 	}
 	return root
@@ -185,5 +185,35 @@ func TestPackageRequiresTranslatorAttribution(t *testing.T) {
 	}
 	if err := packageRelease(root, testBinary, filepath.Join(root, "release.zip")); err == nil {
 		t.Fatal("packaged without translator attribution")
+	}
+}
+
+func TestPackageSharedUIAssetsAndEvidence(t *testing.T) {
+	root, err := filepath.Abs("..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "shared-ui.zip")
+	if err = packageRelease(root, testBinary, out); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := zip.OpenReader(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	seen := map[string]int{}
+	for _, f := range archive.File {
+		seen[f.Name]++
+	}
+	for name := range seen {
+		if strings.HasSuffix(name, "_test.cjs") {
+			t.Errorf("packaged test source %s", name)
+		}
+	}
+	for _, name := range []string{"public/css/app.css", "public/js/app/shell.js", "public/js/app/forms.js", "public/js/app/markdown.js", "public/js/app/accounts.js", "public/js/app/repository.js", "public/js/app/prettify.js", "public/js/app/issues.js", "public/js/app/fork.js", "public/js/app/pulls.js", "public/img/ui-icons.svg", "templates/shared/head.tmpl", "conf/locale/locale_en-US.ini", "conf/locale/locale_de-DE.ini", "docs/mercurial/shared-ui-evidence.md", "docs/mercurial/review-operation-evidence.md"} {
+		if seen[name] != 1 {
+			t.Errorf("package %s count=%d", name, seen[name])
+		}
 	}
 }

@@ -24,6 +24,7 @@ var files = []string{
 	"docs/mercurial/installation.md", "docs/mercurial/operations.md", "docs/mercurial/compatibility.md",
 	"docs/mercurial/operator-notes.md", "docs/mercurial/transport-evidence.md",
 	"docs/mercurial/removed-features.md", "docs/mercurial/build-baseline.md",
+	"docs/mercurial/shared-ui-evidence.md", "docs/mercurial/review-operation-evidence.md",
 }
 var trees = []string{"public", "templates", "conf/locale"}
 
@@ -161,6 +162,9 @@ func packageRelease(root, binary, out string) (err error) {
 			switch strings.ToLower(filepath.Ext(base)) {
 			case ".pem", ".key", ".crt", ".pfx", ".db", ".sqlite", ".sqlite3", ".log", ".exe":
 				return fmt.Errorf("private/runtime file in assets: %s", p)
+			}
+			if strings.HasPrefix(name, "public/js/app/") && strings.HasSuffix(base, "_test.cjs") {
+				return nil
 			}
 			ext := strings.ToLower(filepath.Ext(base))
 			allowed := false

@@ -47,7 +47,6 @@ import (
 	"github.com/gogits/gogs/routers"
 	"github.com/gogits/gogs/routers/admin"
 	"github.com/gogits/gogs/routers/api/v1"
-	"github.com/gogits/gogs/routers/dev"
 	"github.com/gogits/gogs/routers/org"
 	"github.com/gogits/gogs/routers/repo"
 	"github.com/gogits/gogs/routers/user"
@@ -140,9 +139,16 @@ func newMacaron() *macaron.Macaron {
 		AdapterConfig: setting.CacheConn,
 		Interval:      setting.CacheInternal,
 	}))
-	m.Use(captcha.Captchaer(captcha.Options{
-		SubURL: setting.AppSubUrl,
-	}))
+	captchaHandler := captcha.Captchaer(captcha.Options{SubURL: setting.AppSubUrl})
+	m.Use(func(ctx *macaron.Context) {
+		// The pinned image handler matches its route-relative URL prefix.
+		original := ctx.Req.RequestURI
+		ctx.Req.RequestURI = ctx.Req.URL.RequestURI()
+		defer func() { ctx.Req.RequestURI = original }()
+		if _, err := ctx.Invoke(captchaHandler); err != nil {
+			panic(err)
+		}
+	})
 	m.Use(session.Sessioner(setting.SessionConfig))
 	m.Use(csrf.Csrfer(csrf.Options{
 		Secret:     setting.SecretKey,
@@ -412,10 +418,6 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 	}, adminReq)
 
 	m.Get("/:username", ignSignIn, user.Profile)
-
-	if macaron.Env == macaron.DEV {
-		m.Get("/template/*", dev.TemplatePreview)
-	}
 
 	reqTrueOwner := middleware.RequireTrueOwner()
 

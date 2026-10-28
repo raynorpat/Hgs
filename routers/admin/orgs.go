@@ -15,7 +15,7 @@ const (
 )
 
 func Organizations(ctx *middleware.Context) {
-	ctx.Data["Title"] = ctx.Tr("admin.orgs")
+	ctx.Data["Title"] = ctx.Tr("admin.organizations")
 	ctx.Data["PageIsAdmin"] = true
 	ctx.Data["PageIsAdminOrganizations"] = true
 

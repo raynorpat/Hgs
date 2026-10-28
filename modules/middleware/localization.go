@@ -2,8 +2,10 @@ package middleware
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	core "github.com/Unknwon/i18n"
 	"github.com/Unknwon/macaron"
@@ -57,5 +59,21 @@ func Localization(opt i18n.Options) macaron.Handler {
 			panic(fmt.Errorf("locale %s: %w", lang, err))
 		}
 	}
-	return i18n.I18n(opt)
+	selectLocale := i18n.I18n(opt)
+	return func(ctx *macaron.Context) {
+		// The pinned selector adds SubURL on redirects. Macaron already made
+		// URL route-relative, while retaining the original RequestURI.
+		original := ctx.Req.RequestURI
+		routeURL := *ctx.Req.URL
+		// Macaron trims Path alone; keep its escaped counterpart relative too.
+		if routeURL.RawPath != "" {
+			prefix := (&url.URL{Path: strings.TrimSuffix(opt.SubURL, "/")}).EscapedPath()
+			routeURL.RawPath = strings.TrimPrefix(routeURL.RawPath, prefix)
+		}
+		ctx.Req.RequestURI = routeURL.RequestURI()
+		defer func() { ctx.Req.RequestURI = original }()
+		if _, err := ctx.Invoke(selectLocale); err != nil {
+			panic(err)
+		}
+	}
 }

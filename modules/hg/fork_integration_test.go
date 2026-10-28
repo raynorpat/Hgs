@@ -130,3 +130,40 @@ func TestForkAllVisibleBranchesAndIndependentStorage(t *testing.T) {
 		}
 	}
 }
+
+func TestForkEqualNodeLocalTagProvenance(t *testing.T) {
+	f := newReviewFixture(t)
+	f.write("a", "second")
+	f.commit("second")
+	f.hg(f.work, "tag", "-u", "fixture", "-r", string(f.nodes["base"]), "same-tag")
+	f.hg(f.work, "tag", "--local", "--force", "-r", string(f.nodes["base"]), "same-tag")
+	out := filepath.Join(f.root, "equal-tag-fork")
+	second := filepath.Join(f.root, "equal-tag-fork-of-fork")
+	if err := f.r.CloneVisible(f.ctx, f.work, out); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.r.CloneVisible(f.ctx, out, second); err != nil {
+		t.Fatal(err)
+	}
+	assertNative := func(stage string) {
+		t.Helper()
+		want := f.hg(f.work, "tags", "--verbose", "-T", "{tag} {node} {type}\n")
+		for _, path := range []string{out, second} {
+			if got := f.hg(path, "tags", "--verbose", "-T", "{tag} {node} {type}\n"); got != want {
+				t.Errorf("%s native tag resolution/type differs: %s vs %s", stage, got, want)
+			}
+			local, err := os.ReadFile(filepath.Join(path, ".hg", "localtags"))
+			if err != nil || !strings.Contains(string(local), string(f.nodes["base"])+" same-tag") {
+				t.Errorf("%s local provenance lost: %s %v", stage, local, err)
+			}
+		}
+	}
+	assertNative("equal-node override")
+	// Native Mercurial may prefer a newer global tag whose history supersedes
+	// the local node. Preserve native semantics and local provenance together.
+	f.hg(f.work, "tag", "--force", "-u", "fixture", "-r", string(f.nodes["second"]), "same-tag")
+	for _, path := range []string{out, second} {
+		f.hg(path, "pull", f.work)
+	}
+	assertNative("global history moved")
+}

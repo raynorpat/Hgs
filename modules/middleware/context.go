@@ -108,7 +108,7 @@ func (ctx *Context) HTML(status int, name base.TplName) {
 	if ctx.Repo.FinishRead != nil {
 		ctx.Repo.FinishRead()
 	}
-	if status == 200 && ctx.PrepareHTML != nil {
+	if status < 500 && ctx.PrepareHTML != nil {
 		if err := ctx.PrepareHTML(ctx); err != nil {
 			log.Error(4, "PrepareHTML: %v", err)
 			ctx.Error(500)

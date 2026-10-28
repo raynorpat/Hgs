@@ -13,19 +13,19 @@
             {{else}}
             <div class="hg-field">
                 <label class="req" for="username">{{.i18n.Tr "username"}}</label>
-                <input  id="username" name="uname" type="text" value="{{.uname}}" required {{if .Err_UserName}}aria-invalid="true" aria-describedby="username-error"{{end}}>{{if .Err_UserName}}<span class="hg-field-error" id="username-error">{{.Flash.ErrorMsg}}</span>{{end}}
+                <input  id="username" name="uname" type="text" autocomplete="username" value="{{.uname}}" required {{if .Err_UserName}}aria-invalid="true" aria-describedby="username-error"{{end}}>{{if .Err_UserName}}<span class="hg-field-error" id="username-error">{{.Flash.ErrorMsg}}</span>{{end}}
             </div>
             <div class="hg-field">
                 <label class="req" for="email">{{.i18n.Tr "email"}}</label>
-                <input  id="email" name="email" type="email" value="{{.email}}" required  {{if .Err_Email}}aria-invalid="true" aria-describedby="email-error"{{end}}>{{if .Err_Email}}<span class="hg-field-error" id="email-error">{{.Flash.ErrorMsg}}</span>{{end}}
+                <input  id="email" name="email" type="email" autocomplete="email" value="{{.email}}" required  {{if .Err_Email}}aria-invalid="true" aria-describedby="email-error"{{end}}>{{if .Err_Email}}<span class="hg-field-error" id="email-error">{{.Flash.ErrorMsg}}</span>{{end}}
             </div>
             <div class="hg-field">
                 <label class="req" for="password">{{.i18n.Tr "password"}}</label>
-                <input  id="password" name="password" type="password" required {{if .Err_Password}}aria-invalid="true" aria-describedby="password-error"{{end}}>{{if .Err_Password}}<span class="hg-field-error" id="password-error">{{.Flash.ErrorMsg}}</span>{{end}}
+                <input  id="password" name="password" type="password" autocomplete="new-password" required {{if .Err_Password}}aria-invalid="true" aria-describedby="password-error"{{end}}>{{if .Err_Password}}<span class="hg-field-error" id="password-error">{{.Flash.ErrorMsg}}</span>{{end}}
             </div>
             <div class="hg-field">
                 <label class="req" for="re-type">{{.i18n.Tr "re_type"}}</label>
-                <input  id="re-type" name="retype" type="password" required {{if .Err_Password}}aria-invalid="true" aria-describedby="re-type-error"{{end}}>{{if .Err_Password}}<span class="hg-field-error" id="re-type-error">{{.Flash.ErrorMsg}}</span>{{end}}
+                <input  id="re-type" name="retype" type="password" autocomplete="new-password" required {{if .Err_Password}}aria-invalid="true" aria-describedby="re-type-error"{{end}}>{{if .Err_Password}}<span class="hg-field-error" id="re-type-error">{{.Flash.ErrorMsg}}</span>{{end}}
             </div>
             <div class="hg-field">
                 {{.Captcha.CreateHtml}}

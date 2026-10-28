@@ -62,7 +62,7 @@ jobs:
           test -f "$GOGS_TEST_HG"
           "$GOGS_TEST_HG" --config extensions.hggit=! version --quiet
           ssh -V
-      - run: go test -tags integration ./cmd ./models ./modules/hg ./modules/hgbridge ./modules/ssh ./modules/hosting ./routers/hg ./routers/repo ./tests/integration -count=1 -timeout 60m -v
+      - run: go test -tags integration ./cmd ./models ./modules/hg ./modules/hgbridge ./modules/ssh ./modules/hosting ./modules/collaboration ./routers/hg ./routers/repo ./tests/integration -count=1 -timeout 60m -v
 
   # The same suite with the Mercurial 5.0.2 server and 2.0.2 client rows,
   # which need Python 2.7 (from the runner's preinstalled conda).
@@ -103,7 +103,7 @@ jobs:
           test -x "$GOGS_TEST_HG_OLD_SERVER"
           test -x "$GOGS_TEST_HG_OLD_CLIENT"
           ssh -V
-      - run: go test -tags integration ./cmd ./models ./modules/hg ./modules/hgbridge ./modules/ssh ./modules/hosting ./routers/hg ./routers/repo ./tests/integration -count=1 -timeout 60m -v
+      - run: go test -tags integration ./cmd ./models ./modules/hg ./modules/hgbridge ./modules/ssh ./modules/hosting ./modules/collaboration ./routers/hg ./routers/repo ./tests/integration -count=1 -timeout 60m -v
 
   # Native archive/recovery receipts must come from this job's actual OS.
   # Merely configuring these rows does not establish platform support.
@@ -172,7 +172,7 @@ jobs:
         shell: bash
         run: echo 'C:/msys64/mingw64/bin' >> "$GITHUB_PATH"
       - run: gcc --version
-      - run: go test -race ./modules/hg ./modules/hgbridge ./modules/ssh ./modules/hosting ./models -count=1 -timeout 15m
+      - run: go test -race ./modules/hg ./modules/hgbridge ./modules/ssh ./modules/hosting ./models ./modules/collaboration -count=1 -timeout 40m
 
   database:
     strategy:

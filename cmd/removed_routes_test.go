@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/Unknwon/macaron"
 	"strings"
 	"testing"
 
@@ -85,6 +86,20 @@ func TestForkRouteAndHeaderAvailable(t *testing.T) {
 		w := a.request(t, "GET", path, "", "alice")
 		if w.Code != 200 || !strings.Contains(w.Body.String(), "/gogs/alice/project/fork") {
 			t.Fatalf("fork route/header %s: %d %s", path, w.Code, w.Body)
+		}
+	}
+}
+
+func TestSharedUIDemoRoutesAbsent(t *testing.T) {
+	old := macaron.Env
+	macaron.Env = macaron.DEV
+	defer func() { macaron.Env = old }()
+	a := newViewApp(t)
+	for _, path := range []string{"/template/repo/issue2/list", "/template/repo/milestone2/list", "/template/base/head", "/alice/project/issues2", "/alice/project/milestone2"} {
+		for _, method := range []string{"GET", "POST"} {
+			if w := a.request(t, method, "/gogs"+path, "", "alice"); w.Code != 404 && w.Code != 405 {
+				t.Errorf("demo %s %s = %d", method, path, w.Code)
+			}
 		}
 	}
 }

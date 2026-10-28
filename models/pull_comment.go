@@ -33,7 +33,7 @@ type PullCommentAnchor struct {
 	Line         int
 }
 
-// shortcut: a deny-list of active-content markers; rendering still sanitizes.
+// a deny-list of active-content markers; rendering still sanitizes.
 var unsafeCommentMarkup = regexp.MustCompile(`(?i)<\s*/?\s*(script|iframe|object|embed|style|link|meta)\b|\b(javascript|vbscript)\s*:|data\s*:\s*text/html|<[^>]*\bon[a-z]+\s*=`)
 
 func validPullComment(body string) bool {

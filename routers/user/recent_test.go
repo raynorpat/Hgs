@@ -181,6 +181,10 @@ func TestCatalogRoutesPolicyAndInput(t *testing.T) {
 			if w.Code != 200 || !strings.Contains(w.Body.String(), "bob-secret") || strings.Contains(w.Body.String(), "alice-secret") {
 				t.Fatal("account search", w.Code, w.Body)
 			}
+			w = f.request("GET", "/explore/search?q=public-lab", "", "", nil)
+			if !strings.Contains(w.Body.String(), ">1 repository</p>") {
+				t.Error("singular result count missing", w.Body.String())
+			}
 			for _, query := range []string{"page=no", "page=-1", "visibility=oops", "scope=oops", "page_size=x", "q=" + url.QueryEscape(strings.Repeat("界", 201))} {
 				w = f.request("GET", "/explore/search?"+query, f.alice.Name, "", nil)
 				if w.Code != 400 || !strings.Contains(w.Body.String(), "role=\"alert\"") {

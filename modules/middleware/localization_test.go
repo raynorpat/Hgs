@@ -82,3 +82,56 @@ func TestLocalizationLayersEnglishFallback(t *testing.T) {
 		t.Fatal("repeat composition lost fallback")
 	}
 }
+
+func TestLocalizationRedirectSubURLRestoresRequestURI(t *testing.T) {
+	for _, tc := range []struct{ name, prefix, file string }{
+		{"root", "", "source%20file.txt"}, {"subcode", "/code", "source%20file.txt"},
+		{"rootRaw", "", "source%2Ffile.txt"}, {"subcodeRaw", "/code", "source%2Ffile.txt"},
+	} {
+		prefix := tc.prefix
+		t.Run(tc.name, func(t *testing.T) {
+			m := macaron.New()
+			m.SetURLPrefix(prefix)
+			m.Use(macaron.Renderer(macaron.RenderOptions{Directory: t.TempDir()}))
+			var after, downstream string
+			m.Use(func(ctx *macaron.Context) { ctx.Next(); after = ctx.Req.RequestURI })
+			m.Use(Localization(i18n.Options{Directory: "../../conf/locale", CustomDirectory: t.TempDir(), Langs: []string{"en-US", "de-DE"}, Names: []string{"English", "Deutsch"}, SubURL: prefix, Redirect: true}))
+			m.Use(func(ctx *macaron.Context) { downstream = ctx.Req.RequestURI })
+			m.Get("/owner/repo/src/:node/*", func(ctx *macaron.Context) { ctx.Resp.Write([]byte(ctx.Locale.Language())) })
+			path := prefix + "/owner/repo/src/abc/" + tc.file
+			original := path + "?lang=de-DE&q=a%2Fb"
+			w := httptest.NewRecorder()
+			m.ServeHTTP(w, httptest.NewRequest("GET", original, nil))
+			if w.Code != 302 || w.Header().Get("Location") != path {
+				t.Fatalf("redirect = %d %s, want %s", w.Code, w.Header().Get("Location"), path)
+			}
+			if after != original {
+				t.Errorf("redirect changed original RequestURI: %q", after)
+			}
+			followURI := path + "?q=a%2Fb"
+			request := httptest.NewRequest("GET", followURI, nil)
+			found := false
+			for _, cookie := range w.Result().Cookies() {
+				if cookie.Name == "lang" {
+					want := prefix
+					if want == "" {
+						want = "/"
+					}
+					if cookie.Path != want || cookie.Value != "de-DE" {
+						t.Errorf("language cookie: %+v", cookie)
+					}
+					request.AddCookie(cookie)
+					found = true
+				}
+			}
+			if !found {
+				t.Fatal("missing language cookie")
+			}
+			result := httptest.NewRecorder()
+			m.ServeHTTP(result, request)
+			if result.Code != 200 || result.Body.String() != "de-DE" || downstream != followURI || after != followURI {
+				t.Fatalf("follow = %d %q downstream=%q after=%q", result.Code, result.Body.String(), downstream, after)
+			}
+		})
+	}
+}

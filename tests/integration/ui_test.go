@@ -23,6 +23,7 @@ import (
 	"github.com/gogits/gogs/models"
 	"github.com/gogits/gogs/modules/auth"
 	"github.com/gogits/gogs/modules/base"
+	"github.com/gogits/gogs/modules/collaboration"
 	"github.com/gogits/gogs/modules/hg"
 	"github.com/gogits/gogs/modules/hosting"
 	"github.com/gogits/gogs/modules/middleware"
@@ -53,12 +54,12 @@ func newUIFixture(t *testing.T, prefix string) *uiFixture {
 	t.Helper()
 	root := t.TempDir()
 	oldDB, oldHas := models.DbCfg, models.HasEngine
-	oldGravatar := setting.DisableGravatar
+	oldGravatar, oldAvatarPath := setting.DisableGravatar, setting.AvatarUploadPath
 	oldLog, oldRoot, oldSub, oldURL, oldInstall, oldService := setting.LogRootPath, setting.RepoRootPath, setting.AppSubUrl, setting.AppUrl, setting.InstallLock, setting.Service
 	t.Cleanup(func() {
 		models.CloseEngine()
 		models.DbCfg, models.HasEngine = oldDB, oldHas
-		setting.DisableGravatar = oldGravatar
+		setting.DisableGravatar, setting.AvatarUploadPath = oldGravatar, oldAvatarPath
 		setting.LogRootPath, setting.RepoRootPath, setting.AppSubUrl, setting.AppUrl, setting.InstallLock, setting.Service = oldLog, oldRoot, oldSub, oldURL, oldInstall, oldService
 	})
 	models.DbCfg.Type = "sqlite3"
@@ -71,6 +72,7 @@ func newUIFixture(t *testing.T, prefix string) *uiFixture {
 	setting.Service.RequireSignInView = false
 	setting.Service.EnableNotifyMail = false
 	setting.DisableGravatar = true
+	setting.AvatarUploadPath = filepath.Join(root, "avatars")
 	if err := models.NewEngine(); err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +89,11 @@ func newUIFixture(t *testing.T, prefix string) *uiFixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { f.db.Close() })
-	service, err := hosting.New(context.Background(), hosting.Config{Mercurial: hg.Config{Executable: hgPath(t), ConfigPath: filepath.Join(root, "managed", "hgrc"), MaxProcesses: 1}, ReviewArtifactRoot: filepath.Join(root, "comparisons"), RepositoryRoot: setting.RepoRootPath, HostKeyPath: filepath.Join(root, "host-key"), PublicURL: setting.AppUrl, AppSubURL: prefix})
+	publicRoot, err := filepath.Abs("../../public")
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := hosting.New(context.Background(), hosting.Config{RepositoryCleanup: collaboration.RepositoryCleanup(setting.RepoRootPath, filepath.Join(root, "comparisons"), publicRoot, setting.AvatarUploadPath), Mercurial: hg.Config{Executable: hgPath(t), ConfigPath: filepath.Join(root, "managed", "hgrc"), MaxProcesses: 1}, ReviewArtifactRoot: filepath.Join(root, "comparisons"), RepositoryRoot: setting.RepoRootPath, HostKeyPath: filepath.Join(root, "host-key"), PublicURL: setting.AppUrl, AppSubURL: prefix})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -492,4 +498,21 @@ func TestSharedUIRepositoryMutations(t *testing.T) {
 		t.Errorf("deleted repository remains: %v", err)
 	}
 
+}
+
+func TestSharedUIVisibilityGuidance(t *testing.T) {
+	f := newUIFixture(t, "/code")
+	for _, lang := range []string{"en-US", "de-DE"} {
+		for _, r := range []*models.Repository{f.public, f.private} {
+			w := f.get(t, "/fixtureowner/"+r.Name+"/settings?lang="+lang, "owner")
+			requireUI(t, w, "")
+			control := accountControl(t, w.Body.String(), "private")
+			if strings.Contains(control, "checked") != r.IsPrivate {
+				t.Errorf("%s %s checkbox changed: %s", lang, r.Name, control)
+			}
+			if strings.Contains(w.Body.String(), "This repository is") || strings.Contains(w.Body.String(), "Dieses Repository ist") {
+				t.Errorf("%s guidance asserts an unconditional private state", lang)
+			}
+		}
+	}
 }

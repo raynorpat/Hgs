@@ -137,6 +137,28 @@ func TestSharedUIIssuesWorkflow(t *testing.T) {
 	if err := models.WatchRepo(f.reader.Id, f.empty.Id, true); err != nil {
 		t.Fatal(err)
 	}
+	// Submit the actual rendered label form, including its action and hidden
+	// fields, so source-form drift cannot be hidden by a hand-built request.
+	labelPage := f.get(t, root+"/issues/1", "owner")
+	labelForm := regexp.MustCompile(`(?s)<form action="([^"]+/label)"[^>]*>(.*?)</form>`).FindStringSubmatch(labelPage.Body.String())
+	if len(labelForm) != 3 {
+		t.Fatal("rendered label form missing")
+	}
+	labelValues := url.Values{}
+	for _, field := range regexp.MustCompile(`<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"`).FindAllStringSubmatch(labelForm[2], -1) {
+		labelValues.Add(field[1], html.UnescapeString(field[2]))
+	}
+	labelResponse := f.post(t, strings.TrimPrefix(html.UnescapeString(labelForm[1]), f.prefix), "owner", labelValues, true)
+	if labelResponse.Code != 303 {
+		t.Fatalf("rendered label form failed: %d", labelResponse.Code)
+	}
+	labeled, err := models.GetIssueById(issue.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = labeled.GetLabels(); err != nil || len(labeled.Labels) != 1 || labeled.Labels[0].Name != "Arbitrary label" {
+		t.Fatalf("rendered label form did not attach: %+v %v", labeled.Labels, err)
+	}
 	for _, mutation := range []struct {
 		path   string
 		values url.Values

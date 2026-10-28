@@ -4,10 +4,18 @@ package integration
 
 import (
 	"context"
+	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/cookiejar"
 	"net/url"
+	"os"
 	"path/filepath"
+	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -134,4 +142,174 @@ func TestCollaborationMergedHistoryHTTP(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "line one") {
 		t.Fatalf("accepted file: %d %s", w.Code, w.Body.String())
 	}
+}
+
+// Run a real configured application with a private package tree and a server
+// PATH whose directories contain no Git executable. Native HTTPS clients keep
+// their own environment; every collaboration mutation uses production forms.
+func TestCollaborationAcceptanceNoGit(t *testing.T) {
+	packageRoot := t.TempDir()
+	binary := filepath.Join(packageRoot, filepath.Base(gogsExe))
+	data, err := os.ReadFile(gogsExe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(binary, data, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, tree := range []string{"conf", "public", "templates"} {
+		if err = os.CopyFS(filepath.Join(packageRoot, tree), os.DirFS(filepath.Join("../..", tree))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var safe []string
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		if dir == "" {
+			continue
+		}
+		forbidden := false
+		for _, name := range []string{"git", "git.exe", "git.cmd", "git.bat"} {
+			if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+				forbidden = true
+			}
+		}
+		if !forbidden {
+			safe = append(safe, dir)
+		}
+	}
+	originalBinary := gogsExe
+	gogsExe = binary
+	defer func() { gogsExe = originalBinary }()
+	t.Setenv("GOGS_TEST_BINARY", binary)
+	t.Setenv("GOGS_TEST_ASSETS", packageRoot)
+	t.Setenv("GOGS_TEST_PACKAGE_DIRECT", "1")
+	t.Setenv("GOGS_TEST_SERVER_PATH", strings.Join(safe, string(os.PathListSeparator)))
+	t.Logf("actual %s application with Git-free server PATH=%s", runtime.GOOS, os.Getenv("GOGS_TEST_SERVER_PATH"))
+	a := newConfiguredApplication(t, matrix(t)[0], func(config string) string {
+		return strings.Replace(config, "SESSION_TIMEOUT = 2", "SESSION_TIMEOUT = 120", 1)
+	}, 5*time.Minute)
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, Jar: jar, Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	defer client.CloseIdleConnections()
+	token := ""
+	request := func(method, path string, form url.Values) (int, string, string) {
+		t.Helper()
+		body := ""
+		if form != nil {
+			body = form.Encode()
+		}
+		req, e := http.NewRequest(method, "https://"+a.address+path, strings.NewReader(body))
+		if e != nil {
+			t.Fatal(e)
+		}
+		req.Header.Set("Accept", "text/html")
+		if method == "POST" {
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.Header.Set("X-Csrf-Token", token)
+		}
+		response, e := client.Do(req)
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer response.Body.Close()
+		b, e := io.ReadAll(response.Body)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if match := regexp.MustCompile(`<meta name="_csrf" content="([^"]+)"`).FindSubmatch(b); match != nil {
+			token = string(match[1])
+		}
+		return response.StatusCode, string(b), response.Header.Get("Location")
+	}
+	check := func(method, path string, form url.Values, want int) (string, string) {
+		t.Helper()
+		code, body, location := request(method, path, form)
+		if code != want {
+			t.Fatalf("%s %s=%d want %d: %s", method, path, code, want, body)
+		}
+		return body, location
+	}
+	check("GET", "/user/login", nil, 200)
+	check("POST", "/user/login", url.Values{"uname": {"owner"}, "password": {"password"}}, 302)
+	target, opts := a.remote(t, transportHTTP, "owner", "public")
+	work := filepath.Join(a.root, "native-proposal")
+	a.client.must(t, "", append(append([]string{}, opts...), "clone", target, work)...)
+	if err = os.WriteFile(filepath.Join(work, "base.txt"), []byte("base\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	a.client.must(t, work, "add")
+	a.client.must(t, work, "commit", "-u", "owner", "-m", "base")
+	a.client.must(t, work, append(append([]string{}, opts...), "push", target)...)
+	check("GET", "/owner/public/fork", nil, 200)
+	_, progress := check("POST", "/owner/public/fork", url.Values{"uid": {fmt.Sprint(a.users["owner"].Id)}, "repo_name": {"acceptance-fork"}}, 302)
+	for deadline := time.Now().Add(60 * time.Second); ; time.Sleep(100 * time.Millisecond) {
+		code, body, _ := request("GET", progress+"/status", nil)
+		if code == 200 && strings.Contains(body, `"ready"`) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("fork timeout: %d %s", code, body)
+		}
+	}
+	source := strings.Replace(target, "/public", "/acceptance-fork", 1)
+	if err = os.WriteFile(filepath.Join(work, "proposal.txt"), []byte("proposal\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	a.client.must(t, work, "add")
+	a.client.must(t, work, "commit", "-u", "owner", "-m", "proposal")
+	a.client.must(t, work, append(append([]string{}, opts...), "push", source)...)
+	sourceNode := strings.TrimSpace(a.client.stdout(t, work, "log", "-r", "tip", "-T", "{node}"))
+	check("GET", "/owner/public/pulls/new", nil, 200)
+	_, detail := check("POST", "/owner/public/pulls/new", url.Values{"title": {"No Git acceptance"}, "source_repository": {"owner/acceptance-fork"}, "source_kind": {"branch"}, "source_name": {"default"}, "target_kind": {"branch"}, "target_name": {"default"}}, 303)
+	check("GET", detail, nil, 200)
+	check("POST", detail+"/refresh", url.Values{}, 303)
+	body, _ := check("GET", detail, nil, 200)
+	comparison := hiddenPull(t, body, "comparison_id")
+	check("POST", detail+"/reviewers", url.Values{"reviewers": {"writer"}}, 303)
+	check("POST", "/user/logout", nil, 302)
+	check("GET", "/user/login", nil, 200)
+	check("POST", "/user/login", url.Values{"uname": {"writer"}, "password": {"password"}}, 302)
+	check("GET", detail, nil, 200)
+	check("POST", detail+"/review", url.Values{"comparison_id": {comparison}, "state": {"approved"}}, 303)
+	check("POST", "/user/logout", nil, 302)
+	check("GET", "/user/login", nil, 200)
+	check("POST", "/user/login", url.Values{"uname": {"owner"}, "password": {"password"}}, 302)
+	body, _ = check("GET", detail, nil, 200)
+	_, operation := check("POST", detail+"/merge", url.Values{"confirm": {"true"}, "comparison_id": {comparison}, "source_node": {hiddenPull(t, body, "source_node")}, "target_node": {hiddenPull(t, body, "target_node")}, "merge_key": {hiddenPull(t, body, "merge_key")}}, 303)
+	for deadline := time.Now().Add(90 * time.Second); ; time.Sleep(250 * time.Millisecond) {
+		req, e := http.NewRequest("GET", "https://"+a.address+operation, nil)
+		if e != nil {
+			t.Fatal(e)
+		}
+		req.Header.Set("Accept", "application/json")
+		response, e := client.Do(req)
+		if e != nil {
+			t.Fatal(e)
+		}
+		payload, e := io.ReadAll(response.Body)
+		response.Body.Close()
+		if e != nil {
+			t.Fatal(e)
+		}
+		var status struct{ State, Code string }
+		if e = json.Unmarshal(payload, &status); e != nil {
+			t.Fatalf("operation JSON: %s %v", payload, e)
+		}
+		if response.StatusCode == 200 && status.State == "merged" {
+			break
+		}
+		if status.State == "failed" || time.Now().After(deadline) {
+			serverLog, _ := os.ReadFile(filepath.Join(a.root, "server.log"))
+			if len(serverLog) > 12000 {
+				serverLog = serverLog[len(serverLog)-12000:]
+			}
+			t.Fatalf("same operation %s: HTTP%d %+v; server tail:\n%s", operation, response.StatusCode, status, serverLog)
+		}
+	}
+	store, _ := models.RepositoryStoragePath(a.repoRoot, a.repos["public"].Id)
+	if got := strings.TrimSpace(a.inspect.stdout(t, store, "log", "-r", sourceNode, "-T", "{node}")); got != sourceNode {
+		t.Fatalf("merged node=%s", got)
+	}
+	check("GET", detail, nil, 200)
+	t.Log("actual startup, HTTPS push, fork form/status, exact source PR, comparison, formal review and same-operation merge passed without Git on server PATH")
 }

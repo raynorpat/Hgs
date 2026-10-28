@@ -1371,17 +1371,3 @@ func IssueGetAttachment(ctx *middleware.Context) {
 	// We must put the name in " manually.
 	ctx.ServeFile(attachment.Path, "\""+attachment.Name+"\"")
 }
-
-// testing route handler for new issue ui page
-// todo : move to Issue() function
-func Issues2(ctx *middleware.Context) {
-	ctx.HTML(200, "repo/issue2/list")
-}
-
-func Labels2(ctx *middleware.Context) {
-	ctx.HTML(200, "repo/issue2/labels")
-}
-
-func Milestones2(ctx *middleware.Context) {
-	ctx.HTML(200, "repo/milestone2/list")
-}
