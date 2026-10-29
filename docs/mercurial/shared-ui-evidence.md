@@ -1,5 +1,13 @@
 # Shared UI integration prerequisite evidence
 
+## Final development handoff — 2026-10-29
+
+Tasks0–25 and the final whole-branch review are complete for development. The review covered677 changed paths; its nine Important and nine Minor findings were addressed and independently re-reviewed in one final fix wave. No Critical or Important finding remains. A newly observed cosmetic Minor—canonical pull-request History reason labels needing localization—is explicitly deferred in ruling70. All controller rulings and costs are preserved in [the decision record](shared-ui-decisions.md).
+
+The [final implementation handoff](ui-implementation-handoff.md) supersedes earlier pending-final-review statements below without changing historical receipts. Full ordinary/build/vet commands completed successfully at runtime freeze `6b79e73`; the tagged command failed only four external LDAP connection timeouts and includes a passing native `tests/integration` package. Race cannot build with the available cgo/compiler setup. Skips and unperformed platform/database/fault/accessibility gates remain open. The later `162baf6` contains only a Cron test-observation correction, verified by complete ordinary/tagged owning package runs; no full compound run at that later commit is claimed.
+
+[Final browser evidence](ui-final/README.md) preserves15 inspected captures, their hashes/source identities, exact geometry and fixture limits. Completed structured command receipts, failure/skip indexes and process cleanup are in its validation directory. All owned fixtures and command processes stopped and joined; user testing tabs were preserved. Original failures and full raw logs remain retained in the controller evidence. The worktree and branch remain available; no runtime merge, push or release was performed.
+
 ## Current development handoff — 2026-10-26
 
 **Task 0: development baseline ready under the explicit user direction to branch from mercurial-hosting and start. Release/native matrix acceptance is not complete.**

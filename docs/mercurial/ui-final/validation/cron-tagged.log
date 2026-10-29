@@ -1,0 +1,48 @@
+=== RUN   TestConstantDelayNext
+--- PASS: TestConstantDelayNext (0.00s)
+=== RUN   TestNoEntries
+--- PASS: TestNoEntries (0.00s)
+=== RUN   TestStopCausesJobsToNotRun
+--- PASS: TestStopCausesJobsToNotRun (1.01s)
+=== RUN   TestAddBeforeRunning
+--- PASS: TestAddBeforeRunning (0.07s)
+=== RUN   TestAddWhileRunning
+--- PASS: TestAddWhileRunning (1.00s)
+=== RUN   TestSnapshotEntries
+--- PASS: TestSnapshotEntries (2.00s)
+=== RUN   TestMultipleEntries
+--- PASS: TestMultipleEntries (1.00s)
+=== RUN   TestRunningJobTwice
+--- PASS: TestRunningJobTwice (2.00s)
+=== RUN   TestRunningMultipleSchedules
+--- PASS: TestRunningMultipleSchedules (1.00s)
+=== RUN   TestLocalTimezone
+--- PASS: TestLocalTimezone (1.00s)
+=== RUN   TestJob
+=== RUN   TestJob/delayed-initialization=false
+    cron_test.go:323: startup=2026-10-29T07:50:18.0007022-04:00 first-due=2026-10-29T07:50:19-04:00 snapshot-next=2026-10-29T07:50:19-04:00 actual=2026-10-29T07:50:19.0009388-04:00 dispatch-lateness=938.8µs
+=== RUN   TestJob/delayed-initialization=true
+    cron_test.go:323: startup=2026-10-29T07:50:19.0009388-04:00 first-due=2026-10-29T07:50:20-04:00 snapshot-next=2026-10-29T07:50:22-04:00 actual=2026-10-29T07:50:21.0609104-04:00 dispatch-lateness=1.0609104s
+--- PASS: TestJob (3.06s)
+    --- PASS: TestJob/delayed-initialization=false (1.00s)
+    --- PASS: TestJob/delayed-initialization=true (2.06s)
+=== RUN   TestRange
+--- PASS: TestRange (0.00s)
+=== RUN   TestField
+--- PASS: TestField (0.00s)
+=== RUN   TestBits
+--- PASS: TestBits (0.00s)
+=== RUN   TestSpecSchedule
+--- PASS: TestSpecSchedule (0.00s)
+=== RUN   TestActivation
+--- PASS: TestActivation (0.00s)
+=== RUN   TestNext
+--- PASS: TestNext (0.00s)
+=== RUN   TestErrors
+2026/10/29 07:50:21 Expected 5 or 6 fields, found 1: xyz
+2026/10/29 07:50:21 End of range (60) above maximum (59): 60
+2026/10/29 07:50:21 End of range (60) above maximum (59): 60
+2026/10/29 07:50:21 Failed to parse int from XYZ: strconv.Atoi: parsing "XYZ": invalid syntax
+--- PASS: TestErrors (0.00s)
+PASS
+ok  	github.com/gogits/gogs/modules/cron	12.590s

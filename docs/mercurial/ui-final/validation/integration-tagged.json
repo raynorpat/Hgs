@@ -1,0 +1,17 @@
+{
+  "source": "6b79e735e14e70d34c6ca23dc587d4930da4d20d",
+  "command": "go test -tags integration ./... -v -count=1 -timeout=120m",
+  "start": "2026-10-29T11:00:28.2920399Z",
+  "end": "2026-10-29T11:48:08.7135394Z",
+  "exit": 1,
+  "shell_pid": 39136,
+  "TEMP": "C:/Users/raynorpat/.codex/visualizations/2026/10/26/01a177c6-a836-7dd1-a55e-6a2aca024544/task18-temp",
+  "TMP": "C:/Users/raynorpat/.codex/visualizations/2026/10/26/01a177c6-a836-7dd1-a55e-6a2aca024544/task18-temp",
+  "GOGS_TEST_HG": "D:/github/gogs/.venv-hg/Scripts/hg.exe",
+  "go": "go version go1.27.3 windows/amd64",
+  "platform": [
+    "windows",
+    "amd64",
+    "0"
+  ]
+}

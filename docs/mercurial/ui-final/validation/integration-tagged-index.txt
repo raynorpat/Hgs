@@ -1,0 +1,92 @@
+line 356: --- SKIP: TestMercurialViewPreview (0.00s)
+    hg_views_integration_test.go:163: set GOGS_VIEW_PREVIEW to an absolute preview metadata path
+line 792: --- SKIP: TestLandingBrowserFixture (0.00s)
+    landing_browser_test.go:27: opt-in owned Task16 browser fixture
+line 1317: --- SKIP: TestStatusBrowserFixture (0.00s)
+    status_browser_test.go:19: owned opt-in status browser fixture
+line 1444: --- SKIP: TestSharedUICutoverBrowserFixture (0.00s)
+    ui_cutover_browser_test.go:160: opt-in disposable Task15 browser fixture
+line 1580: ok  	github.com/gogits/gogs/cmd	429.140s
+line 4248: --- SKIP: TestPullNumberNetworkFixture (0.00s)
+    pull_request_test.go:335: MySQL/PostgreSQL runtime unverified: no explicit disposable fixture configured
+line 4281: --- SKIP: TestPullReviewMySQLRepeatableRead (0.00s)
+    pull_review_mysql_test.go:18: MySQL repeatable-read runtime unverified: no explicit disposable MySQL fixture configured
+line 6106: ok  	github.com/gogits/gogs/models	356.357s
+line 6116: ok  	github.com/gogits/gogs/modules/auth	6.300s
+line 6120: ok  	github.com/gogits/gogs/modules/auth/ldap	1.624s [no tests to run]
+line 6164: ok  	github.com/gogits/gogs/modules/avatar	5.311s
+line 6170: ok  	github.com/gogits/gogs/modules/base	2.327s
+line 6656: --- SKIP: TestPullArtifactsPreserveUnknownAndLinkedPaths (0.02s)
+    comparison_test.go:607: native symlink unavailable: symlink C:\Users\raynorpat\.codex\visualizations\2026\10\26\01a177c6-a836-7dd1-a55e-6a2aca024544\task18-temp\TestPullArtifactsPreserveUnknownAndLinkedPaths1795556037\002 C:\Users\raynorpat\.codex\visualizations\2026\10\26\01a177c6-a836-7dd1-a55e-6a2aca024544\task18-temp\TestPullArtifactsPreserveUnknownAndLinkedPaths1795556037\001\linked-root: A required privilege is not held by the client.
+line 7809: ok  	github.com/gogits/gogs/modules/collaboration	2607.021s
+line 7923: ok  	github.com/gogits/gogs/modules/contributions	95.157s
+line 7971: ok  	github.com/gogits/gogs/modules/cron	13.544s
+line 7983: ok  	github.com/gogits/gogs/modules/editordraft	2.958s
+line 8209: ok  	github.com/gogits/gogs/modules/hg	874.857s
+line 8278: ok  	github.com/gogits/gogs/modules/hgbridge	258.960s
+line 8808: ok  	github.com/gogits/gogs/modules/hosting	1391.333s
+line 8951: ok  	github.com/gogits/gogs/modules/httplib	3.455s
+line 8957: --- FAIL: TestConnect (22.03s)
+    ldap_test.go:26: LDAP Result Code 200 "": dial tcp 141.213.189.137:389: connectex: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond.
+line 8961: --- FAIL: TestSearch (21.08s)
+    ldap_test.go:37: LDAP Result Code 200 "": dial tcp 141.213.189.137:389: connectex: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond.
+line 8965: --- FAIL: TestSearchWithPaging (21.19s)
+    ldap_test.go:62: LDAP Result Code 200 "": dial tcp 141.213.189.137:389: connectex: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond.
+line 8969: --- FAIL: TestMultiGoroutineSearch (21.16s)
+    ldap_test.go:108: LDAP Result Code 200 "": dial tcp 141.213.189.137:389: connectex: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond.
+line 8971: FAIL	github.com/gogits/gogs/modules/ldap	87.093s
+line 8984: ok  	github.com/gogits/gogs/modules/mailer	6.570s
+line 8990: ok  	github.com/gogits/gogs/modules/maintenance	3.241s
+line 9025: ok  	github.com/gogits/gogs/modules/middleware	4.858s
+line 9062: ok  	github.com/gogits/gogs/modules/profile	21.364s
+line 9088: ok  	github.com/gogits/gogs/modules/setting	4.765s
+line 9126: ok  	github.com/gogits/gogs/modules/ssh	60.490s
+line 9166: ok  	github.com/gogits/gogs/modules/statuspage	4.943s
+line 9169: --- SKIP: TestSharedShellBrowserFixture (0.00s)
+    fixture_test.go:27: set UI_FIXTURE_ADDR for isolated browser QA
+line 9299: ok  	github.com/gogits/gogs/modules/ui	12.263s
+line 9341: ok  	github.com/gogits/gogs/modules/uuid	1.442s
+line 9345: ok  	github.com/gogits/gogs/modules/version	0.852s
+line 9356: ok  	github.com/gogits/gogs/routers	4.318s
+line 9361: ok  	github.com/gogits/gogs/routers/api/v1	1.399s
+line 9365: ok  	github.com/gogits/gogs/routers/hg	1.571s
+line 9369: ok  	github.com/gogits/gogs/routers/org	2.347s
+line 9387: ok  	github.com/gogits/gogs/routers/repo	3.760s
+line 9460: --- SKIP: TestDiscoveryBrowserFixture (0.00s)
+    recent_test.go:255: opt-in isolated discovery browser fixture
+line 9464: ok  	github.com/gogits/gogs/routers/user	38.350s
+line 9627: --- SKIP: TestActivationBrowserFixture (0.00s)
+    activation_browser_test.go:24: opt-in owned activation browser fixture
+line 9763: --- SKIP: TestEditorDraftBrowserLifecycle (0.00s)
+    editor_draft_test.go:64: Real-browser lifecycle evidence is controller-owned; Go tests do not prove browser timing, cookies, session reauthentication, or bfcache behavior
+line 9868: --- SKIP: TestSharedUIIssueBrowserFixture (0.00s)
+    issues_ui_test.go:498: opt-in disposable Issues browser fixture
+line 9962: --- SKIP: TestMozillaOrderedFreshProbe (0.00s)
+    mozilla_ordered_test.go:27: explicit tiny ordered package probe
+line 9965: --- SKIP: TestMozillaOrderedProbeChild (0.00s)
+    mozilla_ordered_test.go:164: subprocess only
+line 9968: --- SKIP: TestMozillaSummarizeSamples (0.00s)
+    mozilla_summary_test.go:20: set GOGS_TEST_MOZILLA_SAMPLES to a samples.jsonl path
+line 9995: --- SKIP: TestMozillaRetainedFixtureRebind (0.00s)
+    mozilla_test.go:226: explicit tiny extracted-package recovery probe
+line 10026: --- SKIP: TestMozillaCentralOrdered (0.00s)
+    mozilla_test.go:1261: explicit fresh ordered run: GOGS_TEST_MOZILLA_ORDERED=1
+line 10029: --- SKIP: TestMozillaCentralIngestion (0.00s)
+    mozilla_test.go:1540: full mozilla-central history is opt-in: GOGS_TEST_MOZILLA=1
+line 10032: --- SKIP: TestMozillaCentralCorrectness (0.00s)
+    mozilla_test.go:1779: full mozilla-central history is opt-in: GOGS_TEST_MOZILLA=1
+line 10035: --- SKIP: TestMozillaCentralPerformance (0.00s)
+    mozilla_test.go:2008: full mozilla-central history is opt-in: GOGS_TEST_MOZILLA=1
+line 10038: --- SKIP: TestMozillaCentralNativeBaseline (0.00s)
+    mozilla_test.go:2028: full mozilla-central history is opt-in: GOGS_TEST_MOZILLA=1
+line 10557: --- SKIP: TestPortablePackageDiagnostics (0.00s)
+    package_diagnostics_test.go:18: requires freshly extracted package
+line 10560: --- SKIP: TestPortablePackageRecovery (0.00s)
+    package_test.go:33: requires an extracted package and direct mode
+line 10563: --- SKIP: TestPullBrowserFixture (0.00s)
+    pulls_browser_test.go:21: opt-in disposable PR browser fixture
+line 10640: --- SKIP: TestMaintenanceBrowserFixture (0.00s)
+    status_startup_test.go:117: owned opt-in browser fixture
+line 11096: --- SKIP: TestSharedUIBrowserFixture (0.00s)
+    ui_test.go:571: opt-in disposable browser fixture
+line 11140: ok  	github.com/gogits/gogs/tests/integration	2838.939s

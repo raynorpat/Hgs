@@ -1,0 +1,9 @@
+{
+  "source": "6b79e735e14e70d34c6ca23dc587d4930da4d20d",
+  "working_delta": "only modules/cron/cron_test.go, first due observation GREEN",
+  "command": "go test -tags integration ./modules/cron -v -count=1 -timeout=2m",
+  "start": "2026-10-29T11:49:54.3832245Z",
+  "end": "2026-10-29T11:50:21.6499079Z",
+  "exit": 0,
+  "shell_pid": 11620
+}

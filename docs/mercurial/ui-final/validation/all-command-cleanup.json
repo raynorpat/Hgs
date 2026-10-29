@@ -1,0 +1,14 @@
+{
+  "utc": "2026-10-29T11:52:44.7791364Z",
+  "source": "162baf6d0520fdcede4ad8bae0a0e62e67181e31",
+  "all_final_command_shells": [
+    16164,
+    39136,
+    56816,
+    57300,
+    45012,
+    2324,
+    11620
+  ],
+  "remaining_owned_shells_or_scoped_native_children": []
+}

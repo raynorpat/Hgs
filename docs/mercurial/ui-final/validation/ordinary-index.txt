@@ -1,0 +1,46 @@
+line 739: --- SKIP: TestLandingBrowserFixture (0.00s)
+    landing_browser_test.go:27: opt-in owned Task16 browser fixture
+line 1254: --- SKIP: TestStatusBrowserFixture (0.00s)
+    status_browser_test.go:19: owned opt-in status browser fixture
+line 1381: --- SKIP: TestSharedUICutoverBrowserFixture (0.00s)
+    ui_cutover_browser_test.go:160: opt-in disposable Task15 browser fixture
+line 1491: ok  	github.com/gogits/gogs/cmd	331.267s
+line 2421: --- SKIP: TestPullNumberNetworkFixture (0.00s)
+    pull_request_test.go:335: MySQL/PostgreSQL runtime unverified: no explicit disposable fixture configured
+line 2454: --- SKIP: TestPullReviewMySQLRepeatableRead (0.00s)
+    pull_review_mysql_test.go:18: MySQL repeatable-read runtime unverified: no explicit disposable MySQL fixture configured
+line 3872: ok  	github.com/gogits/gogs/models	310.415s
+line 3882: ok  	github.com/gogits/gogs/modules/auth	6.831s
+line 3886: ok  	github.com/gogits/gogs/modules/auth/ldap	0.895s [no tests to run]
+line 3930: ok  	github.com/gogits/gogs/modules/avatar	5.893s
+line 3936: ok  	github.com/gogits/gogs/modules/base	1.972s
+line 4422: --- SKIP: TestPullArtifactsPreserveUnknownAndLinkedPaths (0.02s)
+    comparison_test.go:607: native symlink unavailable: symlink C:\Users\raynorpat\.codex\visualizations\2026\10\26\01a177c6-a836-7dd1-a55e-6a2aca024544\task18-temp\TestPullArtifactsPreserveUnknownAndLinkedPaths2742301045\002 C:\Users\raynorpat\.codex\visualizations\2026\10\26\01a177c6-a836-7dd1-a55e-6a2aca024544\task18-temp\TestPullArtifactsPreserveUnknownAndLinkedPaths2742301045\001\linked-root: A required privilege is not held by the client.
+line 5575: ok  	github.com/gogits/gogs/modules/collaboration	2563.702s
+line 5681: ok  	github.com/gogits/gogs/modules/contributions	69.395s
+line 5729: ok  	github.com/gogits/gogs/modules/cron	13.051s
+line 5741: ok  	github.com/gogits/gogs/modules/editordraft	2.694s
+line 5883: ok  	github.com/gogits/gogs/modules/hg	49.889s
+line 5931: ok  	github.com/gogits/gogs/modules/hgbridge	16.232s
+line 6158: ok  	github.com/gogits/gogs/modules/hosting	143.837s
+line 6163: ok  	github.com/gogits/gogs/modules/ldap	0.922s
+line 6176: ok  	github.com/gogits/gogs/modules/mailer	7.864s
+line 6182: ok  	github.com/gogits/gogs/modules/maintenance	4.250s
+line 6216: ok  	github.com/gogits/gogs/modules/middleware	6.388s
+line 6253: ok  	github.com/gogits/gogs/modules/profile	21.706s
+line 6279: ok  	github.com/gogits/gogs/modules/setting	6.207s
+line 6298: ok  	github.com/gogits/gogs/modules/ssh	13.028s
+line 6338: ok  	github.com/gogits/gogs/modules/statuspage	7.208s
+line 6341: --- SKIP: TestSharedShellBrowserFixture (0.00s)
+    fixture_test.go:27: set UI_FIXTURE_ADDR for isolated browser QA
+line 6471: ok  	github.com/gogits/gogs/modules/ui	13.523s
+line 6513: ok  	github.com/gogits/gogs/modules/uuid	1.577s
+line 6517: ok  	github.com/gogits/gogs/modules/version	1.511s
+line 6528: ok  	github.com/gogits/gogs/routers	4.739s
+line 6533: ok  	github.com/gogits/gogs/routers/api/v1	1.983s
+line 6537: ok  	github.com/gogits/gogs/routers/hg	1.765s
+line 6541: ok  	github.com/gogits/gogs/routers/org	3.367s
+line 6559: ok  	github.com/gogits/gogs/routers/repo	4.418s
+line 6632: --- SKIP: TestDiscoveryBrowserFixture (0.00s)
+    recent_test.go:255: opt-in isolated discovery browser fixture
+line 6636: ok  	github.com/gogits/gogs/routers/user	39.760s

@@ -1,0 +1,19 @@
+{
+  "utc": "2026-10-29T11:49:00.9306733Z",
+  "source": "6b79e735e14e70d34c6ca23dc587d4930da4d20d",
+  "owned_ids": [
+    16164,
+    54796,
+    46232,
+    39136,
+    53052,
+    52500,
+    30412
+  ],
+  "owned_build_fragments": [
+    "go-build3203315598",
+    "go-build1387958082"
+  ],
+  "remaining_processes": [],
+  "remaining_listeners": []
+}
