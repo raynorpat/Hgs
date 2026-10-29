@@ -1,0 +1,47 @@
+[
+  {
+    "file": "404-desktop-en.jpg",
+    "bytes": 74020,
+    "sha256": "d4b59b7ea918c4c75178c87398f68bd58d1b3f24e73b969dea618e9807422b94"
+  },
+  {
+    "file": "404-mobile-de.jpg",
+    "bytes": 39054,
+    "sha256": "0665c6fa238574d54bee6e720bb94ee51530c23597802c47ccdfce66753ff00a"
+  },
+  {
+    "file": "500-desktop-en.jpg",
+    "bytes": 80811,
+    "sha256": "1c6973ee8f792a95e7596f36dd626c96dabbcb3a5baec85ada90c1058bd71142"
+  },
+  {
+    "file": "500-missing-image-fallback.jpg",
+    "bytes": 9738,
+    "sha256": "aa6a7e5be343edc7e3707466fa1d158a5732a4fd7c0ec66a4a7a50b7e52219ba"
+  },
+  {
+    "file": "500-mobile-de.jpg",
+    "bytes": 37958,
+    "sha256": "00d56de92611a74be7716e2a8bb0ca94ea3334d345f8964c3509e7b5d7b08905"
+  },
+  {
+    "file": "503-desktop-en.jpg",
+    "bytes": 75265,
+    "sha256": "bb5abe57485f9d956e1f03d4cbbd7fafd3a1b14bdb7014c7173d28e961d53d58"
+  },
+  {
+    "file": "503-locale-focus-desktop-de.jpg",
+    "bytes": 81204,
+    "sha256": "7b57b8aff9dd6febcfab49aa71810b9940895578b4dc270bc2e423eb1cd22fdc"
+  },
+  {
+    "file": "503-locale-focus-mobile-de.jpg",
+    "bytes": 36807,
+    "sha256": "c7d97401e420fb0f139344412173218932efa2b82fce3a2fee74a342e2e10fef"
+  },
+  {
+    "file": "503-mobile-de.jpg",
+    "bytes": 36283,
+    "sha256": "e4f7fa6b3f05b5a561a9381a0b3f1c9816f2198bef1702b6d3a4a04ddc37e2cb"
+  }
+]
