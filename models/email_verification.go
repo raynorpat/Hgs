@@ -22,6 +22,7 @@ type EmailVerification struct {
 	UserID          int64  `xorm:"index 'user_id'" json:"-"`
 	NormalizedEmail string `xorm:"VARCHAR(254) unique" json:"-"`
 	VerifiedAt      time.Time
+	Revision        int64
 }
 
 type EmailVerificationChallenge struct {
@@ -275,7 +276,11 @@ func ConsumeEmailVerification(ctx context.Context, code, email string, activateA
 			return err
 		}
 		if owner == u.Id {
-			if _, err = s.Insert(&EmailVerification{UserID: u.Id, NormalizedEmail: normalized, VerifiedAt: now.UTC()}); err != nil {
+			revision, err := nextContributionRevision(s)
+			if err != nil {
+				return err
+			}
+			if _, err = s.Insert(&EmailVerification{UserID: u.Id, NormalizedEmail: normalized, VerifiedAt: now.UTC(), Revision: revision}); err != nil {
 				return err
 			}
 		}

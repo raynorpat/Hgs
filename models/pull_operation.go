@@ -278,6 +278,9 @@ func FinalizeMerge(id string) error {
 		if _, err := s.Id(op.PullID).Cols("state").Update(&PullRequest{State: PullMerged}); err != nil {
 			return err
 		}
+		if err := stampContributionObject(s, "pull", op.PullID); err != nil {
+			return err
+		}
 		return pullEvent(s, op.PullID, op.ActorID, 0, op.ComparisonID, "merged", string(op.ResultNode))
 	})
 }

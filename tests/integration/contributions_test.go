@@ -7,7 +7,9 @@ import (
 	"context"
 	"fmt"
 	"github.com/Unknwon/macaron"
+	"github.com/go-xorm/xorm"
 	"github.com/gogits/gogs/models"
+	"github.com/gogits/gogs/modules/contributions"
 	"github.com/gogits/gogs/modules/mailer"
 	"github.com/gogits/gogs/modules/middleware"
 	"github.com/gogits/gogs/modules/setting"
@@ -19,6 +21,42 @@ import (
 	"testing"
 	"time"
 )
+
+func TestContributionQueryCanonical(t *testing.T) {
+	f := accountApp(t, true)
+	db, err := xorm.NewEngine("sqlite3", "file:"+models.DbCfg.Path+"?cache=shared&mode=rwc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	now := time.Now().UTC()
+	r := &models.Repository{OwnerId: f.member.Id, Name: "calendar", LowerName: "calendar", State: models.RepositoryReady}
+	if _, err = db.Insert(r); err != nil {
+		t.Fatal(err)
+	}
+	i := &models.Issue{RepoId: r.Id, Index: 1, PosterId: f.member.Id, Name: "Indexed opening", Created: now.Add(-time.Hour)}
+	if _, err = db.Insert(i); err != nil {
+		t.Fatal(err)
+	}
+	if err = models.IndexContributionObject(context.Background(), "issue", i.Id); err != nil {
+		t.Fatal(err)
+	}
+	s := contributions.NewService(nil, nil, func(ctx context.Context, viewer, repo int64) (bool, error) {
+		a, e := models.RepositoryAccessFor(viewer, repo)
+		return a.Read, e
+	}, time.Now)
+	p, err := s.Read(context.Background(), 0, contributions.Scope{OwnerID: f.member.Id}, contributions.Query{})
+	if err != nil || p.Totals.Issues != 1 || p.State != "updating" {
+		t.Fatalf("canonical cold query: %+v %v", p, err)
+	}
+	if _, err = db.Id(i.Id).Delete(new(models.Issue)); err != nil {
+		t.Fatal(err)
+	}
+	p, err = s.Read(context.Background(), 0, contributions.Scope{OwnerID: f.member.Id}, contributions.Query{})
+	if err != nil || p.Totals.Issues != 0 {
+		t.Fatalf("deleted issue remained visible before index cleanup: %+v %v", p, err)
+	}
+}
 
 func TestContributionEmailProof(t *testing.T) {
 	f := accountApp(t, true)

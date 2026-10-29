@@ -48,6 +48,7 @@ func init() {
 	sql.Register("sqlite3", &sqlite.Driver{})
 
 	tables = append(tables,
+		new(ContributionClock), new(ContributionClass),
 		new(ContributionEvent), new(ContributionRepository), new(ContributionStage), new(ContributionIndexState), new(ContributionJob), new(ContributionFirstReview),
 		new(EmailVerification), new(EmailVerificationChallenge), new(EmailVerificationDelivery), new(EmailVerificationState),
 		new(User), new(PublicKey), new(Follow), new(Oauth2), new(AccessToken),

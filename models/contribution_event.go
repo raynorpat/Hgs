@@ -17,14 +17,17 @@ import (
 // ContributionEvent is internal index data, never a public response DTO.
 // Changeset ActorID is deliberately zero: attribution always joins live proof.
 type ContributionEvent struct {
-	ID          int64     `xorm:"pk autoincr 'id'"`
-	ActorID     int64     `xorm:"index 'actor_id'"`
-	ObjectID    int64     `xorm:"index 'object_id'"`
-	Kind        string    `xorm:"VARCHAR(16) index"`
-	SourceKey   string    `xorm:"VARCHAR(128) unique"`
-	Node        string    `xorm:"VARCHAR(40)"`
-	AuthorEmail string    `xorm:"VARCHAR(254) index" json:"-"`
-	OccurredAt  time.Time `xorm:"index"`
+	ID           int64     `xorm:"pk autoincr 'id'"`
+	ActorID      int64     `xorm:"index 'actor_id'"`
+	ObjectID     int64     `xorm:"index 'object_id'"`
+	Kind         string    `xorm:"VARCHAR(16) index"`
+	SourceKey    string    `xorm:"VARCHAR(128) unique"`
+	Node         string    `xorm:"VARCHAR(40)"`
+	AuthorEmail  string    `xorm:"VARCHAR(254) index" json:"-"`
+	OccurredAt   time.Time `xorm:"index"`
+	OccurredUnix int64     `xorm:"index"`
+	UTCDate      string    `xorm:"VARCHAR(10) index 'utc_date'"`
+	UTCMonth     string    `xorm:"VARCHAR(7) index 'utc_month'"`
 }
 
 type ContributionFirstReview struct {
@@ -49,7 +52,7 @@ func contributionError(err error) error {
 	if err == nil {
 		return nil
 	}
-	for _, known := range []error{ErrContributionInvalid, ErrContributionStorage, context.Canceled, context.DeadlineExceeded, ErrEmailProofInvalid, ErrEmailProofLimited, ErrEmailNotExist, ErrEmailNotActivated, ErrEmailAlreadyUsed, ErrUserNotExist} {
+	for _, known := range []error{ErrContributionChanged, ErrContributionInvalid, ErrContributionStorage, context.Canceled, context.DeadlineExceeded, ErrEmailProofInvalid, ErrEmailProofLimited, ErrEmailNotExist, ErrEmailNotActivated, ErrEmailAlreadyUsed, ErrUserNotExist} {
 		if errors.Is(err, known) {
 			return known
 		}
@@ -77,15 +80,32 @@ func contributionTransaction(ctx context.Context, apply func(*xorm.Session) erro
 }
 
 func insertContributionEvent(e Engine, row ContributionEvent) (int64, error) {
+	row.UTCDate, row.UTCMonth, row.OccurredUnix = row.OccurredAt.UTC().Format("2006-01-02"), row.OccurredAt.UTC().Format("2006-01"), row.OccurredAt.Unix()
 	var old ContributionEvent
 	ok, err := e.Where("source_key = ?", row.SourceKey).Get(&old)
 	if err != nil {
 		return 0, err
 	}
 	if ok {
-		if row.Kind == "review" && !row.OccurredAt.IsZero() && (old.OccurredAt.IsZero() || row.OccurredAt.Before(old.OccurredAt)) {
-			if _, err := e.Id(old.ID).Cols("occurred_at").Update(&row); err != nil {
+		earlier := row.Kind == "review" && !row.OccurredAt.IsZero() && (old.OccurredAt.IsZero() || row.OccurredAt.Before(old.OccurredAt))
+		if earlier || old.UTCDate == "" {
+			if !earlier {
+				row.OccurredAt = old.OccurredAt
+				row.UTCDate, row.UTCMonth, row.OccurredUnix = old.OccurredAt.UTC().Format("2006-01-02"), old.OccurredAt.UTC().Format("2006-01"), old.OccurredAt.Unix()
+			}
+			if _, err := e.Id(old.ID).Cols("occurred_at", "occurred_unix", "utc_date", "utc_month").Update(&row); err != nil {
 				return 0, err
+			}
+			if s, ok := e.(*xorm.Session); ok {
+				kind := row.Kind
+				if kind == "review" {
+					kind = "pull"
+				}
+				if kind != "changeset" {
+					if err := stampContributionObject(s, kind, row.ObjectID); err != nil {
+						return 0, err
+					}
+				}
 			}
 		}
 		return old.ID, nil
@@ -109,6 +129,11 @@ func firstContributionReview(e Engine, reviewer, pull int64, at time.Time) error
 		first.OccurredAt = at
 		if _, err = e.Id(first.ID).Cols("occurred_at").Update(&first); err != nil {
 			return err
+		}
+		if s, ok := e.(*xorm.Session); ok {
+			if err := stampContributionObject(s, "pull", pull); err != nil {
+				return err
+			}
 		}
 	}
 	return enqueueContribution(e, "review", first.ID)
@@ -212,6 +237,13 @@ func publishContributionObject(ctx context.Context, object contributionObject) e
 		var membership ContributionRepository
 		ok, err = s.Where("event_id = ? AND repository_id = ?", eventID, object.RepositoryID).Get(&membership)
 		if err != nil || ok {
+			return err
+		}
+		source := object.SourceRepositoryID
+		if object.SourceDeleted {
+			source = 0
+		}
+		if err = stampContributionClass(s, object.RepositoryID, source, object.Event); err != nil {
 			return err
 		}
 		_, err = s.Insert(&ContributionRepository{EventID: eventID, RepositoryID: object.RepositoryID})

@@ -6,6 +6,7 @@ package models
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"html/template"
 	"os"
@@ -473,13 +474,13 @@ func GetUserIssueStats(uid int64, filterMode int) *IssueStats {
 
 // UpdateIssue updates information of issue.
 func UpdateIssue(issue *Issue) error {
-	_, err := x.Id(issue.Id).AllCols().Update(issue)
-
-	if err != nil {
+	return contributionTransaction(context.Background(), func(s *xorm.Session) error {
+		if err := stampContributionObject(s, "issue", issue.Id); err != nil {
+			return err
+		}
+		_, err := s.Id(issue.Id).AllCols().Update(issue)
 		return err
-	}
-
-	return err
+	})
 }
 
 // UpdateIssueUserByStatus updates issue-user pairs by issue status.

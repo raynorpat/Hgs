@@ -178,6 +178,9 @@ func deleteRepositoryPullRows(s *xorm.Session, repoID int64) error {
 	}
 	for _, d := range rows {
 		p := d.Pull
+		if err := stampContributionObject(s, "pull", p.ID); err != nil {
+			return err
+		}
 		purge := p.TargetRepoID == repoID || d.AcceptedComparisonID == 0
 		if purge {
 			if _, err := s.Exec("DELETE FROM contribution_job WHERE kind = ? AND object_id IN (SELECT id FROM contribution_first_review WHERE pull_id = ?)", "review", p.ID); err != nil {
@@ -223,6 +226,11 @@ func deleteRepositoryPullRows(s *xorm.Session, repoID int64) error {
 		}
 		if _, err := s.Id(p.ID).NoAutoTime().Cols("source_deleted", "state", "author_id", "title", "body", "source_selection", "target_selection", "current_comparison_id").Update(&p); err != nil {
 			return err
+		}
+		if !purge {
+			if err := stampContributionObject(s, "pull", p.ID); err != nil {
+				return err
+			}
 		}
 	}
 	_, err = s.Where("repo_id = ?", repoID).Delete(new(RepositoryVisit))

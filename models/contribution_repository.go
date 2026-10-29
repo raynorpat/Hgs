@@ -79,6 +79,9 @@ func StageContributionEvents(ctx context.Context, repo, generation int64, events
 				return ErrContributionInvalid
 			}
 			event.ActorID = 0
+			if err := ensureContributionClass(s, contributionClass(repo, 0, event)); err != nil {
+				return err
+			}
 			id, err := insertContributionEvent(s, event)
 			if err != nil {
 				return err
@@ -119,6 +122,13 @@ func PublishContributionGeneration(ctx context.Context, repo, generation int64, 
 		}
 		if !ok || state.NextGeneration != generation || !state.Updating {
 			return ErrContributionInvalid
+		}
+		mutation, err := nextContributionRevision(s)
+		if err != nil {
+			return err
+		}
+		if _, err = s.Exec("UPDATE contribution_class SET revision = ? WHERE repository_id = ? AND kind = ?", mutation, repo, "changeset"); err != nil {
+			return err
 		}
 		if _, err = s.Exec("DELETE FROM contribution_repository WHERE repository_id = ? AND event_id IN (SELECT id FROM contribution_event WHERE kind = ?)", repo, "changeset"); err != nil {
 			return err

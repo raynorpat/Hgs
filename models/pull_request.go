@@ -423,6 +423,9 @@ func EditPullRecord(ctx context.Context, actor, id int64, title, body string) er
 			return ErrInvalidCredential
 		}
 		_, err := sess.Id(id).Cols("title", "body").Update(&PullRequest{Title: title, Body: body})
+		if err == nil {
+			err = stampContributionObject(sess, "pull", id)
+		}
 		return err
 	})
 }
@@ -447,6 +450,9 @@ func SetPullRecordState(ctx context.Context, actor, id int64, state PullState) e
 			return nil
 		}
 		_, err := sess.Id(id).Cols("state").Update(&PullRequest{State: state})
+		if err == nil {
+			err = stampContributionObject(sess, "pull", id)
+		}
 		return err
 	})
 }
