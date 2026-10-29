@@ -41,8 +41,10 @@ import (
 	"github.com/gogits/gogs/modules/hg"
 	"github.com/gogits/gogs/modules/hosting"
 	"github.com/gogits/gogs/modules/log"
+	"github.com/gogits/gogs/modules/maintenance"
 	"github.com/gogits/gogs/modules/middleware"
 	"github.com/gogits/gogs/modules/setting"
+	"github.com/gogits/gogs/modules/statuspage"
 	"github.com/gogits/gogs/modules/ui"
 	"github.com/gogits/gogs/modules/version"
 	"github.com/gogits/gogs/routers"
@@ -104,10 +106,10 @@ func checkVersion() {
 func newMacaron() *macaron.Macaron {
 	m := macaron.New()
 	m.Use(macaron.Logger())
-	m.Use(macaron.Recovery())
 	if setting.EnableGzip {
 		m.Use(macaron.Gziper())
 	}
+	m.Use(middleware.StatusRecovery())
 	m.SetURLPrefix(setting.AppSubUrl)
 	m.Use(macaron.Static(
 		path.Join(setting.StaticRootPath, "public"),
@@ -195,12 +197,26 @@ func runWebServer(ctx *cli.Context) error {
 	if ctx.IsSet("config") {
 		setting.CustomConf = ctx.String("config")
 	}
-	if err := routers.GlobalInit(); err != nil {
+	if err := setting.LoadConfig(); err != nil {
 		return err
 	}
-	// Template paths come from the selected configuration, not the caller's
-	// working directory. Validate them only after that configuration is loaded.
-	checkVersion()
+	pages := statuspage.Configure(setting.StaticRootPath, setting.AppSubUrl)
+	var handler http.Handler
+	if setting.Maintenance.Enabled {
+		var err error
+		handler, err = maintenance.New(setting.Maintenance, setting.AppSubUrl, pages)
+		if err != nil {
+			return err
+		}
+	} else {
+		setting.InitRuntimeConfig()
+		if err := routers.InitServices(); err != nil {
+			return err
+		}
+		// Template paths come from the selected configuration, not the caller's
+		// working directory. Validate them only after that configuration is loaded.
+		checkVersion()
+	}
 	holder := &hostingHolder{errors: make(chan error, 1)}
 	stopDrafts := func() {}
 	defer func() {
@@ -211,7 +227,9 @@ func runWebServer(ctx *cli.Context) error {
 		models.CloseEngine()
 	}()
 
-	handler := newWebHandler(holder)
+	if handler == nil {
+		handler = newWebHandler(holder)
+	}
 
 	// Flag for port number in case first time run conflict.
 	if ctx.IsSet("port") {
@@ -237,12 +255,14 @@ func runWebServer(ctx *cli.Context) error {
 		}
 		server.TLSConfig.Certificates = []tls.Certificate{certificate}
 	}
-	if setting.InstallLock {
+	if setting.InstallLock && !setting.Maintenance.Enabled {
 		if err := holder.Initialize(); err != nil {
 			return err
 		}
 	}
-	stopDrafts = startDraftPurger(user.NewDraftService().PurgeExpired, func() bool { return holder.Service() != nil })
+	if !setting.Maintenance.Enabled {
+		stopDrafts = startDraftPurger(user.NewDraftService().PurgeExpired, func() bool { return holder.Service() != nil })
+	}
 	served := make(chan error, 1)
 	switch setting.Protocol {
 	case setting.HTTP:
@@ -284,6 +304,7 @@ func runWebServer(ctx *cli.Context) error {
 
 // newWebHandler is the production registration path used by startup and route tests.
 func newWebHandler(holder *hostingHolder) http.Handler {
+	pages := statuspage.Configure(setting.StaticRootPath, setting.AppSubUrl)
 	m := newMacaron()
 	m.MapTo(holder, (*hosting.Provider)(nil))
 	m.MapTo(holder, (*contributions.Provider)(nil))
@@ -574,5 +595,12 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 	// Not found handler.
 	m.NotFound(routers.NotFound)
 
-	return holder.Handler(m)
+	ordinary := holder.Handler(m)
+	return statuspage.Recovery(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if (r.Method == http.MethodGet || r.Method == http.MethodHead) && r.URL.RawPath == "" && r.URL.Path == setting.AppSubUrl+"/status/help" {
+			pages.Help(w, r)
+			return
+		}
+		ordinary.ServeHTTP(w, r)
+	}))
 }

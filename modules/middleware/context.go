@@ -6,10 +6,10 @@ package middleware
 
 import (
 	"context"
-	"fmt"
 	"html/template"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +25,7 @@ import (
 	"github.com/gogits/gogs/modules/hg"
 	"github.com/gogits/gogs/modules/log"
 	"github.com/gogits/gogs/modules/setting"
+	"github.com/gogits/gogs/modules/statuspage"
 )
 
 // Context represents context of a request.
@@ -152,18 +153,26 @@ func (ctx *Context) RenderWithErr(msg string, tpl base.TplName, form interface{}
 func (ctx *Context) Handle(status int, title string, err error) {
 	if err != nil {
 		log.Error(4, "%s: %v", title, err)
-		if macaron.Env != macaron.PROD {
-			ctx.Data["ErrorMsg"] = err
-		}
+	}
+	if status != 404 && status != 500 && status != 503 {
+		ctx.HTML(status, base.TplName("status/"+strconv.Itoa(status)))
+		return
 	}
 
-	switch status {
-	case 404:
-		ctx.Data["Title"] = "Page Not Found"
-	case 500:
-		ctx.Data["Title"] = "Internal Server Error"
+	if statuspage.Committed(ctx.Req.Request) || ctx.Resp.Status() >= 200 || ctx.Resp.Status() == 101 {
+		AbortBrowserResponse(ctx.Req.Request)
+		panic(http.ErrAbortHandler)
 	}
-	ctx.HTML(status, base.TplName(fmt.Sprintf("status/%d", status)))
+	// Keep the editor's response protocol and release native readers before any
+	// network transfer, without invoking database-dependent page composition.
+	if ctx.Repo.FinishRead != nil {
+		ctx.Repo.FinishRead()
+	}
+	if ctx.EditorSubmission {
+		ctx.editorFailure(status)
+		return
+	}
+	statuspage.Render(ctx.Resp, ctx.Req.Request, statuspage.Model{Code: status})
 }
 
 func (ctx *Context) ServeContent(name string, r io.ReadSeeker, params ...interface{}) {

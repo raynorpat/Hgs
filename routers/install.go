@@ -49,6 +49,11 @@ func NewServices() {
 // GlobalInit is for global configuration reload-able.
 func GlobalInit() error {
 	setting.NewConfigContext()
+	return InitServices()
+}
+
+// InitServices follows the configuration-only startup maintenance decision.
+func InitServices() error {
 	log.Trace("Custom path: %s", setting.CustomPath)
 	log.Trace("Log path: %s", setting.LogRootPath)
 	mailer.NewMailerContext()

@@ -162,6 +162,5 @@ func explore(ctx *middleware.Context, partial bool) {
 func Explore(ctx *middleware.Context)       { explore(ctx, false) }
 func ExploreSearch(ctx *middleware.Context) { explore(ctx, true) }
 func NotFound(ctx *middleware.Context) {
-	ctx.Data["Title"] = "Page Not Found"
 	ctx.Handle(404, "home.NotFound", nil)
 }

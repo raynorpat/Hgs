@@ -113,6 +113,15 @@ func TestHgsStatusAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer z.Close()
+	statusEntries := map[string]bool{}
+	for _, f := range z.File {
+		statusEntries[f.Name] = true
+	}
+	for _, name := range []string{"public/css/status.css", "templates/status/layout.tmpl", "templates/status/404.tmpl", "templates/status/500.tmpl", "templates/status/503.tmpl", "conf/locale/locale_en-US.ini", "conf/locale/locale_de-DE.ini"} {
+		if !statusEntries[name] {
+			t.Errorf("missing standalone status resource %s", name)
+		}
+	}
 	entries := map[string][]byte{}
 	for _, f := range z.File {
 		if strings.HasPrefix(f.Name, "docs/prototypes/") {

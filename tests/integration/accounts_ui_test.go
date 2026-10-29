@@ -18,6 +18,7 @@ import (
 	"github.com/gogits/gogs/modules/mailer"
 	"github.com/gogits/gogs/modules/middleware"
 	"github.com/gogits/gogs/modules/setting"
+	"github.com/gogits/gogs/modules/statuspage"
 	"github.com/gogits/gogs/modules/ui"
 	"github.com/gogits/gogs/routers"
 	"github.com/gogits/gogs/routers/admin"
@@ -319,6 +320,7 @@ func TestSharedUIInstaller(t *testing.T) {
 }
 func TestSharedUIEarlyStatus(t *testing.T) {
 	f := accountApp(t, false)
+	statuspage.Configure("../..", "/code")
 	for _, code := range []int{401, 403, 404, 500} {
 		w := f.request(t, "GET", fmt.Sprintf("/early/%d", code), "", nil, false)
 		if w.Code != code || !strings.Contains(w.Body.String(), `/code/css/app.css`) || strings.Contains(w.Body.String(), `class="hg-rail"`) {

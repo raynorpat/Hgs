@@ -21,8 +21,11 @@ import (
 	"gopkg.in/ini.v1"
 
 	"github.com/gogits/gogs/modules/log"
+	"github.com/gogits/gogs/modules/maintenance"
 	// "github.com/gogits/gogs/modules/ssh"
 )
+
+var Maintenance maintenance.Config
 
 type Scheme string
 
@@ -154,15 +157,23 @@ func WorkDir() (string, error) {
 // NewConfigContext initializes configuration context.
 // NOTE: do not print any log except error.
 func NewConfigContext() {
+	if err := LoadConfig(); err != nil {
+		log.Fatal(4, "Configuration: %v", err)
+	}
+	InitRuntimeConfig()
+}
+
+// LoadConfig reads configuration without starting services or creating storage.
+func LoadConfig() error {
 	workDir, err := WorkDir()
 	if err != nil {
-		log.Fatal(4, "Fail to get work directory: %v", err)
+		return fmt.Errorf("get work directory: %w", err)
 	}
 	ConfRootPath = path.Join(workDir, "conf")
 
 	Cfg, err = ini.Load(path.Join(workDir, "conf/app.ini"))
 	if err != nil {
-		log.Fatal(4, "Fail to parse 'conf/app.ini': %v", err)
+		return fmt.Errorf("parse conf/app.ini: %w", err)
 	}
 
 	CustomPath = os.Getenv("GOGS_CUSTOM")
@@ -176,7 +187,7 @@ func NewConfigContext() {
 
 	if com.IsFile(CustomConf) {
 		if err = Cfg.Append(CustomConf); err != nil {
-			log.Fatal(4, "Fail to load custom conf '%s': %v", CustomConf, err)
+			return fmt.Errorf("load custom configuration: %w", err)
 		}
 	} else {
 		log.Warn("Custom config (%s) not found, ignore this if you're running first time", CustomConf)
@@ -186,6 +197,23 @@ func NewConfigContext() {
 	LogRootPath = Cfg.Section("log").Key("ROOT_PATH").MustString(path.Join(workDir, "log"))
 
 	sec := Cfg.Section("server")
+	Maintenance = maintenance.Config{RetryAfterSeconds: 300}
+	if key := sec.Key("MAINTENANCE_MODE"); key.String() != "" {
+		Maintenance.Enabled, err = key.Bool()
+		if err != nil {
+			return fmt.Errorf("invalid MAINTENANCE_MODE: %w", err)
+		}
+	}
+	if key := sec.Key("MAINTENANCE_RETRY_AFTER"); key.String() != "" {
+		Maintenance.RetryAfterSeconds, err = key.Int()
+		if err != nil {
+			return fmt.Errorf("invalid MAINTENANCE_RETRY_AFTER: %w", err)
+		}
+	}
+	Maintenance.Message = sec.Key("MAINTENANCE_MESSAGE").String()
+	if err := Maintenance.Validate(); err != nil {
+		return err
+	}
 	AppName = Cfg.Section("").Key("APP_NAME").MustString("Hgs")
 	AppUrl = sec.Key("ROOT_URL").MustString("http://localhost:3000/")
 	if AppUrl[len(AppUrl)-1] != '/' {
@@ -195,9 +223,12 @@ func NewConfigContext() {
 	// Check if has app suburl.
 	url, err := url.Parse(AppUrl)
 	if err != nil {
-		log.Fatal(4, "Invalid ROOT_URL(%s): %s", AppUrl, err)
+		return fmt.Errorf("invalid ROOT_URL: %w", err)
 	}
 	AppSubUrl = strings.TrimSuffix(url.Path, "/")
+	if url.Host == "" || (url.Scheme != "http" && url.Scheme != "https") || url.User != nil || url.RawQuery != "" || url.Fragment != "" || url.RawPath != "" || strings.ContainsAny(AppSubUrl, "%\\?#") || (AppSubUrl != "" && (path.Clean(AppSubUrl) != AppSubUrl || strings.HasSuffix(AppSubUrl, "/"))) {
+		return fmt.Errorf("invalid ROOT_URL: expected an HTTP(S) origin and canonical application path")
+	}
 
 	Protocol = HTTP
 	if sec.Key("PROTOCOL").String() == "https" {
@@ -245,7 +276,16 @@ func NewConfigContext() {
 	CookieRememberName = sec.Key("COOKIE_REMEMBER_NAME").String()
 	ReverseProxyAuthUser = sec.Key("REVERSE_PROXY_AUTHENTICATION_USER").MustString("X-WEBAUTH-USER")
 
-	sec = Cfg.Section("attachment")
+	return nil
+}
+
+// InitRuntimeConfig retains normal startup's storage and runtime initialization.
+func InitRuntimeConfig() {
+	workDir, err := WorkDir()
+	if err != nil {
+		log.Fatal(4, "Fail to get work directory: %v", err)
+	}
+	sec := Cfg.Section("attachment")
 	AttachmentPath = path.Join(workDir, sec.Key("PATH").MustString("data/attachments"))
 	AttachmentAllowedTypes = sec.Key("ALLOWED_TYPES").MustString("image/jpeg|image/png")
 	AttachmentMaxSize = sec.Key("MAX_SIZE").MustInt64(32)

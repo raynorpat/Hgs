@@ -4,6 +4,7 @@ package integration
 
 import (
 	"fmt"
+	"github.com/gogits/gogs/modules/statuspage"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -66,6 +67,7 @@ func TestSharedUICutoverAndRouteMatrix(t *testing.T) {
 	})
 	t.Run("install-early-status", func(t *testing.T) {
 		f := accountApp(t, false)
+		statuspage.Configure("../..", "/code")
 		w := f.request(t, "GET", "/install", "", nil, false)
 		sharedAccountPage(t, w, true)
 		sharedCutoverAssets(t, w.Body.String(), "/code")

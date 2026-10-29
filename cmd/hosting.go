@@ -16,6 +16,7 @@ import (
 	"github.com/gogits/gogs/modules/hg"
 	"github.com/gogits/gogs/modules/hosting"
 	"github.com/gogits/gogs/modules/log"
+	"github.com/gogits/gogs/modules/maintenance"
 	"github.com/gogits/gogs/modules/middleware"
 	"github.com/gogits/gogs/modules/setting"
 	hgroutes "github.com/gogits/gogs/routers/hg"
@@ -59,6 +60,9 @@ type fixedProvider struct{ s *hosting.Service }
 func (p fixedProvider) Service() *hosting.Service { return p.s }
 
 func (h *hostingHolder) Initialize() error {
+	if setting.Maintenance.Enabled {
+		return maintenance.ErrMaintenance
+	}
 	h.once.Do(func() {
 		h.mu.Lock()
 		defer h.mu.Unlock()

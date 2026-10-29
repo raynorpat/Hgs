@@ -145,7 +145,7 @@ func RepoBrowse() macaron.Handler {
 		release, err := s.RegisterBrowserRead(uid, ctx.Repo.Repository.Id, cancel)
 		if err != nil {
 			cancel()
-			ctx.Error(404)
+			ctx.Handle(404, "Repository unavailable", nil)
 			return
 		}
 		finished := false

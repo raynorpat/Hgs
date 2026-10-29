@@ -35,7 +35,7 @@ func RepoAssignment(redirect bool, args ...bool) macaron.Handler {
 			return
 		}
 		if !access.Read {
-			ctx.Error(404)
+			ctx.Handle(404, "Repository unavailable", nil)
 			return
 		}
 		repo.Owner = owner

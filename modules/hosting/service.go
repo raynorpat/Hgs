@@ -21,6 +21,7 @@ import (
 	"github.com/gogits/gogs/modules/hg"
 	"github.com/gogits/gogs/modules/hgbridge"
 	"github.com/gogits/gogs/modules/log"
+	"github.com/gogits/gogs/modules/maintenance"
 	"github.com/gogits/gogs/modules/ssh"
 )
 
@@ -28,6 +29,7 @@ import (
 type Provider interface{ Service() *Service }
 
 type Config struct {
+	Maintenance                                                                      bool
 	RepositoryPublished                                                              func(context.Context, int64) error
 	RepositoryCleanup                                                                models.RepositoryCollaborationCleanup
 	ReviewArtifactRoot                                                               string
@@ -106,6 +108,9 @@ func (s *Service) configure(cfg Config) error {
 }
 
 func New(ctx context.Context, cfg Config) (s *Service, err error) {
+	if cfg.Maintenance {
+		return nil, maintenance.ErrMaintenance
+	}
 	s = &Service{sessions: newRegistry()}
 	if err = s.configure(cfg); err != nil {
 		return nil, err
