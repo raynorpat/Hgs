@@ -100,6 +100,49 @@ func TestContributionPaginationHiddenWork(t *testing.T) {
 	}
 }
 
+func TestContributionPaginationSharedProjectionRepair(t *testing.T) {
+	for _, missing := range []interface{}{"", nil} {
+		t.Run(map[bool]string{true: "null", false: "empty"}[missing == nil], func(t *testing.T) {
+			f := newQueryFixture(t)
+			f.repo(t, 11, 2, true)
+			shared := f.event(t, 10, "changeset", "2024-01-15T00:00:00Z")
+			f.event(t, 10, "changeset", "2024-01-01T00:00:00Z")
+			f.event(t, 10, "issue", "2024-02-01T00:00:00Z")
+			if _, err := f.db.Exec("UPDATE contribution_event SET utc_date = ?, utc_month = ?, occurred_unix = 0 WHERE id = ?", missing, missing, shared.ID); err != nil {
+				t.Fatal(err)
+			}
+			before := f.read(t, 0, Scope{OwnerID: 1}, Query{Limit: 1})
+			if before.Totals != (Counts{Changesets: 1, Issues: 1}) || before.NextCursor == "" {
+				t.Fatalf("unprojected published fixture: %+v", before)
+			}
+			gen, err := models.BeginContributionGeneration(context.Background(), 11)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = models.StageContributionEvents(context.Background(), 11, gen, []models.ContributionEvent{shared}); err != nil {
+				t.Fatal(err)
+			}
+			// Repair is global at staging, even before the inaccessible fork publishes.
+			fresh := f.read(t, 0, Scope{OwnerID: 1}, Query{Limit: 1})
+			if fresh.Totals != (Counts{Changesets: 2, Issues: 1}) || fresh.Days[14].Counts.Changesets != 1 {
+				t.Fatalf("shared repair missing from fresh public snapshot: %+v", fresh.Totals)
+			}
+			if _, err = f.s.Read(context.Background(), 0, Scope{OwnerID: 1}, Query{Limit: 1, Cursor: before.NextCursor}); !errors.Is(err, ErrStaleCursor) {
+				t.Fatalf("hidden fork repair changed public counts without invalidation: %v", err)
+			}
+			if err = models.StageContributionEvents(context.Background(), 11, gen, []models.ContributionEvent{shared}); err != nil {
+				t.Fatal(err)
+			}
+			if err = models.PublishContributionGeneration(context.Background(), 11, gen, "", shared.Node, 1, f.now); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = f.s.Read(context.Background(), 0, Scope{OwnerID: 1}, Query{Limit: 1, Cursor: fresh.NextCursor}); err != nil {
+				t.Fatalf("unchanged shared event staging/private publication invalidated cursor: %v", err)
+			}
+		})
+	}
+}
+
 func TestContributionPaginationEqualCardinalityPermissionSwap(t *testing.T) {
 	f := newQueryFixture(t)
 	f.repo(t, 11, 2, true)

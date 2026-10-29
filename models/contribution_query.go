@@ -332,7 +332,11 @@ func ReadContributionQuery(ctx context.Context, viewer, owner int64, org bool, q
 	// Apply the selected year's indexed timestamp bounds before deduplication,
 	// while the separate earliest-year aggregate still sees authorized history.
 	yearArgs := append([]interface{}{}, args...)
-	yearArgs[0] = time.Date(q.Year, 1, 1, 0, 0, 0, 0, time.UTC).Unix()
+	// Year 1 starts at Go's invalid zero time; narrowing must not weaken the
+	// relation's independent validity bound.
+	if start := time.Date(q.Year, 1, 1, 0, 0, 0, 0, time.UTC).Unix(); start > (time.Time{}).Unix()+1 {
+		yearArgs[0] = start
+	}
 	yearEnd := time.Date(q.Year+1, 1, 1, 0, 0, 0, 0, time.UTC).Add(-time.Nanosecond)
 	if yearEnd.Before(q.Cutoff) {
 		yearArgs[1] = yearEnd.Unix()

@@ -265,3 +265,63 @@ func TestContributionQueryBounded(t *testing.T) {
 	}
 	t.Logf("5000 distinct authors: queries=%d rows=%d maxBatch=%d groups=1 links=25 total=5000", measure.queries, measure.rows, measure.maxRows)
 }
+
+func TestContributionQuerySharedRepairMembershipBatches(t *testing.T) {
+	newTestDatabase(t)
+	ctx := context.Background()
+	event := ContributionEvent{ID: 1, Kind: "changeset", Node: fmt.Sprintf("%040x", 1), SourceKey: fmt.Sprintf("changeset:%040x", 1), AuthorEmail: "original@example.invalid", OccurredAt: time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC)}
+	if err := contributionTransaction(ctx, func(s *xorm.Session) error {
+		if _, err := s.Insert(&event, &ContributionClock{ID: 1, Revision: 1}); err != nil {
+			return err
+		}
+		for repo := int64(1); repo <= 205; repo++ {
+			c := contributionClass(repo, 0, event)
+			c.Revision = 1
+			if _, err := s.Insert(&ContributionRepository{RepositoryID: repo, EventID: event.ID, Generation: 1}, &c); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// The repair must stamp the stored identity, even if staging supplies a different one.
+	incoming := event
+	incoming.AuthorEmail = "different@example.invalid"
+	for _, rollback := range []bool{true, false} {
+		measure := &queryMeasure{}
+		old := x.DB().DB
+		instrumented := sql.OpenDB(measuredConnector{measure, sqliteDSN(DbCfg.Path)})
+		x.DB().DB = instrumented
+		err := contributionTransaction(ctx, func(s *xorm.Session) error {
+			if _, err := insertContributionEvent(s, incoming); err != nil {
+				return err
+			}
+			if rollback {
+				return ErrContributionInvalid
+			}
+			return nil
+		})
+		x.DB().DB = old
+		instrumented.Close()
+		if (rollback && err != ErrContributionInvalid) || (!rollback && err != nil) {
+			t.Fatalf("repair rollback=%v: %v", rollback, err)
+		}
+		var repaired ContributionEvent
+		if _, err := x.Id(event.ID).Get(&repaired); err != nil {
+			t.Fatal(err)
+		}
+		wantDate, wantRevision := "2024-01-15", int64(2)
+		if rollback {
+			wantDate, wantRevision = "", 1
+		}
+		n, err := x.Where("revision = ? AND author_email = ?", wantRevision, event.AuthorEmail).Count(new(ContributionClass))
+		if err != nil || n != 205 || repaired.UTCDate != wantDate || repaired.AuthorEmail != event.AuthorEmail {
+			t.Fatalf("atomic repair rollback=%v: stamped=%d date=%q author=%q err=%v", rollback, n, repaired.UTCDate, repaired.AuthorEmail, err)
+		}
+		if measure.maxRows > 100 {
+			t.Fatalf("repair materialized unbounded memberships: %+v", measure)
+		}
+		t.Logf("205 memberships rollback=%v: queries=%d rows=%d maxBatch=%d", rollback, measure.queries, measure.rows, measure.maxRows)
+	}
+}

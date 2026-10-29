@@ -83,6 +83,37 @@ func stampContributionClass(e Engine, repo, source int64, event ContributionEven
 	return ensureContributionClass(e, c)
 }
 
+// A projection repair changes the shared event before the staging repository
+// publishes. Stamp every existing membership atomically with that repair, using
+// the stored event identity rather than the staging caller's copy.
+func stampContributionChangesetMemberships(s *xorm.Session, event ContributionEvent) error {
+	var revision int64
+	for after := int64(0); ; {
+		var memberships []ContributionRepository
+		if err := s.Where("event_id = ? AND repository_id > ?", event.ID, after).Asc("repository_id").Limit(100).Find(&memberships); err != nil {
+			return err
+		}
+		if len(memberships) > 0 && revision == 0 {
+			var err error
+			revision, err = nextContributionRevision(s)
+			if err != nil {
+				return err
+			}
+		}
+		for _, m := range memberships {
+			c := contributionClass(m.RepositoryID, 0, event)
+			c.Revision = revision
+			if err := ensureContributionClass(s, c); err != nil {
+				return err
+			}
+			after = m.RepositoryID
+		}
+		if len(memberships) < 100 {
+			return nil
+		}
+	}
+}
+
 // stampContributionObject runs inside the canonical mutation transaction.
 // Application objects have bounded pages of actors (one opening plus reviews).
 func stampContributionObject(s *xorm.Session, kind string, id int64) error {

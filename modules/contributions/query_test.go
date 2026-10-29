@@ -183,6 +183,11 @@ func TestContributionCountsAndUTC(t *testing.T) {
 	if len(historical.Days) != 366 || historical.Totals.Changesets != 1 {
 		t.Fatalf("valid pre-epoch timestamp excluded: %+v", historical.Totals)
 	}
+	f.event(t, 10, "changeset", "0001-01-01T00:00:01Z") // valid instant in the same year as zero
+	firstYear := f.read(t, 0, Scope{OwnerID: 1}, Query{Year: 1})
+	if len(firstYear.Days) != 365 || firstYear.Totals != (Counts{Changesets: 1}) || firstYear.Days[0].Counts != (Counts{Changesets: 1}) || len(firstYear.Groups) != 1 || firstYear.Groups[0].Count != 1 || len(firstYear.Years) == 0 || firstYear.Years[len(firstYear.Years)-1] != 1 {
+		t.Fatalf("year 1 must exclude zero but retain the next second: totals=%+v days=%d first=%+v groups=%+v yearCount=%d", firstYear.Totals, len(firstYear.Days), firstYear.Days[0], firstYear.Groups, len(firstYear.Years))
+	}
 	for _, q := range []Query{{Year: -1}, {Year: 2025}, {Day: "2024-02-30"}, {Day: "2023-01-01"}, {Kind: "comment"}, {Limit: -1}, {Limit: 51}} {
 		if _, err := f.s.Read(context.Background(), 0, Scope{OwnerID: 1}, q); !errors.Is(err, ErrInvalidQuery) {
 			t.Fatalf("invalid query %+v: %v", q, err)

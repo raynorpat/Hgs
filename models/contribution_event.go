@@ -101,7 +101,11 @@ func insertContributionEvent(e Engine, row ContributionEvent) (int64, error) {
 				if kind == "review" {
 					kind = "pull"
 				}
-				if kind != "changeset" {
+				if kind == "changeset" {
+					if err := stampContributionChangesetMemberships(s, old); err != nil {
+						return 0, err
+					}
+				} else {
 					if err := stampContributionObject(s, kind, row.ObjectID); err != nil {
 						return 0, err
 					}
