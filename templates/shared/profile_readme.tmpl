@@ -1,0 +1,6 @@
+{{with .ProfileReadme}}{{if ne .State "absent"}}
+<section class="hg-panel hg-profile-readme" data-profile-readme aria-label="{{$.i18n.Tr "user.profile_readme"}}">
+{{if eq .State "ready"}}<div class="hg-markdown">{{.HTML}}</div>{{else}}<p class="hg-meta">{{$.i18n.Tr "user.profile_readme_unavailable"}}</p>{{end}}
+{{if .SourceURL}}<p class="hg-meta"><a href="{{.SourceURL}}">{{$.i18n.Tr "user.profile_readme_source"}}</a></p>{{end}}
+</section>
+{{end}}{{end}}

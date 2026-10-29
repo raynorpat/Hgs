@@ -8,6 +8,7 @@ import (
 	"github.com/gogits/gogs/models"
 	"github.com/gogits/gogs/modules/auth"
 	"github.com/gogits/gogs/modules/base"
+	"github.com/gogits/gogs/modules/hosting"
 	"github.com/gogits/gogs/modules/log"
 	"github.com/gogits/gogs/modules/middleware"
 	"github.com/gogits/gogs/modules/setting"
@@ -18,7 +19,7 @@ const (
 	CREATE base.TplName = "org/create"
 )
 
-func Home(ctx *middleware.Context) {
+func Home(ctx *middleware.Context, provider hosting.Provider) {
 	org := ctx.Org.Organization
 	ctx.Data["Title"] = org.FullName
 
@@ -57,6 +58,11 @@ func Home(ctx *middleware.Context) {
 	}
 	ctx.Data["Teams"] = org.Teams
 
+	readme, readmeErr := middleware.LoadProfileReadme(ctx, provider, org)
+	if readmeErr != nil {
+		log.Error(4, "Organization profile README: %v", readmeErr)
+	}
+	ctx.Data["ProfileReadme"] = readme
 	ctx.HTML(200, HOME)
 }
 

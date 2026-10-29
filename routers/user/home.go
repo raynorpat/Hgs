@@ -13,6 +13,8 @@ import (
 
 	"github.com/gogits/gogs/models"
 	"github.com/gogits/gogs/modules/base"
+	"github.com/gogits/gogs/modules/hosting"
+	"github.com/gogits/gogs/modules/log"
 	"github.com/gogits/gogs/modules/middleware"
 	"github.com/gogits/gogs/modules/ui"
 )
@@ -161,7 +163,7 @@ func ShowSSHKeys(ctx *middleware.Context, uid int64) {
 	ctx.RenderData(200, buf.Bytes())
 }
 
-func Profile(ctx *middleware.Context) {
+func Profile(ctx *middleware.Context, provider hosting.Provider) {
 	ctx.Data["Title"] = "Profile"
 	ctx.Data["PageIsUserProfile"] = true
 
@@ -257,6 +259,11 @@ func Profile(ctx *middleware.Context) {
 		}
 	}
 
+	readme, readmeErr := middleware.LoadProfileReadme(ctx, provider, u)
+	if readmeErr != nil {
+		log.Error(4, "Profile README: %v", readmeErr)
+	}
+	ctx.Data["ProfileReadme"] = readme
 	ctx.HTML(200, PROFILE)
 }
 

@@ -53,6 +53,7 @@
         </div>
         <div class="">
             <div id="profile-body">
+                {{template "shared/profile_readme" .}}
                 <ul class="menu hg-tabs" id="profile-header">
                     <li>
                         <a {{if not .TabName}}class="current"{{end}} href="{{.Owner.HomeLink}}"> {{.i18n.Tr "user.repositories"}}</a>

@@ -28,7 +28,9 @@ import (
 	"github.com/gogits/gogs/modules/hosting"
 	"github.com/gogits/gogs/modules/middleware"
 	"github.com/gogits/gogs/modules/setting"
+	"github.com/gogits/gogs/modules/ui"
 	"github.com/gogits/gogs/routers"
+	"github.com/gogits/gogs/routers/org"
 	"github.com/gogits/gogs/routers/repo"
 	"github.com/gogits/gogs/routers/user"
 	"github.com/macaron-contrib/binding"
@@ -69,6 +71,183 @@ func TestLandingIdentityAndAuth(t *testing.T) {
 type uiProvider struct{ s *hosting.Service }
 
 func (p uiProvider) Service() *hosting.Service { return p.s }
+
+func TestProfileReadmeRoutes(t *testing.T) {
+	f := newUIFixture(t, "/code")
+	f.m.Use(func(ctx *middleware.Context) { ctx.PreparePage = ui.PrepareAccountPage })
+	f.m.Get("/:username", user.Profile)
+	f.m.Get("/org/:org", middleware.OrgAssignment(false), org.Home)
+	if err := models.ChangeRepositoryName(f.public.Id, f.owner.Name); err != nil {
+		t.Fatal(err)
+	}
+	for _, tab := range []string{"", "?tab=activity"} {
+		w := f.get(t, "/"+f.owner.Name+tab, "")
+		if w.Code != 200 || !strings.Contains(w.Body.String(), `data-profile-readme`) || !strings.Contains(w.Body.String(), "<h1>Lab</h1>") {
+			t.Fatalf("profile %d %s", w.Code, w.Body.String())
+		}
+		if strings.Contains(w.Body.String(), "<script>alert(1)</script>") {
+			t.Fatal("unsafe Markdown")
+		}
+		if !strings.Contains(w.Body.String(), "/code/fixtureowner/fixtureowner/src/"+f.merge+"/README.md") {
+			t.Fatal("README did not select and pin highest default head")
+		}
+	}
+	check := func(path, who string, want bool) string {
+		t.Helper()
+		w := f.get(t, path, who)
+		body := w.Body.String()
+		if w.Code != 200 || strings.Contains(body, "data-profile-readme") != want {
+			t.Fatalf("%s viewer=%s panel=%v HTTP %d: %s", path, who, want, w.Code, body)
+		}
+		return body
+	}
+	setPrivate := func(private bool) {
+		t.Helper()
+		if _, err := f.db.Id(f.public.Id).Cols("is_private").Update(&models.Repository{IsPrivate: private}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	setPrivate(true)
+	for _, who := range []string{"", "reader"} {
+		body := check("/fixtureowner", who, false)
+		if strings.Contains(body, "<h1>Lab</h1>") || strings.Contains(body, "/README.md") {
+			t.Fatal("private data leaked")
+		}
+	}
+	check("/fixtureowner", "owner", true)
+	if err := models.AddAccess(&models.Access{UserId: f.reader.Id, RepoId: f.public.Id, Mode: models.READABLE}); err != nil {
+		t.Fatal(err)
+	}
+	check("/fixtureowner", "reader", true)
+	if _, err := f.db.Where("user_id = ? AND repo_id = ?", f.reader.Id, f.public.Id).Delete(new(models.Access)); err != nil {
+		t.Fatal(err)
+	}
+	check("/fixtureowner", "reader", false)
+	setPrivate(false)
+	if _, err := f.db.Insert(&models.ForkRelation{RepositoryID: f.public.Id, SourceID: f.private.Id, FamilyID: f.private.Id}); err != nil {
+		t.Fatal(err)
+	}
+	check("/fixtureowner", "", false)
+	check("/fixtureowner", "reader", true)
+	if _, err := f.db.Where("user_id = ? AND repo_id = ?", f.reader.Id, f.private.Id).Delete(new(models.Access)); err != nil {
+		t.Fatal(err)
+	}
+	check("/fixtureowner", "reader", false)
+	if _, err := f.db.Id(f.public.Id).Delete(new(models.ForkRelation)); err != nil {
+		t.Fatal(err)
+	}
+	check("/FIXTUREOWNER", "", true)
+	setting.Service.RequireSignInView = true
+	check("/fixtureowner", "", false)
+	setting.Service.RequireSignInView = false
+	if err := models.ChangeRepositoryName(f.public.Id, "renamed"); err != nil {
+		t.Fatal(err)
+	}
+	check("/fixtureowner", "", false)
+	if err := models.ChangeRepositoryName(f.public.Id, "FIXTUREOWNER"); err != nil {
+		t.Fatal(err)
+	}
+	check("/fixtureowner", "", true)
+	f.owner.Name = "newowner"
+	if err := models.UpdateUser(f.owner); err != nil {
+		t.Fatal(err)
+	}
+	check("/newowner", "", false)
+	if err := models.ChangeRepositoryName(f.public.Id, "newowner"); err != nil {
+		t.Fatal(err)
+	}
+	check("/newowner", "", true)
+	r, err := models.GetRepositoryById(f.public.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Owner = f.owner
+	if err := models.TransferOwnership(f.owner, f.reader.Name, r); err != nil {
+		t.Fatal(err)
+	}
+	check("/newowner", "", false)
+	check("/fixturereader", "", false)
+	if err := models.ChangeRepositoryName(f.public.Id, f.reader.Name); err != nil {
+		t.Fatal(err)
+	}
+	check("/fixturereader", "", true)
+	team, err := models.CreateOrganization(&models.User{Name: "readmeteam", Email: "team@example.invalid", Type: models.ORGANIZATION, IsActive: true}, f.owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	teamRepo, err := models.CreateHgRepository(context.Background(), f.host.Runner(), f.host.RepositoryRoot(), models.CreateHgRepositoryOptions{OwnerID: team.Id, Name: ".github"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("/org/readmeteam", "", false)
+	h := newHgCmd(t, hgPath(t), filepath.Join(f.root, "readme-hg"), 2)
+	local := filepath.Join(f.root, "working")
+	h.must(t, local, "update", "-r", f.merge)
+	if err := os.MkdirAll(filepath.Join(local, "profile"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(local, "profile", "README.md"), []byte("# Team introduction\n\n![local](../image.png) [guide](guide.md)\n\n<table><tr><td>wide table</td></tr></table>\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	h.must(t, local, "add", "profile/README.md")
+	h.must(t, local, "commit", "-u", "Fixture", "-m", "profile introduction")
+	node := strings.TrimSpace(h.stdout(t, local, "log", "-r", ".", "-T", "{node}"))
+	dest, err := models.RepositoryStoragePath(f.host.RepositoryRoot(), teamRepo.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.must(t, local, "push", "--force", dest)
+	body := check("/org/readmeteam", "", true)
+	for _, want := range []string{"Team introduction", "/code/readmeteam/.github/raw/" + node + "/image.png", "/code/readmeteam/.github/src/" + node + "/profile/guide.md", "/code/readmeteam/.github/src/" + node + "/profile/README.md"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("org missing %q", want)
+		}
+	}
+	if _, err := f.db.Id(teamRepo.Id).Cols("is_private").Update(&models.Repository{IsPrivate: true}); err != nil {
+		t.Fatal(err)
+	}
+	check("/org/readmeteam", "", false)
+	check("/org/readmeteam", "owner", true)
+	// A new immutable landing revision replaces content; no cached viewer HTML.
+	if err := os.WriteFile(filepath.Join(local, "README.md"), []byte("# Updated profile"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	h.must(t, local, "commit", "-u", "Fixture", "-m", "update user introduction")
+	userDest, err := models.RepositoryStoragePath(f.host.RepositoryRoot(), f.public.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.must(t, local, "push", "--force", userDest)
+	if body := check("/fixturereader", "", true); !strings.Contains(body, "Updated profile") {
+		t.Fatal("stale README")
+	}
+	for _, tc := range []struct {
+		name, body string
+		panel      bool
+	}{{"binary", "a\x00b", true}, {"oversize", strings.Repeat("x", hg.MaxRenderedFileBytes+1), true}, {"empty", "", false}} {
+		if err := os.WriteFile(filepath.Join(local, "README.md"), []byte(tc.body), 0600); err != nil {
+			t.Fatal(err)
+		}
+		h.must(t, local, "commit", "-u", "Fixture", "-m", tc.name)
+		h.must(t, local, "push", "--force", userDest)
+		body := check("/fixturereader", "", tc.panel)
+		if tc.panel && (!strings.Contains(body, "currently unavailable") || !strings.Contains(body, "View README source")) {
+			t.Fatalf("%s was not safely unavailable", tc.name)
+		}
+	}
+	h.must(t, local, "rename", "README.md", "intermediate.md")
+	h.must(t, local, "rename", "intermediate.md", "readme.md")
+	if err := os.WriteFile(filepath.Join(local, "readme.md"), []byte("wrong case must not show"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	h.must(t, local, "commit", "-u", "Fixture", "-m", "exact file case")
+	h.must(t, local, "push", "--force", userDest)
+	check("/fixturereader", "", false)
+	if err := models.DeleteRepository(f.reader.Id, f.public.Id, f.reader.Name); err != nil {
+		t.Fatal(err)
+	}
+	check("/fixturereader", "", false)
+}
 
 type uiFixture struct {
 	m                         *macaron.Macaron

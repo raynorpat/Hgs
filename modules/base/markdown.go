@@ -13,6 +13,8 @@ import (
 	"regexp"
 	"strings"
 
+	"golang.org/x/net/html"
+
 	"github.com/russross/blackfriday"
 
 	"github.com/gogits/gogs/modules/setting"
@@ -201,6 +203,10 @@ func RenderRawMarkdown(body []byte, urlPrefix string) []byte {
 		urlPrefix: urlPrefix,
 	}
 
+	return renderMarkdownWithRenderer(body, renderer)
+}
+
+func renderMarkdownWithRenderer(body []byte, renderer blackfriday.Renderer) []byte {
 	// set up the parser
 	extensions := 0
 	extensions |= blackfriday.EXTENSION_NO_INTRA_EMPHASIS
@@ -225,4 +231,39 @@ func RenderMarkdown(rawBytes []byte, urlPrefix string) []byte {
 
 func RenderMarkdownString(raw, urlPrefix string) string {
 	return string(RenderMarkdown([]byte(raw), urlPrefix))
+}
+
+// RenderMarkdownWithURLs keeps special repository links separate from the
+// document directory. Both Markdown and raw HTML URLs pass through resolve
+// before the final sanitizer; existing RenderMarkdown callers are unchanged.
+func RenderMarkdownWithURLs(raw []byte, repositoryRoot string, resolve func(string, bool) (string, error)) []byte {
+	body := RenderSpecialLink(raw, repositoryRoot)
+	body = renderMarkdownWithRenderer(body, blackfriday.HtmlRenderer(blackfriday.HTML_SKIP_STYLE|blackfriday.HTML_OMIT_CONTENTS, "", ""))
+	z := html.NewTokenizer(bytes.NewReader(body))
+	var out bytes.Buffer
+	for {
+		kind := z.Next()
+		if kind == html.ErrorToken {
+			break
+		}
+		if kind != html.StartTagToken && kind != html.SelfClosingTagToken {
+			out.Write(z.Raw())
+			continue
+		}
+		token := z.Token()
+		attrs := token.Attr[:0]
+		for _, attr := range token.Attr {
+			if attr.Key == "href" || attr.Key == "src" || attr.Key == "cite" {
+				value, err := resolve(attr.Val, attr.Key == "src")
+				if err != nil {
+					continue
+				}
+				attr.Val = value
+			}
+			attrs = append(attrs, attr)
+		}
+		token.Attr = attrs
+		out.WriteString(token.String())
+	}
+	return Sanitizer.SanitizeBytes(out.Bytes())
 }

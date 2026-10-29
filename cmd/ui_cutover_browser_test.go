@@ -159,6 +159,10 @@ func TestSharedUICutoverBrowserFixture(t *testing.T) {
 	if os.Getenv("UI_CUTOVER_FIXTURE") != "1" {
 		t.Skip("opt-in disposable Task15 browser fixture")
 	}
+	profileFixture := os.Getenv("UI_PROFILE_FIXTURE") == "1"
+	if profileFixture && os.Getenv("UI_DRAFT_FIXTURE") == "1" {
+		t.Fatal("profile and draft fixture modes are mutually exclusive")
+	}
 	executable := os.Getenv("GOGS_TEST_HG")
 	if executable == "" {
 		t.Fatal("GOGS_TEST_HG required")
@@ -181,6 +185,11 @@ func TestSharedUICutoverBrowserFixture(t *testing.T) {
 	if os.Getenv("UI_DRAFT_FIXTURE") == "1" {
 		setting.SessionConfig.Maxlifetime = options.idle
 		setting.SessionConfig.Gclifetime = 2
+	}
+	if profileFixture {
+		oldLifetime, oldGC := setting.SessionConfig.Maxlifetime, setting.SessionConfig.Gclifetime
+		t.Cleanup(func() { setting.SessionConfig.Maxlifetime, setting.SessionConfig.Gclifetime = oldLifetime, oldGC })
+		setting.SessionConfig.Maxlifetime, setting.SessionConfig.Gclifetime = 300, 2
 	}
 	writer := &models.User{Name: "writer", Email: "writer@example.invalid", Passwd: "password", IsActive: true}
 	if err := models.CreateUser(writer); err != nil {
@@ -259,6 +268,9 @@ func TestSharedUICutoverBrowserFixture(t *testing.T) {
 	if os.Getenv("UI_DRAFT_FIXTURE") == "1" {
 		configureDraftFixtureAttachments(t, a.root)
 	}
+	if profileFixture {
+		seedProfileReadmeBrowser(t, a)
+	}
 	a.handler = newWebHandler(a.holder)
 	if os.Getenv("UI_DRAFT_FIXTURE") == "1" {
 		if options.failure == "save-outage" {
@@ -302,9 +314,14 @@ func TestSharedUICutoverBrowserFixture(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()
 	t.Logf("CUTOVER_BROWSER_URL=http://%s%s/; sign in %s/user/login; alice/admin, writer/write, bob/read; passwords=password; guest=POST logout. Locales ?lang=en-US or ?lang=de-DE; PR %s/alice/project/pulls/1 comparison=%d; issues %s/alice/project/issues/1; organization %s/org/laboratory; shutdown http://%s/fixture/stop; root=%s", listener.Addr(), options.prefix, options.prefix, options.prefix, comparison.ID, options.prefix, options.prefix, listener.Addr(), a.root)
+	lifetime := 60 * time.Minute
+	if profileFixture {
+		lifetime = 12 * time.Minute
+		t.Logf("PROFILE_FIXTURE: production router, normal login; public /code/alice; private /code/org/laboratory (alice only); absent /code/bob; all three profiles at 390/1440; session idle=300s; auto stop=12m")
+	}
 	select {
 	case <-stop:
-	case <-time.After(60 * time.Minute):
+	case <-time.After(lifetime):
 	}
 	cancelRequests()
 	shutdown, cancel := context.WithTimeout(ctx, 10*time.Second)
