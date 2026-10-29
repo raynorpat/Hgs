@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -134,8 +135,25 @@ func TestHostingTimeoutInterruptsBlockedHTTPResponse(t *testing.T) {
 			// This must obtain the only process slot without drain or shutdown.
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
-			if err := s.Runner().Run(ctx, "", []string{"version"}, nil, nil); err != nil {
-				t.Fatalf("timeout retained worker capacity: %v", err)
+			child, err := s.Runner().Start(ctx, "", []string{"version"}, nil)
+			if err != nil {
+				t.Fatalf("timeout retained worker admission: %v", err)
+			}
+			// Admission is the assertion: a separate version command's runtime
+			// is not evidence that the previous response retained the sole slot.
+			cancel()
+			child.Stdin.Close()
+			child.Stdout.Close()
+			child.Stderr.Close()
+			joined := make(chan error, 1)
+			go func() { joined <- child.Wait() }()
+			select {
+			case err := <-joined:
+				if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatalf("admitted probe did not cancel cleanly: %v", err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("admitted capacity probe did not join")
 			}
 		})
 	}

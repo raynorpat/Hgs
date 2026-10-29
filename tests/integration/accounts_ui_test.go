@@ -197,7 +197,7 @@ func (f *accountFixture) request(t *testing.T, method, path, who string, values 
 	if method == "POST" && valid {
 		values.Set("_csrf", f.token)
 	}
-	r := httptest.NewRequest(method, "/code"+path, strings.NewReader(values.Encode()))
+	r := httptest.NewRequest(method, setting.AppSubUrl+path, strings.NewReader(values.Encode()))
 	if method == "POST" {
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}

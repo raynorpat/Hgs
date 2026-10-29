@@ -198,41 +198,99 @@ func (t testJob) Run() {
 	t.wg.Done()
 }
 
-// Simple test using Runnables.
-func TestJob(t *testing.T) {
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
+type observedTestJob struct {
+	name      string
+	completed chan<- time.Time
+}
 
-	cron := New()
-	cron.AddJob("", "0 0 0 30 Feb ?", testJob{wg, "job0"})
-	cron.AddJob("", "0 0 0 1 1 ?", testJob{wg, "job1"})
-	cron.AddJob("", "* * * * * ?", testJob{wg, "job2"})
-	cron.AddJob("", "1 0 0 1 1 ?", testJob{wg, "job3"})
-	cron.Schedule("", "", Every(5*time.Second+5*time.Nanosecond), testJob{wg, "job4"})
-	cron.Schedule("", "", Every(5*time.Minute), testJob{wg, "job5"})
-
-	cron.Start()
-	defer cron.Stop()
-
-	select {
-	case <-time.After(ONE_SECOND):
-		t.FailNow()
-	case <-wait(wg):
-	}
-
-	// Ensure the entries are in the right order.
-	expecteds := []string{"job2", "job4", "job5", "job1", "job3", "job0"}
-
-	var actuals []string
-	for _, entry := range cron.Entries() {
-		actuals = append(actuals, entry.Job.(testJob).name)
-	}
-
-	for i, expected := range expecteds {
-		if actuals[i] != expected {
-			t.Errorf("Jobs not in the right order.  (expected) %s != %s (actual)", expecteds, actuals)
-			t.FailNow()
+func (j observedTestJob) Run() {
+	if j.name == "job2" {
+		select {
+		case j.completed <- time.Now():
+		default:
 		}
+	}
+}
+
+type startupGatedSchedule struct {
+	Schedule
+	entered chan struct{}
+	release <-chan struct{}
+	once    sync.Once
+}
+
+func (s *startupGatedSchedule) Next(now time.Time) time.Time {
+	s.once.Do(func() { close(s.entered); <-s.release })
+	return s.Schedule.Next(now)
+}
+
+// Exercise actual asynchronous Runnable dispatch and schedule ordering.
+func TestJob(t *testing.T) {
+	for _, delayed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("delayed-initialization=%v", delayed), func(t *testing.T) {
+			completed := make(chan time.Time, 8)
+			cron := New()
+			cron.AddJob("", "0 0 0 30 Feb ?", observedTestJob{"job0", completed})
+			cron.AddJob("", "0 0 0 1 1 ?", observedTestJob{"job1", completed})
+			cron.AddJob("", "* * * * * ?", observedTestJob{"job2", completed})
+			cron.AddJob("", "1 0 0 1 1 ?", observedTestJob{"job3", completed})
+			cron.Schedule("", "", Every(5*time.Second+5*time.Nanosecond), observedTestJob{"job4", completed})
+			cron.Schedule("", "", Every(5*time.Minute), observedTestJob{"job5", completed})
+			release := make(chan struct{})
+			entered := make(chan struct{})
+			var once sync.Once
+			unblock := func() { once.Do(func() { close(release) }) }
+			if delayed {
+				cron.entries[0].Schedule = &startupGatedSchedule{Schedule: cron.entries[0].Schedule, entered: entered, release: release}
+			}
+			started := time.Now()
+			cron.Start()
+			defer func() { unblock(); cron.Stop() }()
+			if delayed {
+				select {
+				case <-entered:
+				case <-time.After(5 * time.Second):
+					t.Fatal("scheduler did not reach initialization latch")
+				}
+				// Deliberately spend the old whole-test budget in initialization.
+				// This is a controlled counterexample, not attribution of a past delay.
+				select {
+				case <-completed:
+					t.Fatal("job ran before its schedule was initialized")
+				case <-time.After(ONE_SECOND + 50*time.Millisecond):
+				}
+				unblock()
+			}
+			ready := cron.Entries()
+			scheduled := ready[0].Next
+			if ready[0].Job.(observedTestJob).name != "job2" || scheduled.IsZero() {
+				t.Fatal("first runnable schedule was not initialized")
+			}
+			// Wait for the actual callback, bounded relative to its scheduled time.
+			// The scheduler has no 10ms goroutine-start/dispatch latency guarantee.
+			deadline := time.Until(scheduled) + 5*time.Second
+			if deadline <= 0 {
+				t.Fatal("initial schedule already exceeded dispatch grace")
+			}
+			select {
+			case <-time.After(deadline):
+				t.Fatalf("job did not complete: started=%s scheduled=%s now=%s", started.Format(time.RFC3339Nano), scheduled.Format(time.RFC3339Nano), time.Now().Format(time.RFC3339Nano))
+			case actual := <-completed:
+				if actual.Before(scheduled) {
+					t.Fatal("job ran before scheduled time")
+				}
+				t.Logf("startup=%s scheduled=%s actual=%s dispatch-lateness=%s", started.Format(time.RFC3339Nano), scheduled.Format(time.RFC3339Nano), actual.Format(time.RFC3339Nano), actual.Sub(scheduled))
+			}
+			expecteds := []string{"job2", "job4", "job5", "job1", "job3", "job0"}
+			for i, entry := range cron.Entries() {
+				if name := entry.Job.(observedTestJob).name; name != expecteds[i] {
+					t.Fatalf("entry %d = %s want %s", i, name, expecteds[i])
+				}
+				if i == 0 && (entry.ExecTimes < 1 || entry.Prev.Before(scheduled) || entry.Next.Sub(entry.Prev) != time.Second) {
+					t.Fatalf("incorrect recurring schedule state: %+v", entry)
+				}
+			}
+		})
 	}
 }
 

@@ -27,6 +27,9 @@
                 <button class="hg-button hg-button-primary">{{.i18n.Tr "sign_in"}}</button>&nbsp;&nbsp;&nbsp;&nbsp;
                 {{if not .IsSocialLogin}}<a href="{{AppSubUrl}}/user/forget_password">{{.i18n.Tr "auth.forget_password"}}</a>{{end}}
             </div>
+            <div class="hg-field">
+                <a href="{{AppSubUrl}}/user/activate">{{.i18n.Tr "auth.activation_resend_link"}}</a>
+            </div>
             {{if .ShowRegistrationButton}}
             <div class="hg-field">
                 <a href="{{AppSubUrl}}/user/sign_up">{{.i18n.Tr "auth.sign_up_now" | Str2html}}</a>

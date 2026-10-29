@@ -441,7 +441,7 @@ func UpdateUser(u *User) error {
 		return contributionError(err)
 	}
 	// An old account snapshot cannot restore a revoked pending-signup proof.
-	u.PendingActivation = u.PendingActivation && prior.PendingActivation && !u.IsActive && prior.Passwd == u.Passwd && prior.Email == u.Email && prior.LoginType == u.LoginType
+	u.PendingActivation = u.PendingActivation && prior.PendingActivation && !u.IsActive && prior.Email == u.Email && prior.LoginType == u.LoginType && prior.LoginName == u.LoginName
 	if _, err = sess.Id(u.Id).AllCols().Update(u); err != nil {
 		return err
 	}
