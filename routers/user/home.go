@@ -225,7 +225,11 @@ func Profile(ctx *middleware.Context, provider hosting.Provider, index contribut
 		return
 	}
 	ctx.Data["Repos"] = repos
-	status := ui.PrepareProfile(ctx, u, index, repos)
+	status, err := ui.PrepareProfile(ctx, u, index, repos)
+	if err != nil {
+		ctx.Handle(500, "PrepareProfile", err)
+		return
+	}
 
 	readme, readmeErr := middleware.LoadProfileReadme(ctx, provider, u)
 	if readmeErr != nil {

@@ -4,9 +4,7 @@
 {{template "shared/profile_readme" .}}
 {{template "shared/profile_tabs" .}}
 <div class="hg-profile-columns"><div class="hg-profile-main">
-{{if or (eq .Profile.Tab "overview") (eq .Profile.Tab "repositories")}}<section class="hg-profile-repositories"><div class="hg-profile-section-heading"><h2>{{.i18n.Tr "user.repositories"}}</h2>{{if and .Profile.Owner.IsOrganization .IsOrganizationOwner}}<a class="hg-button" href="{{AppSubUrl}}/repo/create?org={{.Profile.Owner.Id}}">{{.i18n.Tr "new_repo"}}</a>{{end}}</div>
-{{range .Profile.Repositories}}<article class="hg-profile-repo"><h3><a href="{{.URL}}">{{.Name}}</a>{{if .IsPrivate}} <span class="hg-badge">{{$.i18n.Tr "ui.private"}}</span>{{end}}</h3><p>{{.Description}}</p><p class="hg-meta">{{$.i18n.Tr "org.repo_updated"}} {{TimeSince .Updated $.i18n.Lang}}</p><div class="hg-profile-repo-actions">
-{{if $.IsSigned}}<form method="post" action="{{.URL}}/action/{{if .Watching}}un{{end}}watch">{{$.CsrfTokenHtml}}<button class="hg-button" aria-pressed="{{.Watching}}">{{if .Watching}}{{$.i18n.Tr "repo.unwatch"}}{{else}}{{$.i18n.Tr "repo.watch"}}{{end}} &middot; {{.NumWatches}}</button></form><form method="post" action="{{.URL}}/action/{{if .Starring}}un{{end}}star">{{$.CsrfTokenHtml}}<button class="hg-button" aria-pressed="{{.Starring}}">{{if .Starring}}{{$.i18n.Tr "repo.unstar"}}{{else}}{{$.i18n.Tr "repo.star"}}{{end}} &middot; {{.NumStars}}</button></form>{{else}}<span>{{$.i18n.Tr "repo.watch"}} &middot; {{.NumWatches}}</span><span>{{$.i18n.Tr "repo.star"}} &middot; {{.NumStars}}</span>{{end}}</div></article>{{else}}<p class="hg-empty">{{.i18n.Tr "profile.no_repositories"}}</p>{{end}}</section>{{end}}
+{{template "shared/profile_repositories" .}}
 {{if or (eq .Profile.Tab "overview") (eq .Profile.Tab "activity")}}{{template "shared/contribution_calendar" .}}{{template "shared/contribution_activity" .}}{{end}}
 {{if eq .Profile.Tab "people"}}{{template "shared/profile_people" .}}{{end}}
 </div></div></div>

@@ -100,7 +100,10 @@ func TestProfileContributionStates(t *testing.T) {
 				ctx := &middleware.Context{Context: c}
 				c.Data["UILanguageLink"] = "/code/alice"
 				c.Data["ProfileReadme"] = profile.Content{State: "absent"}
-				status := ui.PrepareProfile(ctx, &models.User{Id: 7, Name: "alice"}, profileReaderFixture{page: contributions.Page{State: tc.state, Years: []int{2024}}, err: tc.err, t: t}, nil)
+				status, err := ui.PrepareProfile(ctx, &models.User{Id: 7, Name: "alice"}, profileReaderFixture{page: contributions.Page{State: tc.state, Years: []int{2024}}, err: tc.err, t: t}, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
 				body, err := c.HTMLString("user/profile", c.Data)
 				if err != nil {
 					t.Fatal(err)

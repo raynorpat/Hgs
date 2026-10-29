@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
@@ -50,7 +51,7 @@ type ProfileView struct {
 
 // PrepareProfile composes request-local view data only. The provider owns indexing.
 // Invalid and stale selections keep a normal GET recovery link and an honest status.
-func PrepareProfile(ctx *middleware.Context, owner *models.User, provider contributions.Provider, repos []*models.Repository) int {
+func PrepareProfile(ctx *middleware.Context, owner *models.User, provider contributions.Provider, repos []*models.Repository) (int, error) {
 	v := ProfileView{Owner: owner, URL: owner.HomeLink(), Tab: ctx.Query("tab")}
 	if owner.IsOrganization() {
 		v.URL = setting.AppSubUrl + "/org/" + owner.Name
@@ -198,15 +199,22 @@ func PrepareProfile(ctx *middleware.Context, owner *models.User, provider contri
 		v.Filters = append(v.Filters, NavItem{Key: key, URL: profileURL(v.URL, v.Tab, q, ""), Active: kind == v.Query.Kind})
 	}
 	for _, r := range repos {
-		link, err := r.RepoLink()
+		if r.OwnerId != owner.Id {
+			return 500, fmt.Errorf("profile repository %d owner does not match profile owner", r.Id)
+		}
+		// Both callers already resolved this owner and filtered its repositories.
+		// Reuse that identity without a redundant lookup or mutating shared data.
+		linked := *r
+		linked.Owner = owner
+		link, err := linked.RepoLink()
 		if err != nil {
-			continue
+			return 500, err
 		}
 		v.Repositories = append(v.Repositories, ProfileRepository{Repository: r, URL: link, Watching: actor > 0 && models.IsWatching(actor, r.Id), Starring: actor > 0 && models.IsStaring(actor, r.Id)})
 	}
 	ctx.Data["Profile"] = v
 	ctx.Data["TabName"] = v.Tab
-	return status
+	return status, nil
 }
 
 func profileURL(path, tab string, q contributions.Query, cursor string) string {

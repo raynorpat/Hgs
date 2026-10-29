@@ -54,7 +54,11 @@ func Home(ctx *middleware.Context, provider hosting.Provider, index contribution
 	}
 	ctx.Data["ProfilePeople"] = people
 	ctx.Data["Owner"] = org
-	status := ui.PrepareProfile(ctx, org, index, visible)
+	status, err := ui.PrepareProfile(ctx, org, index, visible)
+	if err != nil {
+		ctx.Handle(500, "PrepareProfile", err)
+		return
+	}
 
 	if err = org.GetTeams(); err != nil {
 		ctx.Handle(500, "GetTeams", err)
