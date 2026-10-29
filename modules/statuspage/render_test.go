@@ -1,7 +1,11 @@
 package statuspage
 
 import (
+	"bytes"
+	"encoding/binary"
+	"hash/crc32"
 	"html/template"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -65,7 +69,8 @@ func TestStatusPageFallback(t *testing.T) {
 	}
 }
 
-func TestStatusPageMissingImageAndPreloadedResources(t *testing.T) {
+func statusResourceFixture(t *testing.T) string {
+	t.Helper()
 	root := t.TempDir()
 	for _, name := range []string{"templates/status", "public/css", "public/img", "conf/locale"} {
 		if err := os.MkdirAll(filepath.Join(root, name), 0700); err != nil {
@@ -81,6 +86,11 @@ func TestStatusPageMissingImageAndPreloadedResources(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
+	return root
+}
+
+func TestStatusPageMissingImageAndPreloadedResources(t *testing.T) {
+	root := statusResourceFixture(t)
 	preloaded := New(root, "/code")
 	if err := os.WriteFile(filepath.Join(root, "public/img/hgs-error.png"), []byte("broken PNG"), 0600); err != nil {
 		t.Fatal(err)
@@ -97,6 +107,41 @@ func TestStatusPageMissingImageAndPreloadedResources(t *testing.T) {
 		if i == 1 && (err == nil || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/plain")) {
 			t.Fatal("corrupt image not safely handled")
 		}
+	}
+}
+
+func TestStatusPageDamagedImagePayload(t *testing.T) {
+	image, err := os.ReadFile("../../public/img/hgs-error.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oversized := append([]byte(nil), image...)
+	binary.BigEndian.PutUint32(oversized[16:20], 4097)
+	binary.BigEndian.PutUint32(oversized[29:33], crc32.ChecksumIEEE(oversized[12:29]))
+	for name, damaged := range map[string][]byte{"header-only": image[:33], "missing-end": image[:len(image)-12], "oversized": oversized} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := png.DecodeConfig(bytes.NewReader(damaged)); err != nil {
+				t.Fatalf("regression requires a valid PNG header: %v", err)
+			}
+			root := statusResourceFixture(t)
+			baseline := httptest.NewRecorder()
+			if err := New(root, "/code").Render(baseline, httptest.NewRequest("GET", "/", nil), Model{Code: 500}); err != nil || !strings.HasPrefix(baseline.Header().Get("Content-Type"), "text/html") {
+				t.Fatalf("valid baseline must render HTML before image damage: %v", err)
+			}
+			for _, asset := range []string{"hgs-error.png", "hgs-not-found.png", "hgs-maintenance.png"} {
+				if err := os.WriteFile(filepath.Join(root, "public/img", asset), damaged, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			p := New(root, "/code")
+			for _, code := range []int{404, 500, 503} {
+				w := httptest.NewRecorder()
+				err := p.Render(w, httptest.NewRequest("GET", "/", nil), Model{Code: code})
+				if err == nil || w.Code != code || w.Header().Get("Cache-Control") != "no-store" || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/plain") || strings.Contains(w.Body.String(), "<html") {
+					t.Errorf("damaged image rendered: code=%d content-type=%s err=%v", w.Code, w.Header().Get("Content-Type"), err)
+				}
+			}
+		})
 	}
 }
 func TestStatusPageLocalizedUTF8(t *testing.T) {

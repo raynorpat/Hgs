@@ -47,7 +47,13 @@ func New(root, subURL string) *Renderer {
 	for _, name := range []string{"css/app.css", "css/status.css", "img/hgs-beaker.svg", "img/hgs-maintenance.png", "img/hgs-error.png", "img/hgs-not-found.png"} {
 		if b, err := os.ReadFile(filepath.Join(root, "public", filepath.FromSlash(name))); err == nil {
 			if strings.HasSuffix(name, ".png") {
-				if _, err := png.DecodeConfig(bytes.NewReader(b)); err != nil {
+				config, err := png.DecodeConfig(bytes.NewReader(b))
+				// Bound decoder allocation before validating all pixel data and IEND.
+				// The pixel limit allows approved art and caps an RGBA64 buffer at 32 MiB.
+				if err != nil || config.Width <= 0 || config.Height <= 0 || config.Width > 4096 || config.Height > 4096 || int64(config.Width)*int64(config.Height) > 4*1024*1024 {
+					continue
+				}
+				if _, err := png.Decode(bytes.NewReader(b)); err != nil {
 					continue
 				}
 			}
