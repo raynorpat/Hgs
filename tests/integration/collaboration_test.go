@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-xorm/xorm"
 	"github.com/gogits/gogs/models"
 	"github.com/gogits/gogs/modules/collaboration"
 )
@@ -240,6 +241,10 @@ func TestCollaborationAcceptanceNoGit(t *testing.T) {
 	a.client.must(t, work, "add")
 	a.client.must(t, work, "commit", "-u", "owner", "-m", "base")
 	a.client.must(t, work, append(append([]string{}, opts...), "push", target)...)
+	// The fork has an exclusive source fence. Wait for this fixture's canonical
+	// post-push index job to finish before the single mutation POST.
+	baseNode := strings.TrimSpace(a.client.stdout(t, work, "log", "-r", "tip", "-T", "{node}"))
+	waitCollaborationIndex(t, a, a.repos["public"].Id, baseNode)
 	check("GET", "/owner/public/fork", nil, 200)
 	_, progress := check("POST", "/owner/public/fork", url.Values{"uid": {fmt.Sprint(a.users["owner"].Id)}, "repo_name": {"acceptance-fork"}}, 302)
 	for deadline := time.Now().Add(60 * time.Second); ; time.Sleep(100 * time.Millisecond) {
@@ -312,4 +317,33 @@ func TestCollaborationAcceptanceNoGit(t *testing.T) {
 	}
 	check("GET", detail, nil, 200)
 	t.Log("actual startup, HTTPS push, fork form/status, exact source PR, comparison, formal review and same-operation merge passed without Git on server PATH")
+}
+
+func waitCollaborationIndex(t *testing.T, a *application, repoID int64, node string) {
+	t.Helper()
+	db, err := xorm.NewEngine("sqlite3", models.DbCfg.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for deadline := time.Now().Add(45 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+		var state models.ContributionIndexState
+		var job models.ContributionJob
+		ok, err := db.Id(repoID).Get(&state)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found, err := db.Where("kind = ? AND object_id = ?", "repository", repoID).Get(&job)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ok && found && state.Snapshot == node && !state.Updating && !state.Unavailable && job.Requested == job.Completed {
+			t.Logf("owned post-push maintenance settled repository=%d generation=%d job=%d completed=%d", repoID, state.Generation, job.ID, job.Completed)
+			return
+		}
+		if time.Now().After(deadline) {
+			log, _ := os.ReadFile(filepath.Join(a.root, "server.log"))
+			t.Fatalf("post-push index did not settle state=%+v job=%+v server=%s", state, job, log)
+		}
+	}
 }

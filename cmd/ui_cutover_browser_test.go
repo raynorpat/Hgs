@@ -262,6 +262,22 @@ func TestSharedUICutoverBrowserFixture(t *testing.T) {
 	if _, err = models.AddPullComment(ctx, a.bob.Id, pull.ID, "Reader comment for keyboard and mobile review.", nil); err != nil {
 		t.Fatal(err)
 	}
+	if os.Getenv("UI_FINAL_FIXTURE") == "1" {
+		if err := models.SubmitPullReview(ctx, writer.Id, pull.ID, comparison.ID, models.ReviewChangesRequested); err != nil {
+			t.Fatal(err)
+		}
+		if err := models.DismissPullReview(ctx, a.alice.Id, pull.ID, writer.Id, "Audited dismissal with literal <script>example</script> text."); err != nil {
+			t.Fatal(err)
+		}
+		for _, state := range []models.PullState{models.PullDeclined, models.PullOpen} {
+			if err := models.SetPullRecordState(ctx, a.alice.Id, pull.ID, state); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := models.EditPullRecord(ctx, a.alice.Id, pull.ID, "Review the laboratory proposal", "**Owned fixture** with audited metadata change."); err != nil {
+			t.Fatal(err)
+		}
+	}
 	label := &models.Label{RepoId: a.repo.Id, Name: "needs review", Color: "#0747a6"}
 	if err = models.NewLabel(label); err != nil {
 		t.Fatal(err)

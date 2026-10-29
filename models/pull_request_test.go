@@ -28,7 +28,7 @@ func pullFixture(t *testing.T, private bool) (*User, *User, *Repository, *Reposi
 		t.Fatal(err)
 	}
 	src, _ := json.Marshal(hg.ReviewSelection{Ref: hg.RefSelection{Kind: hg.RefNode, Name: strings.Repeat("1", 40)}})
-	dst, _ := json.Marshal(hg.ReviewSelection{Ref: hg.RefSelection{Kind: hg.RefNode, Name: strings.Repeat("2", 40)}})
+	dst, _ := json.Marshal(hg.ReviewSelection{Ref: hg.RefSelection{Kind: hg.RefBranch, Name: "default"}})
 	return owner, author, target, source, PullRequest{SourceRepoID: source.Id, TargetRepoID: target.Id, Title: "A proposal", Body: "description", SourceSelection: string(src), TargetSelection: string(dst)}
 }
 
@@ -376,7 +376,7 @@ func TestPullNumberNetworkFixture(t *testing.T) {
 	HasEngine = true
 	author := newAccessTestUser(t, "network-author", true)
 	repo := newAccessTestRepo(t, author, "network", false)
-	input := PullRequest{SourceRepoID: repo.Id, TargetRepoID: repo.Id, Title: "Network sequence", SourceSelection: `{"Ref":{"Kind":"node","Name":"1111111111111111111111111111111111111111"}}`, TargetSelection: `{"Ref":{"Kind":"node","Name":"2222222222222222222222222222222222222222"}}`}
+	input := PullRequest{SourceRepoID: repo.Id, TargetRepoID: repo.Id, Title: "Network sequence", SourceSelection: `{"Ref":{"Kind":"node","Name":"1111111111111111111111111111111111111111"}}`, TargetSelection: `{"Ref":{"Kind":"branch","Name":"default"}}`}
 	const n = 12
 	results := make(chan PullRequest, n)
 	failures := make(chan error, n)

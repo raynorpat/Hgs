@@ -1,38 +1,13 @@
 {{template "shared/start" .}}
-<div class="hg-account-page hg-auth-page">
-
-<div id="sign-wrapper">
-    <form class="hg-form hg-panel sign-panel sign-form" id="sign-up-form" action="{{AppSubUrl}}/user/activate" method="post" data-prevent-duplicate>
-        {{.CsrfTokenHtml}}
-        <div class="hg-panel-heading">
-            <h1>{{.i18n.Tr "auth.active_your_account"}}</h1>
-        </div>
-        <div class="hg-panel-body">
-        {{if .IsActivatePage}}
-            {{if .ServiceNotEnabled}}
-            <p>{{.i18n.Tr "auth.disable_register_mail"}}</p>
-            {{else if .ResendLimited}}
-            <p>{{.i18n.Tr "auth.resent_limit_prompt"}}</p>
-            {{else}}
-            <p>{{.i18n.Tr "auth.confirmation_mail_sent_prompt" .SignedUser.Email .Hours | Str2html}}</p>
-            <hr/>
-            <a class="hg-button hg-button-primary " href="http://{{Mail2Domain .SignedUser.Email}}">{{.i18n.Tr "auth.sign_in_email"}}</a>
-            {{end}}
-        {{else}}
-            {{if .IsSendRegisterMail}}
-            <p>{{.i18n.Tr "auth.confirmation_mail_sent_prompt" .Email .Hours | Str2html}}</p>
-            <hr/>
-            <a class="hg-button hg-button-primary " href="http://{{Mail2Domain .Email}}">{{.i18n.Tr "auth.sign_in_email"}}</a>
-            {{else if .IsActivateFailed}}
-            <p>{{.i18n.Tr "auth.invalid_code"}}</p>
-            {{else}}
-            <p>{{.i18n.Tr "auth.has_unconfirmed_mail" .SignedUser.Name .SignedUser.Email | Str2html}}</p>
-            <hr/>
-            <button class="hg-button hg-button-primary">{{.i18n.Tr "auth.resend_mail"}}</button>
-            {{end}}
-        {{end}}
-        </div>
-    </form>
-</div>
-</div>
+<div class="hg-account-page hg-auth-page"><h1>{{.i18n.Tr "auth.active_your_account"}}</h1>
+{{if .IsSendRegisterMail}}<p>{{.i18n.Tr "auth.confirmation_mail_sent_prompt" .Email .Hours | Str2html}}</p>{{end}}
+{{if .IsActivateFailed}}<p role="alert">{{.i18n.Tr "auth.invalid_code"}}</p>{{end}}
+{{if .ActivationRequested}}<p role="status">{{.i18n.Tr "auth.activation_requested"}}</p>{{end}}
+<p>{{.i18n.Tr "auth.activation_recovery"}}</p>
+<form class="hg-form hg-panel" action="{{AppSubUrl}}/user/activate" method="post" data-prevent-duplicate>
+{{.CsrfTokenHtml}}
+<div class="hg-field"><label for="activation-name">{{.i18n.Tr "username"}}</label><input id="activation-name" name="uname" autocomplete="username" required maxlength="254"></div>
+<div class="hg-field"><label for="activation-password">{{.i18n.Tr "password"}}</label><input id="activation-password" type="password" name="password" autocomplete="current-password" required maxlength="4096"></div>
+<button class="hg-button hg-button-primary">{{.i18n.Tr "auth.resend_mail"}}</button>
+</form></div>
 {{template "shared/end" .}}

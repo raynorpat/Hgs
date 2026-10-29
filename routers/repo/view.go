@@ -152,7 +152,10 @@ func treeRows(ctx *middleware.Context, dir string, entries []hg.TreeEntry) ([]hg
 
 var errRenderedLimit = errors.New("rendered file limit")
 
-type renderedWriter struct{ bytes.Buffer }
+type renderedWriter struct{ buffer bytes.Buffer }
+
+func (w *renderedWriter) Len() int      { return w.buffer.Len() }
+func (w *renderedWriter) Bytes() []byte { return w.buffer.Bytes() }
 
 func (w *renderedWriter) Write(p []byte) (int, error) {
 	n := len(p)
@@ -160,7 +163,7 @@ func (w *renderedWriter) Write(p []byte) (int, error) {
 	if len(p) > left {
 		p = p[:left]
 	}
-	w.Buffer.Write(p)
+	w.buffer.Write(p)
 	if len(p) != n {
 		return len(p), errRenderedLimit
 	}

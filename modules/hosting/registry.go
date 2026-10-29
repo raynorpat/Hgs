@@ -9,10 +9,11 @@ import (
 )
 
 type trackedSession struct {
-	grant  hgbridge.Grant
-	cancel context.CancelFunc
-	done   chan struct{}
-	valid  func() bool
+	grant       hgbridge.Grant
+	cancel      context.CancelFunc
+	done        chan struct{}
+	valid       func() bool
+	maintenance bool
 }
 type registry struct {
 	mu               sync.Mutex
@@ -30,12 +31,15 @@ func (r *registry) Register(g hgbridge.Grant, cancel context.CancelFunc) (func()
 	return r.register(g, cancel, nil)
 }
 func (r *registry) register(g hgbridge.Grant, cancel context.CancelFunc, valid func() bool) (func(), error) {
+	return r.registerRead(g, cancel, valid, false)
+}
+func (r *registry) registerRead(g hgbridge.Grant, cancel context.CancelFunc, valid func() bool, maintenance bool) (func(), error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.closed || r.blocked[g.RepoID] || r.reservations[g.RepoID] != "" {
 		return nil, errors.New("hosting: repository unavailable")
 	}
-	s := &trackedSession{grant: g, cancel: cancel, done: make(chan struct{}), valid: valid}
+	s := &trackedSession{grant: g, cancel: cancel, done: make(chan struct{}), valid: valid, maintenance: maintenance}
 	r.sessions[s] = struct{}{}
 	var once sync.Once
 	return func() { once.Do(func() { r.mu.Lock(); delete(r.sessions, s); close(s.done); r.mu.Unlock() }) }, nil

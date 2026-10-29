@@ -122,6 +122,9 @@ func BeginMergeOperation(ctx context.Context, actor int64, in MergeAdmission) (o
 
 func validateMergePolicy(s *xorm.Session, p PullRequest, target RepositoryAccess, comparison int64, sourceNode, targetNode hg.NodeID) (c PullComparison, err error) {
 	err = func() error {
+		if _, _, err := PullSelections(p); err != nil {
+			return err
+		}
 		if p.State != PullOpen {
 			return ErrPullState
 		}

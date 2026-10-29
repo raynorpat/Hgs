@@ -338,10 +338,11 @@ type mozillaRun struct {
 }
 
 type mozillaIdentity struct {
-	URL, AcquiredUTC, FrozenUTC, Tip, NodesSHA256  string
-	SourceDirectory, VerificationState             string
-	Changesets, StoreBytes                         int64
-	Heads, Branches, Tags, Bookmarks, Requirements string
+	URL, AcquiredUTC, FrozenUTC, Tip, NodesSHA256                  string
+	SourceDirectory, VerificationState                             string
+	SourceClassification, UpstreamReference, IntegrityVerification string
+	Changesets, StoreBytes                                         int64
+	Heads, Branches, Tags, Bookmarks, Requirements                 string
 }
 
 type mozillaSample struct {
@@ -883,10 +884,7 @@ func (m *mozillaRun) freeze() {
 	}
 	nodes := m.must("source-visible-nodes", m.source, "log", "-r", "sort(all(), rev)", "-T", "{node}\n")
 	id := mozillaIdentity{URL: mozillaURL, SourceDirectory: filepath.Base(m.source), FrozenUTC: time.Now().UTC().Format(time.RFC3339Nano), Tip: m.text("source-tip", m.source, "log", "-r", "tip", "-T", "{node}"), NodesSHA256: nodes.SHA256, Changesets: nodes.Bytes / 41}
-	id.VerificationState = "VERIFIED"
-	if conditional {
-		id.VerificationState = mozillaSourceUnverified
-	}
+	classifyMozillaIdentity(&id, subsetSource(), conditional)
 	if b, e := os.ReadFile(filepath.Join(m.root, "raw", "acquire.result.json")); e == nil && filepath.Base(m.source) == "source" {
 		var receipt struct{ EndUTC string }
 		if json.Unmarshal(b, &receipt) == nil {
@@ -1313,7 +1311,7 @@ func (m *mozillaRun) freshOrdered(verifySource func()) {
 	}
 	if !phase("source", func() {
 		verifySource()
-		if m.identity.VerificationState != "VERIFIED" {
+		if m.identity.VerificationState != "VERIFIED" && m.identity.VerificationState != "TRANSFORMED_SUBSET_LOCAL_INTEGRITY_VERIFIED" {
 			m.t.Fatal("fresh ordered source gate requires successful native verification")
 		}
 	}) {
@@ -2160,5 +2158,21 @@ func (m *mozillaRun) cancelRead(a *application) {
 	after, _ := m.request(a, "post-cancellation-history", "/owner/public/commits", 1)
 	if after.Error != "" {
 		m.t.Error("read admission failed after cancellation")
+	}
+}
+
+func classifyMozillaIdentity(id *mozillaIdentity, subset, conditional bool) {
+	id.VerificationState = "VERIFIED"
+	id.SourceClassification = "upstream-clone"
+	id.IntegrityVerification = "local-hg-verify"
+	if subset {
+		id.URL = ""
+		id.UpstreamReference = mozillaURL
+		id.SourceClassification = "transformed-subset"
+		id.VerificationState = "TRANSFORMED_SUBSET_LOCAL_INTEGRITY_VERIFIED"
+	}
+	if conditional {
+		id.VerificationState = mozillaSourceUnverified
+		id.IntegrityVerification = "unverified"
 	}
 }

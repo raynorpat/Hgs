@@ -21,7 +21,7 @@
                                             <tr>
                                                 <th>Id</th>
                                                 <th>{{.i18n.Tr "admin.repos.owner"}}</th>
-                                                <th>{{.i18n.Tr "admin.repos.name"}}</th>
+                                                <th class="hg-admin-repo-name">{{.i18n.Tr "admin.repos.name"}}</th>
                                                 <th>{{.i18n.Tr "admin.repos.private"}}</th>
                                                 <th>{{.i18n.Tr "admin.repos.watches"}}</th>
                                                 <th>{{.i18n.Tr "admin.repos.stars"}}</th>
@@ -34,7 +34,7 @@
                                             <tr>
                                                 <td>{{.Id}}</td>
                                                 <td><a href="{{AppSubUrl}}/{{.Owner.Name}}">{{.Owner.Name}}</a></td>
-                                                <td><a href="{{AppSubUrl}}/{{.Owner.Name}}/{{.Name}}">{{.Name}}</a></td>
+                                                <td class="hg-admin-repo-name"><a href="{{AppSubUrl}}/{{.Owner.Name}}/{{.Name}}">{{.Name}}</a></td>
                                                 <td>{{if .IsPrivate}}{{$.i18n.Tr "ui.yes"}}{{else}}{{$.i18n.Tr "ui.no"}}{{end}}</td>
                                                 <td>{{.NumWatches}}</td>
                                                 <td>{{.NumStars}}</td>

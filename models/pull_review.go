@@ -267,7 +267,16 @@ func ListPullEvents(ctx context.Context, actor, pull int64) ([]PullEvent, error)
 		return nil, err
 	}
 	var rows []PullEvent
-	err := x.Where("pull_id = ?", pull).Asc("id").Find(&rows)
+	err := x.Where("pull_id = ?", pull).Desc("id").Limit(100).Find(&rows)
+	for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
+		rows[i], rows[j] = rows[j], rows[i]
+	}
+	if err == nil {
+		_, err = GetPullRecordByID(ctx, actor, pull)
+	}
+	if err != nil {
+		return nil, err
+	}
 	return rows, err
 }
 

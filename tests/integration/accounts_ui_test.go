@@ -528,7 +528,7 @@ func TestSharedUIInstallerValidation(t *testing.T) {
 	setting.CustomConf = filepath.Join(f.root, "custom", "app.ini")
 	defer func() { setting.CustomConf = old }()
 	f.request(t, "GET", "/install", "", nil, false)
-	for _, tc := range []struct{ name, key, value string }{{"database", "db_type", "Unknown"}, {"path", "repo_root_path", filepath.Join(f.root, "blocked")}, {"administrator", "admin_name", "admin"}, {"password", "admin_confirm_passwd", "mismatch"}, {"URL", "app_url", "javascript:alert(1)"}, {"SSL", "ssl_mode", "invalid"}, {"port", "http_port", "70000"}} {
+	for _, tc := range []struct{ name, key, value string }{{"database", "db_type", "Unknown"}, {"path", "repo_root_path", filepath.Join(f.root, "blocked")}, {"administrator", "admin_name", "admin"}, {"password", "admin_confirm_passwd", "mismatch"}, {"URL", "app_url", "javascript:alert(1)"}, {"dot URL", "app_url", "https://example.test/a/../b/"}, {"double URL", "app_url", "https://example.test/a//b/"}, {"encoded URL", "app_url", "https://example.test/%61/"}, {"SSL", "ssl_mode", "invalid"}, {"port", "http_port", "70000"}} {
 		t.Run(tc.name, func(t *testing.T) {
 			values := installerValues(f.root)
 			values.Set(tc.key, tc.value)

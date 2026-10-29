@@ -6,7 +6,6 @@ package setting
 
 import (
 	"fmt"
-	"net/url"
 	"os"
 	"os/exec"
 	"path"
@@ -215,19 +214,9 @@ func LoadConfig() error {
 		return err
 	}
 	AppName = Cfg.Section("").Key("APP_NAME").MustString("Hgs")
-	AppUrl = sec.Key("ROOT_URL").MustString("http://localhost:3000/")
-	if AppUrl[len(AppUrl)-1] != '/' {
-		AppUrl += "/"
-	}
-
-	// Check if has app suburl.
-	url, err := url.Parse(AppUrl)
+	AppUrl, AppSubUrl, err = NormalizeRootURL(sec.Key("ROOT_URL").MustString("http://localhost:3000/"))
 	if err != nil {
-		return fmt.Errorf("invalid ROOT_URL: %w", err)
-	}
-	AppSubUrl = strings.TrimSuffix(url.Path, "/")
-	if url.Host == "" || (url.Scheme != "http" && url.Scheme != "https") || url.User != nil || url.RawQuery != "" || url.Fragment != "" || url.RawPath != "" || strings.ContainsAny(AppSubUrl, "%\\?#") || (AppSubUrl != "" && (path.Clean(AppSubUrl) != AppSubUrl || strings.HasSuffix(AppSubUrl, "/"))) {
-		return fmt.Errorf("invalid ROOT_URL: expected an HTTP(S) origin and canonical application path")
+		return err
 	}
 
 	Protocol = HTTP

@@ -13,11 +13,15 @@ import (
 	"github.com/gogits/gogs/models"
 	"github.com/gogits/gogs/modules/collaboration"
 	"github.com/gogits/gogs/modules/editordraft"
+	"github.com/gogits/gogs/modules/setting"
 	"github.com/gogits/gogs/routers/user"
 	"github.com/macaron-contrib/csrf"
 )
 
 func TestEditorDraftHTTPPolicy(t *testing.T) {
+	oldURL := setting.AppUrl
+	t.Cleanup(func() { setting.AppUrl = oldURL })
+	setting.AppUrl = "https://example.test/code/"
 	f := newDiscoveryFixture(t, "/code")
 	s := editordraft.NewService(models.NewEditorDraftStore(), func(ctx context.Context, a int64, target editordraft.Target) error {
 		return models.AuthorizeEditorDraft(ctx, a, target.RepositoryID, target.Kind, target.ItemID)
@@ -68,7 +72,7 @@ func TestEditorDraftHTTPPolicy(t *testing.T) {
 			cookie = c
 		}
 	}
-	if cookie == nil || !cookie.HttpOnly || cookie.Path != "/code/user/drafts" || cookie.Domain != "" || cookie.SameSite != http.SameSiteLaxMode || cookie.MaxAge != 1800 {
+	if cookie == nil || !cookie.Secure || !cookie.HttpOnly || cookie.Path != "/code/user/drafts" || cookie.Domain != "" || cookie.SameSite != http.SameSiteLaxMode || cookie.MaxAge != 1800 {
 		t.Fatalf("draft cookie policy: %+v", cookie)
 	}
 	page := opened.Grant.PageID

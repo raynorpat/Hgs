@@ -7,6 +7,7 @@ package models
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"strconv"
@@ -134,6 +135,41 @@ func ReserveEmailConfirmationDelivery(ctx context.Context, uid int64, now time.T
 	})
 }
 
+// ReservePendingActivation proves only a local pending signup. It grants no
+// session or repository authority. Account security updates take the same lock.
+func ReservePendingActivation(ctx context.Context, name, password string, now time.Time) (user *User, err error) {
+	if len(name) > 254 || len(password) > 4096 || password == "" {
+		return nil, ErrEmailProofInvalid
+	}
+	err = contributionTransaction(ctx, func(s *xorm.Session) error {
+		if err := lockEmailVerification(s); err != nil {
+			return err
+		}
+		var u User
+		ok, err := s.Where("lower_name = ?", strings.ToLower(strings.TrimSpace(name))).Get(&u)
+		if err != nil {
+			return err
+		}
+		if !ok || u.IsActive || !u.PendingActivation || u.Type != INDIVIDUAL || (u.LoginType != NOTYPE && u.LoginType != PLAIN) {
+			return ErrEmailProofInvalid
+		}
+		proof := User{Passwd: password, Salt: u.Salt}
+		proof.EncodePasswd()
+		if subtle.ConstantTimeCompare([]byte(proof.Passwd), []byte(u.Passwd)) != 1 {
+			return ErrEmailProofInvalid
+		}
+		if err := reserveVerificationDelivery(s, u.Id, now, false); err != nil {
+			return err
+		}
+		user = &u
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
 func verificationData(u User, c EmailVerificationChallenge) string {
 	return "email-ownership:" + c.ID + ":" + strconv.FormatInt(u.Id, 10) + ":" + c.NormalizedEmail + ":" + u.LowerName + ":" + u.Passwd + ":" + u.Rands
 }
@@ -244,6 +280,9 @@ func ConsumeEmailVerification(ctx context.Context, code, email string, activateA
 				return ErrEmailProofInvalid
 			}
 			if activateAccount {
+				if u.IsActive || !u.PendingActivation || u.Type != INDIVIDUAL || (u.LoginType != NOTYPE && u.LoginType != PLAIN) {
+					return ErrEmailProofInvalid
+				}
 				email = u.Email
 			}
 			data := strconv.FormatInt(u.Id, 10) + email + u.LowerName + u.Passwd + u.Rands
@@ -289,7 +328,8 @@ func ConsumeEmailVerification(ctx context.Context, code, email string, activateA
 			cols := []string{"rands"}
 			if activateAccount {
 				u.IsActive = true
-				cols = append(cols, "is_active")
+				u.PendingActivation = false
+				cols = append(cols, "is_active", "pending_activation")
 			}
 			if _, err = s.Id(u.Id).Cols(cols...).Update(&u); err != nil {
 				return err

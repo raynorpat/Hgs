@@ -2,7 +2,6 @@ package models
 
 import (
 	"context"
-	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -33,11 +32,10 @@ type PullCommentAnchor struct {
 	Line         int
 }
 
-// a deny-list of active-content markers; rendering still sanitizes.
-var unsafeCommentMarkup = regexp.MustCompile(`(?i)<\s*/?\s*(script|iframe|object|embed|style|link|meta)\b|\b(javascript|vbscript)\s*:|data\s*:\s*text/html|<[^>]*\bon[a-z]+\s*=`)
-
 func validPullComment(body string) bool {
-	return utf8.ValidString(body) && strings.TrimSpace(body) != "" && len(body) <= 64*1024 && !unsafeCommentMarkup.MatchString(body)
+	// Markdown code examples are data; the final Markdown sanitizer is the
+	// active-content boundary, just as it is for the pull description.
+	return utf8.ValidString(body) && strings.TrimSpace(body) != "" && len(body) <= 64*1024
 }
 
 // AddPullComment lets any reader of both endpoints comment. The anchor must

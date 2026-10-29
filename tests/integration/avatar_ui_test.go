@@ -18,13 +18,13 @@ func TestSharedAvatarGeometry(t *testing.T) {
 		if w.Code != 200 {
 			t.Fatalf("profile status %d", w.Code)
 		}
-		if !strings.Contains(body, `data-shared-avatar`) || !strings.Contains(body, `width="160" height="160"`) {
+		if !strings.Contains(body, `data-shared-avatar`) || !strings.Contains(body, `width="88" height="88"`) {
 			t.Error("profile lacks shared fixed-size avatar")
 		}
 		if who != "" && !strings.Contains(body, `width="28" height="28"`) {
 			t.Error("rail lacks fixed-size avatar")
 		}
-		ownerEdit := strings.Contains(body, `id="profile-avatar"`)
+		ownerEdit := strings.Contains(body, `class="hg-button hg-profile-edit" href="/code/user/settings"`)
 		if ownerEdit != (who == f.member.Name) {
 			t.Errorf("avatar edit owner boundary for %q", who)
 		}
@@ -50,7 +50,7 @@ func TestSharedAvatarSourcesAndSettings(t *testing.T) {
 		if cached {
 			prefix = "/code/avatar/"
 		}
-		for _, size := range []string{"28", "160"} {
+		for _, size := range []string{"28", "88"} {
 			if !strings.Contains(body, `src="`+prefix+hash+`?size=`+size+`"`) {
 				t.Errorf("cached=%v lacks size %s", cached, size)
 			}

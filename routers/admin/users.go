@@ -225,6 +225,7 @@ func EditUserPost(ctx *middleware.Context, form auth.AdminEditUserForm) {
 	}
 	u.AvatarEmail = form.Avatar
 	u.IsActive = form.Active
+	u.PendingActivation = false
 	u.IsAdmin = form.Admin
 
 	ctx.Data["User"] = u

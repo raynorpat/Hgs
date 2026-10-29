@@ -16,6 +16,7 @@ import (
 	"github.com/gogits/gogs/modules/collaboration"
 	"github.com/gogits/gogs/modules/hg"
 	"github.com/gogits/gogs/modules/hosting"
+	"github.com/gogits/gogs/modules/log"
 	"github.com/gogits/gogs/modules/middleware"
 	"github.com/gogits/gogs/modules/setting"
 	"github.com/gogits/gogs/modules/ui"
@@ -83,6 +84,10 @@ type pullReviewer struct {
 	models.PullReview
 	Name, Avatar string
 }
+type pullAuditEvent struct {
+	models.PullEvent
+	Actor, Reviewer, Label string
+}
 type pullDetail struct {
 	Pull                                                                                                         models.PullRequest
 	Row                                                                                                          pullRow
@@ -92,6 +97,7 @@ type pullDetail struct {
 	Freshness, Status, OperationURL, MergeKey, Strategy                                                          string
 	Body                                                                                                         template.HTML
 	Comments                                                                                                     []pullComment
+	Events                                                                                                       []pullAuditEvent
 	Reviewers                                                                                                    []pullReviewer
 	Changesets                                                                                                   []hg.Changeset
 	Diff                                                                                                         string
@@ -315,6 +321,9 @@ func PullNewPost(ctx *middleware.Context, s *collaboration.Service, f PullForm) 
 	ids, e := pullReviewerIDs(f.Reviewers)
 	if e == nil && f.SourceRepository != "" {
 		f.SourceRepoID, e = models.ResolvePullSource(ctx.Req.Request.Context(), pullActor(ctx), ctx.Repo.Repository.Id, f.SourceRepository)
+		if e != nil && pullErrorStatus(e) >= 500 {
+			log.Error(4, "Pull source lookup unavailable actor=%d target=%d error_type=%T", pullActor(ctx), ctx.Repo.Repository.Id, e)
+		}
 		if e != nil && ctx.EditorSubmission {
 			// A candidate name is editable input, not the established page
 			// authority. Recheck the target before reporting nondisclosing
@@ -431,6 +440,22 @@ func renderPull(ctx *middleware.Context, s *collaboration.Service, p models.Pull
 		if r.State == models.ReviewChangesRequested && r.Eligible {
 			blocked = true
 		}
+	}
+	events, e := models.ListPullEvents(request, actor, p.ID)
+	if e != nil {
+		pullError(ctx, e)
+		return
+	}
+	for _, event := range events {
+		name := ctx.Tr("pulls.audit_system")
+		if event.ActorID != 0 {
+			name = pullPersonFor(event.ActorID).Name
+		}
+		reviewer := ""
+		if event.ReviewerID != 0 {
+			reviewer = pullPersonFor(event.ReviewerID).Name
+		}
+		d.Events = append(d.Events, pullAuditEvent{event, name, reviewer, ctx.Tr("pulls.event_" + event.Kind)})
 	}
 	comments, e := models.ListPullComments(request, actor, p.ID)
 	if e != nil {

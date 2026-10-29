@@ -91,6 +91,9 @@ func ReservePullComparison(ctx context.Context, actor, pullID int64, expected ..
 		return PullComparison{}, err
 	}
 	err = mutatePull(ctx, actor, pullID, func(sess *xorm.Session, p PullRequest, _, _ RepositoryAccess) error {
+		if _, _, err := PullSelections(p); err != nil {
+			return err
+		}
 		if err := pullComparisonPrivacy(sess, p, true); err != nil {
 			return err
 		}

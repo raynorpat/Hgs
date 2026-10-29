@@ -3,6 +3,7 @@ package hosting
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/gogits/gogs/models"
 	"github.com/gogits/gogs/modules/hg"
@@ -28,22 +29,27 @@ func (s *Service) forkRepository(ctx context.Context, actor, sourceID int64, opt
 
 	r := s.sessions
 	r.mu.Lock()
+	busy := func(reason string) (*models.Repository, error) {
+		r.mu.Unlock()
+		log.Warn("Fork admission denied repository=%d reason=%s", sourceID, reason)
+		return nil, fmt.Errorf("%w: %s", ErrMutationBusy, reason)
+	}
 	operationLimit := s.cfg.Mercurial.MaxProcesses
 	if operationLimit <= 0 {
 		operationLimit = hg.DefaultMaxProcesses
 	}
 	if len(r.activeOperations) >= operationLimit {
-		r.mu.Unlock()
-		return nil, ErrMutationBusy
+		return busy("operation-capacity")
 	}
 	if r.closed || r.blocked[sourceID] || r.reservations[sourceID] != "" {
-		r.mu.Unlock()
-		return nil, ErrMutationBusy
+		return busy("lifecycle-or-reservation")
 	}
 	for entry := range r.sessions {
 		if entry.grant.RepoID == sourceID {
-			r.mu.Unlock()
-			return nil, ErrMutationBusy
+			if entry.maintenance {
+				return busy("maintenance-read")
+			}
+			return busy("managed-session")
 		}
 	}
 	op, allocation, err := models.BeginForkProvisioning(actor, sourceID, opts)

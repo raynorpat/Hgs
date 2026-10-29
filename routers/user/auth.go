@@ -239,10 +239,11 @@ func SignUpPost(ctx *middleware.Context, cpt *captcha.Captcha, form auth.Registe
 	}
 
 	u := &models.User{
-		Name:     form.UserName,
-		Email:    form.Email,
-		Passwd:   form.Password,
-		IsActive: !setting.Service.RegisterEmailConfirm || isOauth,
+		Name:              form.UserName,
+		Email:             form.Email,
+		Passwd:            form.Password,
+		IsActive:          !setting.Service.RegisterEmailConfirm || isOauth,
+		PendingActivation: setting.Service.RegisterEmailConfirm && !isOauth,
 	}
 
 	if err := models.CreateUser(u); err != nil {
@@ -301,31 +302,18 @@ func SignUpPost(ctx *middleware.Context, cpt *captcha.Captcha, form auth.Registe
 func Activate(ctx *middleware.Context) {
 	code := ctx.Query("code")
 	if len(code) == 0 {
-		ctx.Data["IsActivatePage"] = ctx.Req.Method == "POST"
-		if ctx.User == nil || ctx.User.IsActive {
-			ctx.Error(404)
-			return
-		}
-		// Resend confirmation e-mail.
-		if setting.Service.RegisterEmailConfirm && ctx.Req.Method == "POST" {
-			if setting.MailService == nil {
-				ctx.Data["ServiceNotEnabled"] = true
-			} else if err := models.ReserveEmailConfirmationDelivery(ctx.Req.Context(), ctx.User.Id, time.Now()); errors.Is(err, models.ErrEmailProofLimited) {
-				ctx.Data["ResendLimited"] = true
-			} else if err != nil {
-				ctx.Handle(500, "Email confirmation", err)
-				return
-			} else {
-				ctx.Data["Hours"] = setting.Service.ActiveCodeLives / 60
-				mailer.SendActiveMail(ctx.Render, ctx.User)
-
-				if err := ctx.Cache.Put("MailResendLimit_"+ctx.User.LowerName, ctx.User.LowerName, 180); err != nil {
-					log.Error(4, "Set cache(MailResendLimit) fail: %v", err)
+		if ctx.Req.Method == "POST" {
+			ctx.Data["ActivationRequested"] = true
+			if setting.Service.RegisterEmailConfirm && setting.MailService != nil {
+				u, err := models.ReservePendingActivation(ctx.Req.Context(), ctx.Req.PostFormValue("uname"), ctx.Req.PostFormValue("password"), time.Now())
+				if err == nil {
+					mailer.SendActiveMail(ctx.Render, u)
+				} else if !errors.Is(err, models.ErrEmailProofInvalid) && !errors.Is(err, models.ErrEmailProofLimited) {
+					log.Error(4, "Pending activation unavailable error_type=%T", err)
+					ctx.Error(503, ctx.Tr("auth.activation_unavailable"))
+					return
 				}
 			}
-		} else if !setting.Service.RegisterEmailConfirm {
-			ctx.Data["IsActivatePage"] = true
-			ctx.Data["ServiceNotEnabled"] = true
 		}
 		ctx.HTML(200, ACTIVATE)
 		return

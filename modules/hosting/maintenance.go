@@ -35,7 +35,7 @@ func (s *Service) WithMaintenanceRead(ctx context.Context, repoID int64, read fu
 		current, err := models.GetRepositoryById(repoID)
 		return err == nil && current.State == models.RepositoryReady && current.StorageNonce == repo.StorageNonce
 	}
-	release, err := s.sessions.register(hgbridge.Grant{RepoID: repoID}, cancel, valid)
+	release, err := s.sessions.registerRead(hgbridge.Grant{RepoID: repoID}, cancel, valid, true)
 	if err != nil {
 		return err
 	}

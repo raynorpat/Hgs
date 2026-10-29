@@ -320,6 +320,8 @@ Use the reduced public layout with the Hgs/beaker identity, shared footer, and a
 
 Cover registration enabled and disabled states, invalid/duplicate details, CAPTCHA errors, submission in progress, success and email-activation guidance. Respect existing registration and provider policy. Preserve non-secret submitted values after validation failure; never echo passwords or CAPTCHA answers back into HTML or save them in draft recovery. Support password managers and appropriate autocomplete semantics. Admin-created users keep the shared Admin layout and the same form components.
 
+Confirmation-required local self-signup records a distinct pending-activation state. An anonymous CSRF-protected recovery form may prove the current local credentials and reserve the existing durable 180-second resend throttle without establishing a signed-in session. Existing inactive accounts are not implicitly pending. Successful activation and explicit Admin account updates clear pending state; credential or account-security changes invalidate stale recovery proof. Ordinary inactive-account authentication denials remain in force, and unavailable, disabled, wrong-credential and throttled recovery requests receive nondisclosing responses.
+
 ### Install Hgs
 
 Style the actual first-run installer as a public setup page, not an Admin mockup. Use the Hgs/beaker identity, a clear Install Hgs heading, a readable form approximately 800px wide, and labeled sections for database, repository/storage and service settings, mail/registration options where currently supported, and the initial administrator. Use one coherent form; a new multi-step wizard is not required.

@@ -85,7 +85,7 @@ func draftCollection(ctx *middleware.Context) string {
 	return c.Value
 }
 func setDraftCollection(ctx *middleware.Context, id string) {
-	http.SetCookie(ctx.Resp, &http.Cookie{Name: "hgs_draft", Value: id, Path: setting.AppSubUrl + "/user/drafts", HttpOnly: true, Secure: setting.Protocol == setting.HTTPS || ctx.Req.TLS != nil, SameSite: http.SameSiteLaxMode, MaxAge: 1800})
+	http.SetCookie(ctx.Resp, &http.Cookie{Name: "hgs_draft", Value: id, Path: setting.AppSubUrl + "/user/drafts", HttpOnly: true, Secure: setting.SessionCookieSecure(setting.AppUrl, setting.SessionConfig.Secure) || setting.Protocol == setting.HTTPS || ctx.Req.TLS != nil, SameSite: http.SameSiteLaxMode, MaxAge: 1800})
 }
 func DraftSession(ctx *middleware.Context, token csrf.CSRF) {
 	if !middleware.DraftRequestPolicy(ctx, token, false) {

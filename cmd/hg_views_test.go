@@ -137,6 +137,10 @@ func (a *viewApp) calls() int {
 	b, _ := os.ReadFile(filepath.Join(a.config, "calls"))
 	return len(strings.Fields(string(b)))
 }
+func (a *viewApp) arguments() []string {
+	b, _ := os.ReadFile(filepath.Join(a.config, "arguments"))
+	return strings.Split(strings.TrimSpace(string(b)), "\n")
+}
 func (a *viewApp) populate(t *testing.T, n int) {
 	a.fixture(t, "refs", fmt.Sprintf(`{"rev":1,"node":%q,"branch":"default","head":"1","bookmarks":["default","slash/ref"],"tags":["default"]}`+"\n", viewNode))
 	var b strings.Builder
@@ -161,12 +165,31 @@ func TestTreeViewBoundedInvocations(t *testing.T) {
 	a := newViewApp(t)
 	for _, n := range []int{1, 200} {
 		a.populate(t, n)
-		before := a.calls()
+		a.fixture(t, "tree-index-overlap", "1")
+		a.fixture(t, "tree-entered", "")
+		a.fixture(t, "index-finished", "")
+		before := len(a.arguments())
+		if err := models.EnqueueContribution(context.Background(), "repository", a.repo.Id); err != nil {
+			t.Fatal(err)
+		}
 		start := time.Now()
 		w := a.request(t, "GET", "/gogs/alice/project/src/"+viewNode, "", "")
-		t.Logf("tree %d latency %s calls %d", n, time.Since(start), a.calls()-before)
-		if w.Code != 200 || a.calls()-before > 5 || !strings.Contains(w.Body.String(), fmt.Sprintf("f%03d.txt", n-1)) {
-			t.Fatalf("tree %d status %d calls %d body %s", n, w.Code, a.calls()-before, w.Body.String())
+		foreground, background := 0, 0
+		for _, args := range a.arguments()[before:] {
+			switch {
+			case strings.HasPrefix(args, "log -r max(not secret()) "), strings.HasPrefix(args, "log -r sort(((0:1) and not secret()), -rev) -l 101 "):
+				background++
+				t.Logf("contribution worker: %s", args)
+			case strings.HasPrefix(args, "branches --closed "), strings.HasPrefix(args, "manifest "), strings.HasPrefix(args, "log -r sort((bookmark() or tag()) and not secret(), -rev) "), strings.HasPrefix(args, "log -r id("+viewNode+") and not secret() "):
+				foreground++
+				t.Logf("tree request: %s", args)
+			default:
+				t.Fatalf("unattributed command: %s", args)
+			}
+		}
+		t.Logf("tree %d latency %s foreground %d background %d", n, time.Since(start), foreground, background)
+		if w.Code != 200 || foreground > 5 || background < 2 || !strings.Contains(w.Body.String(), fmt.Sprintf("f%03d.txt", n-1)) {
+			t.Fatalf("tree %d status %d foreground %d background %d", n, w.Code, foreground, background)
 		}
 	}
 }

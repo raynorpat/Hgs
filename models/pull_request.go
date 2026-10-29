@@ -93,6 +93,9 @@ func PullSelections(p PullRequest) (source, target hg.ReviewSelection, err error
 		if i == 0 {
 			source = selection
 		} else {
+			if selection.Ref.Kind != hg.RefBranch && selection.Ref.Kind != hg.RefBookmark {
+				return source, target, ErrPullInvalid
+			}
 			target = selection
 		}
 	}
@@ -422,11 +425,17 @@ func EditPullRecord(ctx context.Context, actor, id int64, title, body string) er
 		if p.AuthorID != actor {
 			return ErrInvalidCredential
 		}
+		if p.Title == title && p.Body == body {
+			return nil
+		}
 		_, err := sess.Id(id).Cols("title", "body").Update(&PullRequest{Title: title, Body: body})
 		if err == nil {
 			err = stampContributionObject(sess, "pull", id)
 		}
-		return err
+		if err != nil {
+			return err
+		}
+		return pullEvent(sess, id, actor, 0, p.CurrentComparisonID, "metadata-edited", "")
 	})
 }
 
@@ -453,6 +462,9 @@ func SetPullRecordState(ctx context.Context, actor, id int64, state PullState) e
 		if err == nil {
 			err = stampContributionObject(sess, "pull", id)
 		}
-		return err
+		if err != nil {
+			return err
+		}
+		return pullEvent(sess, id, actor, 0, p.CurrentComparisonID, "state-changed", string(state))
 	})
 }

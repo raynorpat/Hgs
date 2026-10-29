@@ -3,6 +3,7 @@ package models
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/go-xorm/xorm"
 	"github.com/gogits/gogs/modules/hg"
 	"strings"
@@ -20,24 +21,36 @@ func ResolvePullSource(ctx context.Context, actor, target int64, name string) (i
 		return 0, ErrPullInvalid
 	}
 	access, err := RepositoryAccessFor(actor, target)
-	if err != nil || !access.Read {
+	if err != nil {
+		return 0, pullSourceError(err)
+	}
+	if !access.Read {
 		return 0, ErrPullNotExist
 	}
 	owner, err := GetUserByName(parts[0])
 	if err != nil {
-		return 0, ErrPullNotExist
+		return 0, pullSourceError(err)
 	}
 	repo, err := GetRepositoryByName(owner.Id, parts[1])
 	if err != nil {
-		return 0, ErrPullNotExist
+		return 0, pullSourceError(err)
 	}
 	if err := pullCreationAllowed(x, actor, PullRequest{SourceRepoID: repo.Id, TargetRepoID: target}, false); err != nil {
-		return 0, ErrPullNotExist
+		return 0, pullSourceError(err)
 	}
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
 	return repo.Id, nil
+}
+
+func pullSourceError(err error) error {
+	for _, denied := range []error{ErrUserNotExist, ErrRepoNotExist, ErrPullNotExist, ErrForkLineage, ErrPullInvalid, ErrInvalidCredential} {
+		if errors.Is(err, denied) {
+			return ErrPullNotExist
+		}
+	}
+	return err
 }
 
 // SamePullSelection binds a native observation to the saved selection and

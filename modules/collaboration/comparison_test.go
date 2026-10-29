@@ -199,7 +199,7 @@ func TestPullComparisonMovesAndAmbiguity(t *testing.T) {
 		t.Fatalf("immutable old comparison lost: %v", err)
 	}
 	f.targetNodeBookmark(f.sourcePath, "proposal", f.feature)
-	branch, err := f.service.CreatePull(f.ctx, f.owner.Id, NewPull{SourceRepoID: f.source.Id, TargetRepoID: f.target.Id, Source: hg.ReviewSelection{Ref: hg.RefSelection{Kind: hg.RefBranch, Name: "default"}}, Target: hg.ReviewSelection{Ref: hg.RefSelection{Kind: hg.RefNode, Name: target}}, Title: "Branch"})
+	branch, err := f.service.CreatePull(f.ctx, f.owner.Id, NewPull{SourceRepoID: f.source.Id, TargetRepoID: f.target.Id, Source: hg.ReviewSelection{Ref: hg.RefSelection{Kind: hg.RefBranch, Name: "default"}}, Target: hg.ReviewSelection{Ref: hg.RefSelection{Kind: hg.RefBranch, Name: "default"}, Head: hg.NodeID(target)}, Title: "Branch"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +220,7 @@ func TestPullArtifactsRecheckVisibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.pull, err = f.service.CreatePull(f.ctx, f.owner.Id, NewPull{SourceRepoID: f.source.Id, TargetRepoID: destination.Id, Source: hg.ReviewSelection{Ref: hg.RefSelection{Kind: hg.RefBookmark, Name: "proposal"}}, Target: hg.ReviewSelection{Ref: hg.RefSelection{Kind: hg.RefNode, Name: f.base}}, Title: "Private comparison"})
+	f.pull, err = f.service.CreatePull(f.ctx, f.owner.Id, NewPull{SourceRepoID: f.source.Id, TargetRepoID: destination.Id, Source: hg.ReviewSelection{Ref: hg.RefSelection{Kind: hg.RefBookmark, Name: "proposal"}}, Target: hg.ReviewSelection{Ref: hg.RefSelection{Kind: hg.RefBranch, Name: "default"}, Head: hg.NodeID(f.base)}, Title: "Private comparison"})
 	if err != nil {
 		t.Fatal(err)
 	}

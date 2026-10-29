@@ -66,7 +66,7 @@ func TestPullReviewMySQLRepeatableRead(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	p, err := CreatePullRecord(ctx, author.Id, PullRequest{SourceRepoID: source.Id, TargetRepoID: target.Id, Title: "Repeatable read", SourceSelection: `{"Ref":{"Kind":"node","Name":"1111111111111111111111111111111111111111"}}`, TargetSelection: `{"Ref":{"Kind":"node","Name":"2222222222222222222222222222222222222222"}}`})
+	p, err := CreatePullRecord(ctx, author.Id, PullRequest{SourceRepoID: source.Id, TargetRepoID: target.Id, Title: "Repeatable read", SourceSelection: `{"Ref":{"Kind":"node","Name":"1111111111111111111111111111111111111111"}}`, TargetSelection: `{"Ref":{"Kind":"branch","Name":"default"}}`})
 	if err != nil {
 		t.Fatal(err)
 	}

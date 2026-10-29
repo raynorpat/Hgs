@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -96,7 +97,7 @@ func TestPullCreateNativeEndpoints(t *testing.T) {
 	feature := run(local, "log", "-r", ".", "-T", "{node}")
 	run(local, "bookmark", "proposal")
 	run(sourcePath, "pull", local)
-	input := NewPull{SourceRepoID: source.Id, TargetRepoID: target.Id, Source: hg.ReviewSelection{Ref: hg.RefSelection{Kind: hg.RefBookmark, Name: "proposal"}}, Target: hg.ReviewSelection{Ref: hg.RefSelection{Kind: hg.RefNode, Name: base}}, Title: "Native proposal"}
+	input := NewPull{SourceRepoID: source.Id, TargetRepoID: target.Id, Source: hg.ReviewSelection{Ref: hg.RefSelection{Kind: hg.RefBookmark, Name: "proposal"}}, Target: hg.ReviewSelection{Ref: hg.RefSelection{Kind: hg.RefBranch, Name: "default"}, Head: hg.NodeID(base)}, Title: "Native proposal"}
 	p, err := service.CreatePull(ctx, owner.Id, input)
 	if err != nil {
 		t.Fatal(err)
@@ -125,6 +126,8 @@ func TestPullCreateNativeEndpoints(t *testing.T) {
 	// Same repository, two valid distinct endpoints.
 	same := input
 	same.TargetRepoID = source.Id
+	run(sourcePath, "bookmark", "-r", base, "base-destination")
+	same.Target = hg.ReviewSelection{Ref: hg.RefSelection{Kind: hg.RefBookmark, Name: "base-destination"}}
 	if _, err := service.CreatePull(ctx, owner.Id, same); err != nil {
 		t.Fatalf("same repository: %v", err)
 	}
@@ -169,14 +172,14 @@ func TestPullCreateNativeEndpoints(t *testing.T) {
 	if _, err := service.CreatePull(ctx, owner.Id, input); err == nil {
 		t.Fatal("shutdown admitted native read")
 	}
-	if provider.reads < 2 {
+	if provider.reads.Load() < 2 {
 		t.Fatal("provider was not resolved lazily per operation")
 	}
 }
 
 type pullProvider struct {
 	host  *hosting.Service
-	reads int
+	reads atomic.Int64
 }
 
-func (p *pullProvider) Service() *hosting.Service { p.reads++; return p.host }
+func (p *pullProvider) Service() *hosting.Service { p.reads.Add(1); return p.host }

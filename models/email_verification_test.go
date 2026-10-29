@@ -124,7 +124,7 @@ func TestContributionEmailProofLegacyAmbiguity(t *testing.T) {
 	old := setting.Service.ActiveCodeLives
 	setting.Service.ActiveCodeLives = 60
 	t.Cleanup(func() { setting.Service.ActiveCodeLives = old })
-	u := &User{Name: "legacy", LowerName: "legacy", Email: "Legacy@example.invalid", Rands: "legacy-salt"}
+	u := &User{Name: "legacy", LowerName: "legacy", Email: "Legacy@example.invalid", Rands: "legacy-salt", PendingActivation: true}
 	v := &User{Name: "conflict", LowerName: "conflict", Email: "legacy@example.invalid", IsActive: true}
 	if _, err := x.Insert(u, v); err != nil {
 		t.Fatal(err)

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // This test executable supplies native command-shaped fixtures without a shell.
@@ -16,6 +17,21 @@ func fakeViewHg(args []string) int {
 	read := func(name string) string { b, _ := os.ReadFile(filepath.Join(root, name)); return string(b) }
 	if len(args) == 0 {
 		return 2
+	}
+	// A test-owned barrier makes the real contribution worker overlap a tree
+	// request. It changes no application admission or worker configuration.
+	wait := func(name string) bool {
+		for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+			if read(name) != "" {
+				return true
+			}
+		}
+		return false
+	}
+	if read("tree-index-overlap") != "" && args[0] == "log" && strings.Contains(strings.Join(args, " "), "max(not secret())") {
+		if !wait("tree-entered") {
+			return 2
+		}
 	}
 	if f, err := os.OpenFile(filepath.Join(root, "calls"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600); err == nil {
 		fmt.Fprintln(f, args[0])
@@ -35,6 +51,12 @@ func fakeViewHg(args []string) int {
 	case "branches":
 		fmt.Print(read("refs"))
 	case "manifest":
+		if read("tree-index-overlap") != "" {
+			os.WriteFile(filepath.Join(root, "tree-entered"), []byte("1"), 0600)
+			if !wait("index-finished") {
+				return 2
+			}
+		}
 		fmt.Print(read("manifest"))
 	case "cat":
 		if read("cat_failure") != "" {
@@ -59,6 +81,9 @@ func fakeViewHg(args []string) int {
 		fmt.Print(read("patch"))
 	case "log":
 		all := strings.Join(args, " ")
+		if read("tree-index-overlap") != "" && strings.Contains(all, "sort((") && strings.Contains(all, "-l 101") {
+			defer os.WriteFile(filepath.Join(root, "index-finished"), []byte("1"), 0600)
+		}
 		switch {
 		case strings.Contains(all, "-r null"):
 			fmt.Printf(`[{"node":%q}]`, strings.Repeat("0", 40))

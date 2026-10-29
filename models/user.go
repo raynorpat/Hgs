@@ -73,8 +73,9 @@ type User struct {
 	Updated     time.Time `xorm:"UPDATED"`
 
 	// Permissions.
-	IsActive bool
-	IsAdmin  bool
+	IsActive          bool
+	PendingActivation bool
+	IsAdmin           bool
 
 	// Avatar.
 	Avatar          string `xorm:"VARCHAR(2048) NOT NULL"`
@@ -318,6 +319,7 @@ func CreateUser(u *User) error {
 	if u.Id == 1 {
 		u.IsAdmin = true
 		u.IsActive = true
+		u.PendingActivation = false
 		_, err = x.Id(u.Id).UseBool().Update(u)
 	}
 	return err
@@ -438,6 +440,8 @@ func UpdateUser(u *User) error {
 	if _, err = sess.Id(u.Id).Get(&prior); err != nil {
 		return contributionError(err)
 	}
+	// An old account snapshot cannot restore a revoked pending-signup proof.
+	u.PendingActivation = u.PendingActivation && prior.PendingActivation && !u.IsActive && prior.Passwd == u.Passwd && prior.Email == u.Email && prior.LoginType == u.LoginType
 	if _, err = sess.Id(u.Id).AllCols().Update(u); err != nil {
 		return err
 	}

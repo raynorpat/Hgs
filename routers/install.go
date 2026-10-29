@@ -6,7 +6,6 @@ package routers
 
 import (
 	"errors"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -155,11 +154,12 @@ func InstallPost(ctx *middleware.Context, form auth.InstallForm, initialize Init
 		invalid("AdminPasswd", "form.password_not_match")
 		return
 	}
-	parsedURL, parseErr := url.Parse(form.AppUrl)
-	if parseErr != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") || parsedURL.Host == "" || parsedURL.User != nil || parsedURL.RawQuery != "" || parsedURL.Fragment != "" {
+	normalizedURL, _, parseErr := setting.NormalizeRootURL(form.AppUrl)
+	if parseErr != nil {
 		invalid("AppUrl", "ui.invalid_service_url")
 		return
 	}
+	form.AppUrl = normalizedURL
 	port, portErr := strconv.Atoi(form.HTTPPort)
 	if portErr != nil || port < 1 || port > 65535 {
 		invalid("HTTPPort", "ui.invalid_http_port")

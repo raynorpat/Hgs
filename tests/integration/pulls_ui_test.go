@@ -110,7 +110,7 @@ func TestPullSourceNameForm(t *testing.T) {
 
 func TestPullReviewerErrorRetainsText(t *testing.T) {
 	f := pullFixtureHTTP(t)
-	p, err := models.CreatePullRecord(context.Background(), f.owner.Id, models.PullRequest{SourceRepoID: f.public.Id, TargetRepoID: f.public.Id, Title: "Reviewer form", SourceSelection: `{"Ref":{"Kind":"node","Name":"1111111111111111111111111111111111111111"}}`, TargetSelection: `{"Ref":{"Kind":"node","Name":"2222222222222222222222222222222222222222"}}`})
+	p, err := models.CreatePullRecord(context.Background(), f.owner.Id, models.PullRequest{SourceRepoID: f.public.Id, TargetRepoID: f.public.Id, Title: "Reviewer form", SourceSelection: `{"Ref":{"Kind":"node","Name":"1111111111111111111111111111111111111111"}}`, TargetSelection: `{"Ref":{"Kind":"branch","Name":"default"}}`})
 	if err != nil {
 		t.Fatal(err)
 	}
