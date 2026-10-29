@@ -15,8 +15,10 @@ import (
 	"github.com/gogits/gogs/modules/setting"
 	"github.com/gogits/gogs/routers/user"
 	"github.com/macaron-contrib/csrf"
+	"html"
 	"net"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -35,7 +37,7 @@ func TestContributionQueryCanonical(t *testing.T) {
 		t.Fatal(err)
 	}
 	i := &models.Issue{RepoId: r.Id, Index: 1, PosterId: f.member.Id, Name: "Indexed opening", Created: now.Add(-time.Hour)}
-	if _, err = db.Insert(i); err != nil {
+	if _, err = db.NoAutoTime().Insert(i); err != nil {
 		t.Fatal(err)
 	}
 	if err = models.IndexContributionObject(context.Background(), "issue", i.Id); err != nil {
@@ -213,5 +215,148 @@ func TestContributionSecondaryThrottle(t *testing.T) {
 	case <-sink:
 		t.Fatal("throttled request sent mail")
 	default:
+	}
+}
+
+// Ordinary GET filters must reach the real contribution service, not legacy feeds.
+func TestProfileContributionHTTP(t *testing.T) {
+	f := accountApp(t, true)
+	f.m.Get("/:username", user.Profile)
+	w := f.request(t, "GET", "/member?tab=activity&year=2024&day=2024-02-29&kind=issue", "", nil, false)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "data-contribution-calendar") || !strings.Contains(w.Body.String(), `value="2024-02-29"`) {
+		t.Fatalf("missing server-rendered filtered calendar: HTTP %d", w.Code)
+	}
+	for _, query := range []string{"year=nope", "year=0", "day=2024-02-30&year=2024", "kind=push", "tab=people"} {
+		w = f.request(t, "GET", "/member?"+query, "", nil, false)
+		if w.Code != 400 {
+			t.Errorf("invalid %s: HTTP %d", query, w.Code)
+		}
+	}
+}
+
+func TestProfileContributionStates(t *testing.T) {
+	f := accountApp(t, true)
+	w := f.request(t, "GET", "/profile/member?tab=activity", "", nil, false)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "data-contribution-state") {
+		t.Fatalf("missing honest contribution state: HTTP %d", w.Code)
+	}
+}
+
+func TestOrganizationPeopleLinks(t *testing.T) {
+	f := accountApp(t, true)
+	team, err := models.CreateOrganization(&models.User{Name: "laboratory", Email: "org@example.invalid", Type: models.ORGANIZATION, IsActive: true}, f.admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = team.AddMember(f.member.Id); err != nil {
+		t.Fatal(err)
+	}
+	if err = models.ChangeOrgUserStatus(team.Id, f.member.Id, true); err != nil {
+		t.Fatal(err)
+	}
+	w := f.request(t, "GET", "/org/laboratory?tab=people", "", nil, false)
+	body := w.Body.String()
+	if w.Code != 200 || !strings.Contains(body, "data-profile-people") || !strings.Contains(body, `href="/code/member"`) || !strings.Contains(body, `href="/code/org/laboratory?tab=activity"`) {
+		t.Fatalf("visible People links absent: HTTP %d", w.Code)
+	}
+	if strings.Contains(body, `href="/code/administrator"`) || strings.Contains(body, "/members/action/") || strings.Contains(body, "/invitations/new") {
+		t.Error("public People exposes private membership or management")
+	}
+}
+
+type uiContributionProvider struct{ reader contributions.Reader }
+
+func (p uiContributionProvider) Contributions() contributions.Reader { return p.reader }
+
+func contributionReadAccess(ctx context.Context, viewer, repo int64) (bool, error) {
+	a, e := models.RepositoryAccessFor(viewer, repo)
+	return a.Read, e
+}
+
+// Real canonical objects test counts, representative caps, pagination, escaping and live revocation.
+func TestProfileContributionHTTPData(t *testing.T) {
+	oldKey := setting.SecretKey
+	setting.SecretKey = "task23-disposable-query-key"
+	t.Cleanup(func() { setting.SecretKey = oldKey })
+	f := accountApp(t, true)
+	f.m.Get("/:username", user.Profile)
+	db, err := xorm.NewEngine("sqlite3", "file:"+models.DbCfg.Path+"?cache=shared&mode=rwc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	day := time.Date(2024, 2, 29, 12, 0, 0, 0, time.UTC)
+	var first *models.Repository
+	for n := 0; n < 28; n++ {
+		r := &models.Repository{OwnerId: f.member.Id, Name: fmt.Sprintf("calendar-%02d", n), LowerName: fmt.Sprintf("calendar-%02d", n), State: models.RepositoryReady}
+		if _, err = db.Insert(r); err != nil {
+			t.Fatal(err)
+		}
+		if n == 0 {
+			first = r
+		}
+		count := 1
+		if n == 0 {
+			count = 30
+		}
+		for j := 1; j <= count; j++ {
+			i := &models.Issue{RepoId: r.Id, Index: int64(j), PosterId: f.member.Id, Name: fmt.Sprintf("Issue <script> %02d-%02d", n, j), Created: day}
+			if _, err = db.NoAutoTime().Insert(i); err != nil {
+				t.Fatal(err)
+			}
+			if err = models.IndexContributionObject(context.Background(), "issue", i.Id); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	private := &models.Repository{OwnerId: f.member.Id, Name: "secret-count", LowerName: "secret-count", IsPrivate: true, State: models.RepositoryReady}
+	if _, err = db.Insert(private); err != nil {
+		t.Fatal(err)
+	}
+	hidden := &models.Issue{RepoId: private.Id, Index: 1, PosterId: f.member.Id, Name: "Never public title", Created: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)}
+	if _, err = db.NoAutoTime().Insert(hidden); err != nil {
+		t.Fatal(err)
+	}
+	if err = models.IndexContributionObject(context.Background(), "issue", hidden.Id); err != nil {
+		t.Fatal(err)
+	}
+	w := f.request(t, "GET", "/member?tab=activity&year=2024&kind=issue", "", nil, false)
+	body := w.Body.String()
+	for _, want := range []string{"57 contributions", "Showing 25 of 30", "Issue &lt;script&gt;", `href="/code/member/calendar-00/issues/30"`, `href="/code/member/calendar-00/issues"`, `2024-02-29: 57 contributions`} {
+		if w.Code != 200 || !strings.Contains(body, want) {
+			t.Errorf("missing %q HTTP %d", want, w.Code)
+		}
+	}
+	if strings.Contains(body, "secret-count") || strings.Contains(body, "Never public") || strings.Contains(body, `value="2020"`) {
+		t.Error("private names/count years leaked")
+	}
+	matches := regexp.MustCompile(`class="hg-button hg-profile-more" href="([^"]+)"`).FindStringSubmatch(body)
+	if len(matches) != 2 {
+		t.Fatal("missing ordinary pagination link")
+	}
+	next := strings.TrimPrefix(html.UnescapeString(matches[1]), "/code")
+	next = strings.Split(next, "#")[0]
+	w = f.request(t, "GET", next, "", nil, false)
+	if w.Code != 200 || strings.Count(w.Body.String(), `class="hg-profile-event"`) != 3 || !strings.Contains(w.Body.String(), "57 contributions") {
+		t.Fatalf("whole-group pagination lost groups/count: HTTP %d", w.Code)
+	}
+	w = f.request(t, "GET", "/member?tab=activity&year=2024&day=2024-02-28&kind=issue", "", nil, false)
+	if !strings.Contains(w.Body.String(), "0 contributions") || strings.Contains(w.Body.String(), "Issue &lt;") {
+		t.Error("day selection not applied")
+	}
+	w = f.request(t, "GET", "/member?tab=activity&year=2024&kind=review", "", nil, false)
+	if !strings.Contains(w.Body.String(), "0 contributions") || strings.Contains(w.Body.String(), "Issue &lt;") {
+		t.Error("kind selection not applied")
+	}
+	if _, err = db.Id(first.Id).Cols("is_private").Update(&models.Repository{IsPrivate: true}); err != nil {
+		t.Fatal(err)
+	}
+	w = f.request(t, "GET", next, "", nil, false)
+	if w.Code != 409 || !strings.Contains(w.Body.String(), "Restart activity") || strings.Contains(w.Body.String(), "calendar-00") {
+		t.Errorf("stale cursor leaked revoked results: HTTP %d", w.Code)
+	}
+	w = f.request(t, "GET", "/member?tab=activity&year=2024&kind=issue", "", nil, false)
+	if !strings.Contains(w.Body.String(), "27 contributions") || strings.Contains(w.Body.String(), "calendar-00") {
+		t.Error("same-viewer revocation did not remove counts and links")
 	}
 }

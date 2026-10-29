@@ -1,0 +1,7 @@
+<header class="hg-profile-identity" data-profile-identity>
+{{template "shared/avatar" (Avatar .Profile.Owner.AvatarLink .Profile.Owner.Name 88)}}
+<div class="hg-profile-description"><h1>{{if .Profile.Owner.FullName}}{{.Profile.Owner.FullName}}{{else}}{{.Profile.Owner.Name}}{{end}}</h1><p class="hg-meta">@{{.Profile.Owner.Name}}</p>
+{{if .Profile.Owner.Description}}<p>{{.Profile.Owner.Description}}</p>{{end}}
+<div class="hg-profile-meta">{{if .Profile.Owner.Location}}<span>{{.Profile.Owner.Location}}</span>{{end}}{{if .Profile.Owner.Email}}<a href="mailto:{{.Profile.Owner.Email}}">{{.Profile.Owner.Email}}</a>{{end}}{{if .Profile.Owner.Website}}<a href="{{.Profile.Owner.Website}}" rel="nofollow noopener">{{.Profile.Owner.Website}}</a>{{end}}<span>{{.i18n.Tr "user.join_on"}} {{DateFormat .Profile.Owner.Created "M d, Y"}}</span></div></div>
+{{if .Profile.SettingsURL}}<a class="hg-button hg-profile-edit" href="{{.Profile.SettingsURL}}">{{.i18n.Tr "settings"}}</a>{{end}}
+</header>

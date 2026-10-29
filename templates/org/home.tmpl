@@ -1,95 +1,14 @@
 {{template "shared/start" .}}
-<div class="hg-account-page">
-
-<div class="org-header" id="org-home-header">
-    <div class="">
-        {{template "shared/avatar" (Avatar .Org.AvatarLink .Org.Name 100)}}
-        <div id="org-home-header-info">
-            <h2>
-                {{.Org.FullName}}
-                {{if .IsOrganizationOwner}}<a class="text-grey" href="{{.OrgLink}}/settings">{{.i18n.Tr "settings"}}</a>{{end}}
-            </h2>
-            {{if .Org.Description}}<p>{{.Org.Description}}</p>{{end}}
-            <ul class="text-grey">
-                {{if .Org.Location}}<li><span class="octicon octicon-location"></span> <span>{{.Org.Location}}</span></li>{{end}}
-                {{if .Org.Website}}<li><span class="octicon octicon-link"></span> <a target="_blank" href="{{.Org.Website}}">{{.Org.Website}}</a></li>{{end}}
-                {{if .Org.Email}}<li><span class="octicon octicon-mail"></span> <a href="mailto:{{.Org.Email}}">{{.Org.Email}}</a></li>{{end}}
-            </ul>
-        </div>
-    </div>
-</div>
-<div class="">
-    {{template "shared/profile_readme" .}}
-    {{$isMember := .IsOrganizationMember}}
-    <div id="org-home-repo-list" class="">
-        <div class="">
-            {{if .IsOrganizationOwner}}
-            <a class="hg-button hg-button-primary " href="{{AppSubUrl}}/repo/create?org={{.Org.Id}}"> {{.i18n.Tr "new_repo"}}</a>
-            {{end}}
-        </div>
-        <div id="org-repo-list">
-            {{range .Repos}}
-                {{if .HasAccess $.SignedUser.Name}}
-                <div class="org-repo-item">
-                    <ul class="org-repo-status">
-                        <li> {{.NumStars}}</li>
-                    </ul>
-                    <h2><a href="{{AppSubUrl}}/{{$.Org.Name}}/{{.Name}}">{{.Name}}</a></h2>
-                    <p class="org-repo-description">{{.Description}}</p>
-                    <p class="org-repo-updated">{{$.i18n.Tr "org.repo_updated"}} {{TimeSince .Updated $.i18n.Lang}}</p>
-                </div>
-                {{end}}
-            {{end}}
-        </div>
-    </div>
-    <div class="grid-1-3">
-        <div class="org-sidebar">
-            <div class="hg-panel">
-                <div class="hg-panel-heading">
-                    {{if $isMember}}
-                    <a class="text-grey" href="{{AppSubUrl}}/org/{{.Org.LowerName}}/members"><strong>{{.Org.NumMembers}}</strong><span class="octicon octicon-chevron-right"></span></a>
-                    {{end}}
-                    <strong>{{.i18n.Tr "org.people"}}</strong>
-                </div>
-                <div class="hg-panel-body member-avatar-group">
-                    {{range .Members}}
-                        {{if or $isMember (.IsPublicMember $.Org.Id)}}
-                        <a href="{{AppSubUrl}}/{{.Name}}" title="{{.Name}}">{{template "shared/avatar" (Avatar .AvatarLink .Name 40)}}</a>
-                        {{end}}
-                    {{end}}
-                </div>
-                {{if .IsOrganizationOwner}}
-                <div class="panel-footer">
-                    <a class="hg-button hg-button-primary " href="{{AppSubUrl}}/org/{{.Org.LowerName}}/invitations/new">{{.i18n.Tr "org.invite_someone"}}</a>
-                </div>
-                {{end}}
-            </div>
-            {{if $isMember}}
-            <br>
-            <div class="hg-panel">
-                <div class="hg-panel-heading">
-                    <a class="text-grey" href="{{AppSubUrl}}/org/{{.Org.LowerName}}/teams"><strong>{{.Org.NumTeams}}</strong><span class="octicon octicon-chevron-right"></span></a>
-                    <strong>{{.i18n.Tr "org.teams"}}</strong>
-                </div>
-                <div class="hg-panel-body" id="org-home-team-list">
-                    <ul>
-                        {{range .Teams}}
-                        <li>
-                            <a class="text-black" href="{{AppSubUrl}}/org/{{$.Org.LowerName}}/teams/{{.LowerName}}"><strong class="team-name">{{.Name}}</strong></a>
-                            <p class="team-meta">{{.NumMembers}} {{$.i18n.Tr "org.lower_members"}} · {{.NumRepos}} {{$.i18n.Tr "org.lower_repositories"}}</p>
-                        </li>
-                        {{end}}
-                    </ul>
-                </div>
-                {{if .IsOrganizationOwner}}
-                <div class="panel-footer">
-                    <a class="hg-button hg-button-primary " href="{{AppSubUrl}}/org/{{$.Org.LowerName}}/teams/new">{{.i18n.Tr "org.create_new_team"}}</a>
-                </div>
-                {{end}}
-            </div>
-            {{end}}
-        </div>
-    </div>
-</div>
-</div>
+<div class="hg-profile-page">
+{{template "shared/profile_header" .}}
+{{template "shared/profile_readme" .}}
+{{template "shared/profile_tabs" .}}
+<div class="hg-profile-columns"><div class="hg-profile-main">
+{{if or (eq .Profile.Tab "overview") (eq .Profile.Tab "repositories")}}<section class="hg-profile-repositories"><div class="hg-profile-section-heading"><h2>{{.i18n.Tr "user.repositories"}}</h2>{{if and .Profile.Owner.IsOrganization .IsOrganizationOwner}}<a class="hg-button" href="{{AppSubUrl}}/repo/create?org={{.Profile.Owner.Id}}">{{.i18n.Tr "new_repo"}}</a>{{end}}</div>
+{{range .Profile.Repositories}}<article class="hg-profile-repo"><h3><a href="{{.URL}}">{{.Name}}</a>{{if .IsPrivate}} <span class="hg-badge">{{$.i18n.Tr "ui.private"}}</span>{{end}}</h3><p>{{.Description}}</p><p class="hg-meta">{{$.i18n.Tr "org.repo_updated"}} {{TimeSince .Updated $.i18n.Lang}}</p><div class="hg-profile-repo-actions">
+{{if $.IsSigned}}<form method="post" action="{{.URL}}/action/{{if .Watching}}un{{end}}watch">{{$.CsrfTokenHtml}}<button class="hg-button" aria-pressed="{{.Watching}}">{{if .Watching}}{{$.i18n.Tr "repo.unwatch"}}{{else}}{{$.i18n.Tr "repo.watch"}}{{end}} &middot; {{.NumWatches}}</button></form><form method="post" action="{{.URL}}/action/{{if .Starring}}un{{end}}star">{{$.CsrfTokenHtml}}<button class="hg-button" aria-pressed="{{.Starring}}">{{if .Starring}}{{$.i18n.Tr "repo.unstar"}}{{else}}{{$.i18n.Tr "repo.star"}}{{end}} &middot; {{.NumStars}}</button></form>{{else}}<span>{{$.i18n.Tr "repo.watch"}} &middot; {{.NumWatches}}</span><span>{{$.i18n.Tr "repo.star"}} &middot; {{.NumStars}}</span>{{end}}</div></article>{{else}}<p class="hg-empty">{{.i18n.Tr "profile.no_repositories"}}</p>{{end}}</section>{{end}}
+{{if or (eq .Profile.Tab "overview") (eq .Profile.Tab "activity")}}{{template "shared/contribution_calendar" .}}{{template "shared/contribution_activity" .}}{{end}}
+{{if eq .Profile.Tab "people"}}{{template "shared/profile_people" .}}{{end}}
+</div>{{if ne .Profile.Tab "people"}}<aside class="hg-profile-sidebar">{{template "shared/profile_people" .}}<a href="{{.Profile.URL}}?tab=people">{{.i18n.Tr "profile.people_all"}}</a>{{if .IsOrganizationMember}}<p><a href="{{.OrgLink}}/members">{{.i18n.Tr "profile.manage_people"}}</a></p><p><a href="{{.OrgLink}}/teams">{{.i18n.Tr "org.teams"}}</a></p>{{end}}{{if .IsOrganizationOwner}}<p><a href="{{.OrgLink}}/invitations/new">{{.i18n.Tr "org.invite_someone"}}</a></p>{{end}}</aside>{{end}}</div></div>
+<script src="{{AppSubUrl}}/js/app/profile.js" defer></script>
 {{template "shared/end" .}}

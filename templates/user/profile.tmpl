@@ -1,100 +1,14 @@
 {{template "shared/start" .}}
-<div class="hg-account-page">
-
-<div class="">
-    <div id="user-profile-page" class="">
-        <div class="">
-            <div>
-                {{if and .SignedUser (eq .SignedUser.Id .Owner.Id)}}<a href="{{AppSubUrl}}/user/settings" id="profile-avatar">{{end}}
-                {{template "shared/avatar" (Avatar .Owner.AvatarLink .Owner.Name 160)}}
-                {{if and .SignedUser (eq .SignedUser.Id .Owner.Id)}}</a>{{end}}
-                <div class="text-center" id="profile-name">
-                    {{if .Owner.FullName}}<span id="profile-fullname" class="center-block">{{.Owner.FullName}}</span><br>{{end}}
-                    <span class="center-block" id="profile-username">{{.Owner.Name}}</span>
-                </div>
-            </div>
-            <div class="profile-info">
-                <hr>
-                <ul class="list-no-style">
-                    {{if .Owner.Location}}
-                    <li class="list-group-item">&nbsp;&nbsp;{{.Owner.Location}}</li>
-                    {{end}}
-                    {{if .Owner.Email}}
-                    <li class="list-group-item">&nbsp;&nbsp;<a href="mailto:{{.Owner.Email}}" rel="nofollow">{{.Owner.Email}}</a></li>
-                    {{end}}
-                    {{if .Owner.Website}}
-                    <li class="list-group-item">&nbsp;&nbsp;<a target="_blank" href="{{.Owner.Website}}">{{.Owner.Website}}</a></li>
-                    {{end}}
-                    <li class="list-group-item">&nbsp;&nbsp;{{.i18n.Tr "user.join_on"}} {{DateFormat .Owner.Created "M d, Y"}}</li>
-                </ul>
-                <hr>
-                <ul class="list-no-style">
-                    <li class="list-group-item profile-rel">
-                        <div>
-                            <strong>{{.Owner.NumFollowers}}</strong>
-                            <p>{{.i18n.Tr "user.followers"}}</p>
-                        </div>
-                    </li>
-                    <li class="list-group-item profile-rel">
-                        <div>
-                            <strong>{{.Owner.NumStars}}</strong>
-                            <p>{{.i18n.Tr "user.starred"}}</p>
-                        </div>
-                    </li>
-                    <li class="list-group-item profile-rel">
-                        <div>
-                            <strong>{{.Owner.NumFollowings}}</strong>
-                            <p>{{.i18n.Tr "user.following"}}</p>
-                        </div>
-                    </li>
-                </ul>
-                <hr>
-            </div>
-        </div>
-        <div class="">
-            <div id="profile-body">
-                {{template "shared/profile_readme" .}}
-                <ul class="menu hg-tabs" id="profile-header">
-                    <li>
-                        <a {{if not .TabName}}class="current"{{end}} href="{{.Owner.HomeLink}}"> {{.i18n.Tr "user.repositories"}}</a>
-                    </li>
-                    <li>
-                        <a {{if eq .TabName "activity"}}class="current"{{end}} href="{{.Owner.HomeLink}}?tab=activity"> {{.i18n.Tr "user.activity"}}</a>
-                    </li>
-                </ul>
-                <div class="tab-content">
-                    {{if eq .TabName "activity"}}
-                    <div class="tab-pane active" id="dashboard-news">
-                    <br>
-                    {{template "user/dashboard/feeds" .}}
-                    </div>
-                    {{else}}
-                    <div class="tab-pane active">
-                        <div id="org-repo-list">
-                            {{range .Repos}}
-                                {{if or (not .IsPrivate) (.HasAccess $.SignedUserName)}}
-                                <div class="org-repo-item">
-                                    <ul class="org-repo-status">
-                                        <li> {{.NumStars}}</li>
-                                    </ul>
-                                    <h2>
-                                        <a href="{{AppSubUrl}}/{{$.Owner.Name}}/{{.Name}}">{{.Name}}</a>
-                                        {{if .IsPrivate}}
-                                        <span class="text-gold"></span>
-                                        {{end}}
-                                    </h2>
-                                    <p class="org-repo-description">{{.Description}}</p>
-                                    <p class="org-repo-updated">{{$.i18n.Tr "org.repo_updated"}} {{TimeSince .Updated $.i18n.Lang}}</p>
-                                </div>
-                                {{end}}
-                            {{end}}
-                        </div>
-                    </div>
-                    {{end}}
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-</div>
+<div class="hg-profile-page">
+{{template "shared/profile_header" .}}
+{{template "shared/profile_readme" .}}
+{{template "shared/profile_tabs" .}}
+<div class="hg-profile-columns"><div class="hg-profile-main">
+{{if or (eq .Profile.Tab "overview") (eq .Profile.Tab "repositories")}}<section class="hg-profile-repositories"><div class="hg-profile-section-heading"><h2>{{.i18n.Tr "user.repositories"}}</h2>{{if and .Profile.Owner.IsOrganization .IsOrganizationOwner}}<a class="hg-button" href="{{AppSubUrl}}/repo/create?org={{.Profile.Owner.Id}}">{{.i18n.Tr "new_repo"}}</a>{{end}}</div>
+{{range .Profile.Repositories}}<article class="hg-profile-repo"><h3><a href="{{.URL}}">{{.Name}}</a>{{if .IsPrivate}} <span class="hg-badge">{{$.i18n.Tr "ui.private"}}</span>{{end}}</h3><p>{{.Description}}</p><p class="hg-meta">{{$.i18n.Tr "org.repo_updated"}} {{TimeSince .Updated $.i18n.Lang}}</p><div class="hg-profile-repo-actions">
+{{if $.IsSigned}}<form method="post" action="{{.URL}}/action/{{if .Watching}}un{{end}}watch">{{$.CsrfTokenHtml}}<button class="hg-button" aria-pressed="{{.Watching}}">{{if .Watching}}{{$.i18n.Tr "repo.unwatch"}}{{else}}{{$.i18n.Tr "repo.watch"}}{{end}} &middot; {{.NumWatches}}</button></form><form method="post" action="{{.URL}}/action/{{if .Starring}}un{{end}}star">{{$.CsrfTokenHtml}}<button class="hg-button" aria-pressed="{{.Starring}}">{{if .Starring}}{{$.i18n.Tr "repo.unstar"}}{{else}}{{$.i18n.Tr "repo.star"}}{{end}} &middot; {{.NumStars}}</button></form>{{else}}<span>{{$.i18n.Tr "repo.watch"}} &middot; {{.NumWatches}}</span><span>{{$.i18n.Tr "repo.star"}} &middot; {{.NumStars}}</span>{{end}}</div></article>{{else}}<p class="hg-empty">{{.i18n.Tr "profile.no_repositories"}}</p>{{end}}</section>{{end}}
+{{if or (eq .Profile.Tab "overview") (eq .Profile.Tab "activity")}}{{template "shared/contribution_calendar" .}}{{template "shared/contribution_activity" .}}{{end}}
+{{if eq .Profile.Tab "people"}}{{template "shared/profile_people" .}}{{end}}
+</div></div></div>
+<script src="{{AppSubUrl}}/js/app/profile.js" defer></script>
 {{template "shared/end" .}}

@@ -424,12 +424,26 @@ func TestIssueWorkflowSurvivesMercurialCutover(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "keep issues") {
 		t.Fatal("transferred issue", w.Code, w.Body.String())
 	}
-	for _, path := range []string{"/gogs/", "/gogs/bob?tab=activity"} {
+	for _, path := range []string{"/gogs/"} {
 		w = target.do(t, "GET", path, nil)
 		body := w.Body.String()
 		if w.Code != 200 || !strings.Contains(body, `transferred repository <code>alice/renamed</code> to <a href="/gogs/bob/renamed"`) || strings.Contains(body, "/gogs//gogs/") {
 			t.Fatal("retained transfer activity link", path, w.Code, body)
 		}
+	}
+
+	// Profile activity attributes opening to the actual author, even after transfer.
+	// Transfer feed entries remain a workspace concern, not a counted contribution.
+	if err := a.holder.contributionIndex.IndexObject(context.Background(), "issue", issue.Id); err != nil {
+		t.Fatal(err)
+	}
+	w = target.do(t, "GET", "/gogs/alice?tab=activity&kind=issue", nil)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `href="/gogs/bob/renamed/issues/1"`) || !strings.Contains(w.Body.String(), "keep issues") {
+		t.Fatal("transferred canonical issue contribution", w.Code, w.Body.String())
+	}
+	w = target.do(t, "GET", "/gogs/bob?tab=activity&kind=issue", nil)
+	if w.Code != 200 || strings.Contains(w.Body.String(), `href="/gogs/bob/renamed/issues/1"`) {
+		t.Fatal("transfer attributed another author's issue to current owner", w.Code)
 	}
 	for _, p := range []string{"/gogs/bob", "/gogs/user/settings", "/gogs/user/settings/ssh"} {
 		w = target.do(t, "GET", p, nil)

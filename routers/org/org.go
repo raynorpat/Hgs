@@ -8,10 +8,12 @@ import (
 	"github.com/gogits/gogs/models"
 	"github.com/gogits/gogs/modules/auth"
 	"github.com/gogits/gogs/modules/base"
+	"github.com/gogits/gogs/modules/contributions"
 	"github.com/gogits/gogs/modules/hosting"
 	"github.com/gogits/gogs/modules/log"
 	"github.com/gogits/gogs/modules/middleware"
 	"github.com/gogits/gogs/modules/setting"
+	"github.com/gogits/gogs/modules/ui"
 )
 
 const (
@@ -19,11 +21,11 @@ const (
 	CREATE base.TplName = "org/create"
 )
 
-func Home(ctx *middleware.Context, provider hosting.Provider) {
+func Home(ctx *middleware.Context, provider hosting.Provider, index contributions.Provider) {
 	org := ctx.Org.Organization
 	ctx.Data["Title"] = org.FullName
 
-	repos, err := models.GetRepositories(org.Id, ctx.IsSigned && org.IsOrgMember(ctx.User.Id))
+	repos, err := models.GetRepositories(org.Id, true)
 	if err != nil {
 		ctx.Handle(500, "GetRepositories", err)
 		return
@@ -44,7 +46,15 @@ func Home(ctx *middleware.Context, provider hosting.Provider) {
 		ctx.Handle(500, "GetMembers", err)
 		return
 	}
-	ctx.Data["Members"] = org.Members
+	people := make([]*models.User, 0, len(org.Members))
+	for _, member := range org.Members {
+		if ctx.Org.IsMember || member.IsPublicMember(org.Id) {
+			people = append(people, member)
+		}
+	}
+	ctx.Data["ProfilePeople"] = people
+	ctx.Data["Owner"] = org
+	status := ui.PrepareProfile(ctx, org, index, visible)
 
 	if err = org.GetTeams(); err != nil {
 		ctx.Handle(500, "GetTeams", err)
@@ -63,7 +73,7 @@ func Home(ctx *middleware.Context, provider hosting.Provider) {
 		log.Error(4, "Organization profile README: %v", readmeErr)
 	}
 	ctx.Data["ProfileReadme"] = readme
-	ctx.HTML(200, HOME)
+	ctx.HTML(status, HOME)
 }
 
 func Create(ctx *middleware.Context) {

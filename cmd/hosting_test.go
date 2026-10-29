@@ -123,3 +123,27 @@ func TestHostingComparisonRootFailureBeforePublication(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestProfileContributionHolderLifecycle(t *testing.T) {
+	a := newViewApp(t)
+	w := a.request(t, "GET", "/gogs/alice?tab=activity", "", "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "data-contribution-calendar") {
+		t.Fatalf("initialized profile HTTP %d", w.Code)
+	}
+	if a.holder.Contributions() == nil {
+		t.Fatal("initialized holder did not expose existing index")
+	}
+	if err := a.holder.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if a.holder.Contributions() != nil {
+		t.Fatal("closed holder exposed index")
+	}
+	w = a.request(t, "GET", "/gogs/alice?tab=activity", "", "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `data-contribution-state="unavailable"`) {
+		t.Fatalf("closed service must render honest unavailable profile HTTP %d", w.Code)
+	}
+	if (&hostingHolder{}).Contributions() != nil {
+		t.Fatal("uninitialized holder returned typed nil reader")
+	}
+}

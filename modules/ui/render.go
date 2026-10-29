@@ -26,7 +26,7 @@ func BuildShell(ctx *middleware.Context, kind ContextKind, active string) Shell 
 	// Macaron strips AppSubUrl from URL.Path, but leaves RequestURI untouched.
 	// Keep only navigation filters: password-reset/login tokens must not be copied.
 	query := url.Values{}
-	for _, key := range []string{"q", "page", "type", "state", "sort", "sortType", "repoid", "ref", "branch", "bookmark", "tag", "rev", "labels", "milestone", "assignee", "uid", "filter", "visibility", "scope", "owner_id", "page_size", "ref_kind", "ref_name", "parent", "cursor", "path"} {
+	for _, key := range []string{"q", "page", "type", "state", "sort", "sortType", "repoid", "ref", "branch", "bookmark", "tag", "rev", "labels", "milestone", "assignee", "uid", "filter", "visibility", "scope", "owner_id", "page_size", "ref_kind", "ref_name", "parent", "cursor", "path", "tab", "year", "day", "kind"} {
 		if values, ok := ctx.Req.URL.Query()[key]; ok {
 			query[key] = values
 		}

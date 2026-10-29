@@ -13,6 +13,7 @@ import (
 	"github.com/gogits/gogs/models"
 	"github.com/gogits/gogs/modules/auth"
 	"github.com/gogits/gogs/modules/base"
+	"github.com/gogits/gogs/modules/contributions"
 	"github.com/gogits/gogs/modules/hosting"
 	"github.com/gogits/gogs/modules/mailer"
 	"github.com/gogits/gogs/modules/middleware"
@@ -91,6 +92,7 @@ func accountApp(t *testing.T, installed bool) *accountFixture {
 	}
 	m := macaron.New()
 	m.MapTo(uiProvider{}, (*hosting.Provider)(nil))
+	m.MapTo(uiContributionProvider{contributions.NewService(nil, nil, contributionReadAccess, time.Now)}, (*contributions.Provider)(nil))
 	m.SetURLPrefix("/code")
 	m.Use(macaron.Renderer(macaron.RenderOptions{Directory: "../../templates", Funcs: []htmltemplate.FuncMap{base.TemplateFuncs}}))
 	m.Use(middleware.Localization(i18n.Options{Directory: "../../conf/locale", Langs: []string{"en-US", "de-DE"}, Names: []string{"English", "Deutsch"}}))

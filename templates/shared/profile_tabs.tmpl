@@ -1,0 +1,7 @@
+<nav class="hg-tabs hg-profile-tabs" data-profile-tabs aria-label="{{.i18n.Tr "profile.sections"}}">
+<a href="{{.Profile.URL}}?tab=overview"{{if eq .Profile.Tab "overview"}} aria-current="page"{{end}}>{{.i18n.Tr "ui.overview"}}</a>
+<a href="{{.Profile.URL}}?tab=repositories"{{if eq .Profile.Tab "repositories"}} aria-current="page"{{end}}>{{.i18n.Tr "user.repositories"}} <span class="hg-badge">{{len .Profile.Repositories}}</span></a>
+<a href="{{.Profile.URL}}?tab=activity"{{if eq .Profile.Tab "activity"}} aria-current="page"{{end}}>{{.i18n.Tr "user.activity"}}</a>
+{{if .Profile.Owner.IsOrganization}}<a href="{{.Profile.URL}}?tab=people"{{if eq .Profile.Tab "people"}} aria-current="page"{{end}}>{{.i18n.Tr "org.people"}}</a>{{end}}
+</nav>
+{{if .Profile.Error}}<div class="hg-alert" role="alert"><p>{{.i18n.Tr (printf "profile.%s" .Profile.Error)}}</p><a href="{{.Profile.RestartURL}}">{{.i18n.Tr "profile.restart"}}</a></div>{{end}}

@@ -1,0 +1,3 @@
+<section data-profile-people><h2>{{.i18n.Tr "org.people"}}</h2><div class="hg-profile-people">
+{{range .ProfilePeople}}<a class="hg-profile-person" href="{{AppSubUrl}}/{{.Name}}">{{template "shared/avatar" (Avatar .AvatarLink .Name 40)}}<span><strong>{{if .FullName}}{{.FullName}}{{else}}{{.Name}}{{end}}</strong><small>@{{.Name}}</small></span></a>{{else}}<p class="hg-meta">{{.i18n.Tr "profile.no_people"}}</p>{{end}}
+</div></section>

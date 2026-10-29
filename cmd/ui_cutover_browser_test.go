@@ -160,6 +160,10 @@ func TestSharedUICutoverBrowserFixture(t *testing.T) {
 		t.Skip("opt-in disposable Task15 browser fixture")
 	}
 	profileFixture := os.Getenv("UI_PROFILE_FIXTURE") == "1"
+	contributionFixture := os.Getenv("UI_CONTRIBUTION_FIXTURE")
+	if contributionFixture != "" && (profileFixture || os.Getenv("UI_AVATAR_FIXTURE") != "" || os.Getenv("UI_DRAFT_FIXTURE") != "") {
+		t.Fatal("contribution fixture requires exclusive fixture mode")
+	}
 	avatarFixture := os.Getenv("UI_AVATAR_FIXTURE")
 	if avatarFixture != "" && (avatarFixture != "enabled" && avatarFixture != "disabled" || profileFixture || os.Getenv("UI_DRAFT_FIXTURE") == "1") {
 		t.Fatal("avatar fixture requires enabled|disabled and exclusive fixture mode")
@@ -190,7 +194,7 @@ func TestSharedUICutoverBrowserFixture(t *testing.T) {
 		setting.SessionConfig.Maxlifetime = options.idle
 		setting.SessionConfig.Gclifetime = 2
 	}
-	if profileFixture || avatarFixture != "" {
+	if profileFixture || avatarFixture != "" || contributionFixture != "" {
 		oldLifetime, oldGC := setting.SessionConfig.Maxlifetime, setting.SessionConfig.Gclifetime
 		t.Cleanup(func() { setting.SessionConfig.Maxlifetime, setting.SessionConfig.Gclifetime = oldLifetime, oldGC })
 		setting.SessionConfig.Maxlifetime, setting.SessionConfig.Gclifetime = 300, 2
@@ -278,6 +282,12 @@ func TestSharedUICutoverBrowserFixture(t *testing.T) {
 	if avatarFixture != "" {
 		seedAvatarBrowser(t, a, writer, avatarFixture)
 	}
+	if contributionFixture != "" {
+		seedContributionProfileBrowser(t, a, writer, pull.ID, comparison.ID, contributionFixture)
+	}
+	if contributionFixture != "" && os.Getenv("UI_CONTRIBUTION_VALIDATE") == "1" {
+		return
+	}
 	a.handler = newWebHandler(a.holder)
 	if os.Getenv("UI_DRAFT_FIXTURE") == "1" {
 		if options.failure == "save-outage" {
@@ -322,6 +332,9 @@ func TestSharedUICutoverBrowserFixture(t *testing.T) {
 	go func() { done <- server.Serve(listener) }()
 	t.Logf("CUTOVER_BROWSER_URL=http://%s%s/; sign in %s/user/login; alice/admin, writer/write, bob/read; passwords=password; guest=POST logout. Locales ?lang=en-US or ?lang=de-DE; PR %s/alice/project/pulls/1 comparison=%d; issues %s/alice/project/issues/1; organization %s/org/laboratory; shutdown http://%s/fixture/stop; root=%s", listener.Addr(), options.prefix, options.prefix, options.prefix, comparison.ID, options.prefix, options.prefix, listener.Addr(), a.root)
 	lifetime := 60 * time.Minute
+	if contributionFixture != "" {
+		lifetime = 20 * time.Minute
+	}
 	if profileFixture {
 		lifetime = 12 * time.Minute
 		t.Logf("PROFILE_FIXTURE: production router, normal login; public /code/alice; private /code/org/laboratory (alice only); absent /code/bob; all three profiles at 390/1440; session idle=300s; auto stop=12m")

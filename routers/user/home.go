@@ -13,6 +13,7 @@ import (
 
 	"github.com/gogits/gogs/models"
 	"github.com/gogits/gogs/modules/base"
+	"github.com/gogits/gogs/modules/contributions"
 	"github.com/gogits/gogs/modules/hosting"
 	"github.com/gogits/gogs/modules/log"
 	"github.com/gogits/gogs/modules/middleware"
@@ -163,7 +164,7 @@ func ShowSSHKeys(ctx *middleware.Context, uid int64) {
 	ctx.RenderData(200, buf.Bytes())
 }
 
-func Profile(ctx *middleware.Context, provider hosting.Provider) {
+func Profile(ctx *middleware.Context, provider hosting.Provider, index contributions.Provider) {
 	ctx.Data["Title"] = "Profile"
 	ctx.Data["PageIsUserProfile"] = true
 
@@ -215,60 +216,23 @@ func Profile(ctx *middleware.Context, provider hosting.Provider) {
 	if ctx.IsSigned {
 		actorID = ctx.User.Id
 	}
-	tab := ctx.Query("tab")
-	ctx.Data["TabName"] = tab
-	switch tab {
-	case "activity":
-		actions, err := models.GetFeeds(u.Id, 0, false)
-		if err != nil {
-			ctx.Handle(500, "GetFeeds", err)
-			return
-		}
-		feeds := make([]*models.Action, 0, len(actions))
-		for _, act := range actions {
-			access, accessErr := models.RepositoryAccessFor(actorID, act.RepoId)
-			if accessErr == models.ErrRepoNotExist {
-				continue
-			}
-			if accessErr != nil {
-				ctx.Handle(500, "RepositoryAccessFor", accessErr)
-				return
-			}
-			if !access.Read {
-				continue
-			}
-
-			// FIXME: cache results?
-			u, err := models.GetUserByName(act.ActUserName)
-			if err != nil {
-				if err == models.ErrUserNotExist {
-					continue
-				}
-				ctx.Handle(500, "GetUserByName", err)
-				return
-			}
-			act.ActAvatar = u.AvatarLink()
-			feeds = append(feeds, act)
-		}
-		ctx.Data["Feeds"] = feeds
-	default:
-		var repos []*models.Repository
-		repos, err = models.GetRepositories(u.Id, ctx.IsSigned && ctx.User.Id == u.Id)
-		if err == nil {
-			ctx.Data["Repos"], err = models.FilterReadableRepositories(actorID, repos)
-		}
-		if err != nil {
-			ctx.Handle(500, "GetRepositories", err)
-			return
-		}
+	repos, err := models.GetRepositories(u.Id, true)
+	if err == nil {
+		repos, err = models.FilterReadableRepositories(actorID, repos)
 	}
+	if err != nil {
+		ctx.Handle(500, "GetRepositories", err)
+		return
+	}
+	ctx.Data["Repos"] = repos
+	status := ui.PrepareProfile(ctx, u, index, repos)
 
 	readme, readmeErr := middleware.LoadProfileReadme(ctx, provider, u)
 	if readmeErr != nil {
 		log.Error(4, "Profile README: %v", readmeErr)
 	}
 	ctx.Data["ProfileReadme"] = readme
-	ctx.HTML(200, PROFILE)
+	ctx.HTML(status, PROFILE)
 }
 
 func Email2User(ctx *middleware.Context) {

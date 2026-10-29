@@ -37,6 +37,7 @@ import (
 	"github.com/gogits/gogs/modules/avatar"
 	"github.com/gogits/gogs/modules/base"
 	"github.com/gogits/gogs/modules/collaboration"
+	"github.com/gogits/gogs/modules/contributions"
 	"github.com/gogits/gogs/modules/hg"
 	"github.com/gogits/gogs/modules/hosting"
 	"github.com/gogits/gogs/modules/log"
@@ -285,6 +286,7 @@ func runWebServer(ctx *cli.Context) error {
 func newWebHandler(holder *hostingHolder) http.Handler {
 	m := newMacaron()
 	m.MapTo(holder, (*hosting.Provider)(nil))
+	m.MapTo(holder, (*contributions.Provider)(nil))
 	m.Map(collaboration.New(holder))
 	m.Map(user.NewDraftService())
 	m.Map(routers.InitializeHosting(holder.Initialize))

@@ -31,6 +31,7 @@ type hostingHolder struct {
 	err                error
 	closed             bool
 	errors             chan error
+	contributionIndex  *contributions.Service
 	contributionCancel context.CancelFunc
 	contributionDone   chan struct{}
 }
@@ -42,6 +43,15 @@ func (h *hostingHolder) Service() *hosting.Service {
 		return nil
 	}
 	return h.service
+}
+
+func (h *hostingHolder) Contributions() contributions.Reader {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.closed || h.contributionIndex == nil {
+		return nil
+	}
+	return h.contributionIndex
 }
 
 type fixedProvider struct{ s *hosting.Service }
@@ -114,6 +124,7 @@ func (h *hostingHolder) Initialize() error {
 			h.err = err
 			return
 		}
+		h.contributionIndex = index
 		indexContext, cancel := context.WithCancel(context.Background())
 		h.contributionCancel = cancel
 		h.contributionDone = make(chan struct{})
