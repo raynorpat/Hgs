@@ -11,7 +11,7 @@ import (
 
 	"github.com/Unknwon/com"
 
-	"github.com/gogits/gogs/modules/base"
+	"github.com/gogits/gogs/modules/avatar"
 )
 
 var (
@@ -107,7 +107,7 @@ func CreateOrganization(org, owner *User) (*User, error) {
 
 	org.LowerName = strings.ToLower(org.Name)
 	org.FullName = org.Name
-	org.Avatar = base.EncodeMd5(org.Email)
+	org.Avatar = avatar.ProviderHash(org.Email)
 	org.AvatarEmail = org.Email
 	// No password for organization.
 	org.NumTeams = 1

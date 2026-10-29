@@ -160,6 +160,10 @@ func TestSharedUICutoverBrowserFixture(t *testing.T) {
 		t.Skip("opt-in disposable Task15 browser fixture")
 	}
 	profileFixture := os.Getenv("UI_PROFILE_FIXTURE") == "1"
+	avatarFixture := os.Getenv("UI_AVATAR_FIXTURE")
+	if avatarFixture != "" && (avatarFixture != "enabled" && avatarFixture != "disabled" || profileFixture || os.Getenv("UI_DRAFT_FIXTURE") == "1") {
+		t.Fatal("avatar fixture requires enabled|disabled and exclusive fixture mode")
+	}
 	if profileFixture && os.Getenv("UI_DRAFT_FIXTURE") == "1" {
 		t.Fatal("profile and draft fixture modes are mutually exclusive")
 	}
@@ -186,7 +190,7 @@ func TestSharedUICutoverBrowserFixture(t *testing.T) {
 		setting.SessionConfig.Maxlifetime = options.idle
 		setting.SessionConfig.Gclifetime = 2
 	}
-	if profileFixture {
+	if profileFixture || avatarFixture != "" {
 		oldLifetime, oldGC := setting.SessionConfig.Maxlifetime, setting.SessionConfig.Gclifetime
 		t.Cleanup(func() { setting.SessionConfig.Maxlifetime, setting.SessionConfig.Gclifetime = oldLifetime, oldGC })
 		setting.SessionConfig.Maxlifetime, setting.SessionConfig.Gclifetime = 300, 2
@@ -271,6 +275,9 @@ func TestSharedUICutoverBrowserFixture(t *testing.T) {
 	if profileFixture {
 		seedProfileReadmeBrowser(t, a)
 	}
+	if avatarFixture != "" {
+		seedAvatarBrowser(t, a, writer, avatarFixture)
+	}
 	a.handler = newWebHandler(a.holder)
 	if os.Getenv("UI_DRAFT_FIXTURE") == "1" {
 		if options.failure == "save-outage" {
@@ -318,6 +325,9 @@ func TestSharedUICutoverBrowserFixture(t *testing.T) {
 	if profileFixture {
 		lifetime = 12 * time.Minute
 		t.Logf("PROFILE_FIXTURE: production router, normal login; public /code/alice; private /code/org/laboratory (alice only); absent /code/bob; all three profiles at 390/1440; session idle=300s; auto stop=12m")
+	}
+	if avatarFixture != "" {
+		lifetime = 8 * time.Minute
 	}
 	select {
 	case <-stop:

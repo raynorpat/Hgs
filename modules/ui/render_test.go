@@ -256,14 +256,14 @@ func TestSharedShellAvatarSources(t *testing.T) {
 	}{
 		{"uploaded", true, true, true, "/code/avatars/42"},
 		{"disabled", false, true, false, "/code/img/avatar_default.jpg"},
-		{"cache", false, false, true, "/code/avatar/opaque-avatar-hash"},
-		{"configured source", false, false, false, "https://avatar.invalid/opaque-avatar-hash"},
+		{"cache", false, false, true, "/code/avatar/a09ad6a9cefa1f5ee357366df4ab6939182f4cf23d68ed606f7744321c1d8330"},
+		{"configured source", false, false, false, "https://gravatar.com/avatar/a09ad6a9cefa1f5ee357366df4ab6939182f4cf23d68ed606f7744321c1d8330"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			setting.DisableGravatar = tc.disabled
 			setting.Service.EnableCacheAvatar = tc.cache
-			setting.GravatarSource = "https://avatar.invalid/"
-			s, html := shellFixture(t, "/code", Workspace, &models.User{Id: 42, Name: "alice", Email: "private@example.invalid", Avatar: "opaque-avatar-hash", UseCustomAvatar: tc.custom}, false, false, false, "Workspace")
+			setting.GravatarSource = "https://gravatar.com/avatar/"
+			s, html := shellFixture(t, "/code", Workspace, &models.User{Id: 42, Name: "alice", Email: "private@example.invalid", Avatar: "a09ad6a9cefa1f5ee357366df4ab6939182f4cf23d68ed606f7744321c1d8330", UseCustomAvatar: tc.custom}, false, false, false, "Workspace")
 			if s.AvatarURL != tc.want {
 				t.Fatalf("avatar URL %q, want %q", s.AvatarURL, tc.want)
 			}

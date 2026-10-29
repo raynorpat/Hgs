@@ -32,7 +32,7 @@
                             <form class="hg-inline-form" method="post" action="{{$.OrgLink}}/teams/{{$.Team.LowerName}}/action/remove?uid={{.Id}}" data-confirm-message="{{$.i18n.Tr "ui.confirm_action"}}">{{$.CsrfTokenHtml}}<button type="submit" class="hg-button">{{$.i18n.Tr "org.members.remove"}}</button></form>
                             {{end}}
                             <a class="member" href="{{AppSubUrl}}/{{.Name}}">
-                                <img alt="{{.Name}}" class="pull-left avatar" src="{{.AvatarLink}}" data-avatar-fallback="{{AppSubUrl}}/img/avatar_default.jpg">
+                                {{template "shared/avatar" (Avatar .AvatarLink .Name 40)}}
                                 <strong>{{.FullName}}</strong> ({{.Name}})
                             </a>
                         </li>

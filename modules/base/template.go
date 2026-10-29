@@ -7,6 +7,7 @@ package base
 import (
 	"container/list"
 	"fmt"
+	"github.com/gogits/gogs/modules/avatar"
 	"html/template"
 	"net/url"
 	"runtime"
@@ -130,6 +131,7 @@ var TemplateFuncs template.FuncMap = map[string]interface{}{
 		return u.String()
 	},
 	"AvatarLink": AvatarLink,
+	"Avatar":     avatar.Present,
 	"Str2html":   Str2html,
 	"TimeSince":  TimeSince,
 	"FileSize":   FileSize,

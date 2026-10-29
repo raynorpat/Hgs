@@ -27,7 +27,7 @@
                 <div class="hg-panel-body member-avatar-group">
                     {{range .Members}}
                     <a href="{{AppSubUrl}}/{{.Name}}" title="{{.Name}}">
-                        <img alt="{{.Name}}" width="40" height="40" src="{{.AvatarLink}}" data-avatar-fallback="{{AppSubUrl}}/img/avatar_default.jpg">
+                        {{template "shared/avatar" (Avatar .AvatarLink .Name 40)}}
                     </a>
                     {{end}}
                 </div>

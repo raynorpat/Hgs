@@ -138,7 +138,15 @@
     });
   });
   root.querySelectorAll('[data-avatar]').forEach(img => {
-    const fail = () => { img.hidden = true; };
+    const fail = () => {
+      const fallback = img.dataset.avatarFallback;
+      if (fallback && img.getAttribute('src') !== fallback) {
+        delete img.dataset.avatarFallback;
+        img.src = fallback;
+      } else {
+        img.hidden = true;
+      }
+    };
     img.addEventListener('error', fail);
     if (img.complete && !img.naturalWidth) fail();
   });

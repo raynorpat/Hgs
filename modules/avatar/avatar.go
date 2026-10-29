@@ -2,310 +2,322 @@
 // Use of this source code is governed by a MIT-style
 // license that can be found in the LICENSE file.
 
-// for www.gravatar.com image cache
-
-/*
-It is recommend to use this way
-
-	cacheDir := "./cache"
-	defaultImg := "./default.jpg"
-	http.Handle("/avatar/", avatar.CacheServer(cacheDir, defaultImg))
-*/
+// Package avatar supplies provider-aware image links and a bounded local cache.
 package avatar
 
 import (
+	"bytes"
+	"context"
 	"crypto/md5"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"image"
 	"image/jpeg"
-	"image/png"
+	_ "image/png"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
-	"sync"
 	"time"
+	"unicode"
 
-	"github.com/nfnt/resize"
-
-	"github.com/gogits/gogs/modules/log"
 	"github.com/gogits/gogs/modules/setting"
+	"github.com/nfnt/resize"
 )
 
-var gravatarSource string
+const maxImageBytes = 4 << 20
+const maxImageSide = 2048
 
-func UpdateGravatarSource() {
-	gravatarSource = setting.GravatarSource
-	log.Debug("avatar.UpdateGravatarSource(gavatar source): %s", gravatarSource)
-	if !strings.HasPrefix(gravatarSource, "http:") {
-		gravatarSource = "http:" + gravatarSource
-		log.Debug("avatar.UpdateGravatarSource(update gavatar source): %s", gravatarSource)
-	}
-}
-
-// hash email to md5 string
-// keep this func in order to make this package independent
+// HashEmail is the official Gravatar SHA-256 identifier.
 func HashEmail(email string) string {
-	// https://en.gravatar.com/site/implement/hash/
-	email = strings.TrimSpace(email)
-	email = strings.ToLower(email)
-
-	h := md5.New()
-	h.Write([]byte(email))
-	return hex.EncodeToString(h.Sum(nil))
+	sum := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(email))))
+	return hex.EncodeToString(sum[:])
 }
 
-// Avatar represents the avatar object.
+// ProviderHash keeps the explicitly supported legacy provider's MD5 identity.
+// Callers recompute from the email rather than reinterpret persisted old hashes.
+func ProviderHash(email string) string {
+	source, err := setting.ResolveGravatarSource(setting.GravatarSource)
+	if err != nil || strings.TrimSpace(email) == "" {
+		return ""
+	}
+	if source == setting.LegacyGravatarSource {
+		sum := md5.Sum([]byte(strings.ToLower(strings.TrimSpace(email))))
+		return hex.EncodeToString(sum[:])
+	}
+	return HashEmail(email)
+}
+
+func validHash(hash string) bool {
+	source, err := setting.ResolveGravatarSource(setting.GravatarSource)
+	if err != nil {
+		return false
+	}
+	length := 64
+	if source == setting.LegacyGravatarSource {
+		length = 32
+	}
+	if len(hash) != length || strings.ToLower(hash) != hash {
+		return false
+	}
+	_, err = hex.DecodeString(hash)
+	return err == nil
+}
+
+func FallbackURL() string { return setting.AppSubUrl + "/img/avatar_default.jpg" }
+
+func Link(email string) string {
+	if setting.DisableGravatar {
+		return FallbackURL()
+	}
+	hash := ProviderHash(email)
+	if hash == "" {
+		return FallbackURL()
+	}
+	if setting.Service.EnableCacheAvatar {
+		return setting.AppSubUrl + "/avatar/" + hash
+	}
+	source, _ := setting.ResolveGravatarSource(setting.GravatarSource)
+	return source + hash
+}
+
+// Presentation is the complete shared template contract. Size queries are built
+// here, so every caller uses one validated size and never edits a URL in markup.
+type Presentation struct {
+	URL, Fallback, Name, Initials string
+	Size                          int
+}
+
+func Present(rawURL, name string, size int) Presentation {
+	if size < 1 || size > maxImageSide {
+		size = 28
+	}
+	p := Presentation{URL: rawURL, Fallback: FallbackURL(), Name: name, Size: size, Initials: "?"}
+	for _, r := range name {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			p.Initials = string(unicode.ToUpper(r))
+			break
+		}
+	}
+	u, err := url.Parse(rawURL)
+	if err == nil {
+		source, _ := setting.ResolveGravatarSource(setting.GravatarSource)
+		if strings.HasPrefix(rawURL, setting.AppSubUrl+"/avatar/") || source != "" && strings.HasPrefix(rawURL, source) {
+			q := u.Query()
+			q.Del("s")
+			q.Set("size", strconv.Itoa(size))
+			u.RawQuery = q.Encode()
+			p.URL = u.String()
+		}
+	}
+	return p
+}
+
+// Avatar retains the existing ten-minute cache lifetime and 200px source image.
 type Avatar struct {
 	Hash           string
-	AlterImage     string // image path
-	cacheDir       string // image save dir
-	reqParams      string
+	AlterImage     string
 	imagePath      string
 	expireDuration time.Duration
 }
 
-func New(hash string, cacheDir string) *Avatar {
-	return &Avatar{
-		Hash:           hash,
-		cacheDir:       cacheDir,
-		expireDuration: time.Minute * 10,
-		reqParams: url.Values{
-			"d":    {"retro"},
-			"size": {"200"},
-			"r":    {"pg"}}.Encode(),
-		imagePath: filepath.Join(cacheDir, hash+".image"), //maybe png or jpeg
+func New(hash, cacheDir string) *Avatar {
+	a := &Avatar{Hash: hash, expireDuration: 10 * time.Minute}
+	if validHash(hash) {
+		a.imagePath = filepath.Join(cacheDir, hash+".image")
 	}
+	return a
 }
-
-func (this *Avatar) HasCache() bool {
-	fileInfo, err := os.Stat(this.imagePath)
-	return err == nil && fileInfo.Mode().IsRegular()
+func (a *Avatar) HasCache() bool {
+	info, err := os.Stat(a.imagePath)
+	return err == nil && info.Mode().IsRegular()
 }
-
-func (this *Avatar) Modtime() (modtime time.Time, err error) {
-	fileInfo, err := os.Stat(this.imagePath)
+func (a *Avatar) Modtime() (time.Time, error) {
+	info, err := os.Stat(a.imagePath)
 	if err != nil {
-		return
+		return time.Time{}, err
 	}
-	return fileInfo.ModTime(), nil
+	return info.ModTime(), nil
+}
+func (a *Avatar) Expired() bool {
+	mtime, err := a.Modtime()
+	return err != nil || time.Since(mtime) > a.expireDuration
 }
 
-func (this *Avatar) Expired() bool {
-	modtime, err := this.Modtime()
-	return err != nil || time.Since(modtime) > this.expireDuration
-}
-
-// default image format: jpeg
-func (this *Avatar) Encode(wr io.Writer, size int) (err error) {
-	var img image.Image
-	decodeImageFile := func(file string) (img image.Image, err error) {
-		fd, err := os.Open(file)
-		if err != nil {
-			return
-		}
-		defer fd.Close()
-
-		if img, err = jpeg.Decode(fd); err != nil {
-			fd.Seek(0, os.SEEK_SET)
-			img, err = png.Decode(fd)
-		}
-		return
+func decodeImage(r io.Reader) (image.Image, error) {
+	data, err := io.ReadAll(io.LimitReader(r, maxImageBytes+1))
+	if err != nil {
+		return nil, err
 	}
-	imgPath := this.imagePath
-	if !this.HasCache() {
-		if this.AlterImage == "" {
-			return errors.New("request image failed, and no alt image offered")
-		}
-		imgPath = this.AlterImage
+	if len(data) > maxImageBytes {
+		return nil, errors.New("avatar exceeds byte limit")
 	}
-
-	if img, err = decodeImageFile(imgPath); err != nil {
-		return
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
 	}
-	m := resize.Resize(uint(size), 0, img, resize.NearestNeighbor)
-	return jpeg.Encode(wr, m, nil)
-}
-
-// get image from gravatar.com
-func (this *Avatar) Update() {
-	UpdateGravatarSource()
-	thunder.Fetch(gravatarSource+this.Hash+"?"+this.reqParams,
-		this.imagePath)
-}
-
-func (this *Avatar) UpdateTimeout(timeout time.Duration) (err error) {
-	UpdateGravatarSource()
-	select {
-	case <-time.After(timeout):
-		err = fmt.Errorf("get gravatar image %s timeout", this.Hash)
-	case err = <-thunder.GoFetch(gravatarSource+this.Hash+"?"+this.reqParams,
-		this.imagePath):
+	if format != "jpeg" && format != "png" || cfg.Width < 1 || cfg.Height < 1 || cfg.Width > maxImageSide || cfg.Height > maxImageSide || cfg.Width*cfg.Height > 4<<20 {
+		return nil, errors.New("invalid avatar dimensions or format")
 	}
-	return err
+	img, _, err := image.Decode(bytes.NewReader(data))
+	return img, err
 }
-
-type service struct {
-	cacheDir string
-	altImage string
-}
-
-func (this *service) mustInt(r *http.Request, defaultValue int, keys ...string) (v int) {
-	for _, k := range keys {
-		if _, err := fmt.Sscanf(r.FormValue(k), "%d", &v); err == nil {
-			defaultValue = v
-		}
+func decodeFile(path string) (image.Image, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
 	}
-	return defaultValue
+	defer f.Close()
+	return decodeImage(f)
 }
-
-func (this *service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	urlPath := r.URL.Path
-	hash := urlPath[strings.LastIndex(urlPath, "/")+1:]
-	size := this.mustInt(r, 80, "s", "size") // default size = 80*80
-
-	avatar := New(hash, this.cacheDir)
-	avatar.AlterImage = this.altImage
-	if avatar.Expired() {
-		if err := avatar.UpdateTimeout(time.Millisecond * 1000); err != nil {
-			log.Trace("avatar update error: %v", err)
-			return
-		}
+func (a *Avatar) Encode(w io.Writer, size int) error {
+	if size < 1 || size > maxImageSide {
+		return errors.New("invalid avatar size")
 	}
-	if modtime, err := avatar.Modtime(); err == nil {
-		etag := fmt.Sprintf("size(%d)", size)
-		if t, err := time.Parse(http.TimeFormat, r.Header.Get("If-Modified-Since")); err == nil && modtime.Before(t.Add(1*time.Second)) && etag == r.Header.Get("If-None-Match") {
-			h := w.Header()
-			delete(h, "Content-Type")
-			delete(h, "Content-Length")
-			w.WriteHeader(http.StatusNotModified)
-			return
-		}
-		w.Header().Set("Last-Modified", modtime.UTC().Format(http.TimeFormat))
-		w.Header().Set("ETag", etag)
+	img, err := decodeFile(a.imagePath)
+	if err != nil {
+		img, err = decodeFile(a.AlterImage)
 	}
-	w.Header().Set("Content-Type", "image/jpeg")
-
-	if err := avatar.Encode(w, size); err != nil {
-		log.Warn("avatar encode error: %v", err)
-		w.WriteHeader(500)
+	if err != nil {
+		return err
 	}
-}
-
-// http.Handle("/avatar/", avatar.CacheServer("./cache"))
-func CacheServer(cacheDir string, defaultImgPath string) http.Handler {
-	return &service{
-		cacheDir: cacheDir,
-		altImage: defaultImgPath,
-	}
-}
-
-// thunder downloader
-var thunder = &Thunder{QueueSize: 10}
-
-type Thunder struct {
-	QueueSize int // download queue size
-	q         chan *thunderTask
-	once      sync.Once
-}
-
-func (t *Thunder) init() {
-	if t.QueueSize < 1 {
-		t.QueueSize = 1
-	}
-	t.q = make(chan *thunderTask, t.QueueSize)
-	for i := 0; i < t.QueueSize; i++ {
-		go func() {
-			for {
-				task := <-t.q
-				task.Fetch()
-			}
-		}()
-	}
-}
-
-func (t *Thunder) Fetch(url string, saveFile string) error {
-	t.once.Do(t.init)
-	task := &thunderTask{
-		Url:      url,
-		SaveFile: saveFile,
-	}
-	task.Add(1)
-	t.q <- task
-	task.Wait()
-	return task.err
-}
-
-func (t *Thunder) GoFetch(url, saveFile string) chan error {
-	c := make(chan error)
-	go func() {
-		c <- t.Fetch(url, saveFile)
-	}()
-	return c
-}
-
-// thunder download
-type thunderTask struct {
-	Url      string
-	SaveFile string
-	sync.WaitGroup
-	err error
-}
-
-func (this *thunderTask) Fetch() {
-	this.err = this.fetch()
-	this.Done()
+	return jpeg.Encode(w, resize.Resize(uint(size), uint(size), img, resize.NearestNeighbor), nil)
 }
 
 var client = &http.Client{}
 
-func (this *thunderTask) fetch() error {
-	log.Debug("avatar.fetch(fetch new avatar): %s", this.Url)
-	req, _ := http.NewRequest("GET", this.Url, nil)
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/jpeg,image/png,*/*;q=0.8")
-	req.Header.Set("Accept-Encoding", "deflate,sdch")
-	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.8")
-	req.Header.Set("Cache-Control", "no-cache")
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/33.0.1750.154 Safari/537.36")
-	resp, err := client.Do(req)
+func (a *Avatar) update(ctx context.Context) error {
+	if setting.DisableGravatar || !validHash(a.Hash) || a.imagePath == "" {
+		return errors.New("remote avatar unavailable")
+	}
+	source, err := setting.ResolveGravatarSource(setting.GravatarSource)
+	if err != nil {
+		return err
+	}
+	u, _ := url.Parse(source + a.Hash)
+	u.RawQuery = url.Values{"d": {"retro"}, "r": {"pg"}, "size": {"200"}}.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "image/jpeg,image/png")
+	// Never follow redirects, including same-host redirects: configured identity
+	// and HTTPS are authoritative, and failure uses the local fallback.
+	scoped := *client
+	scoped.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	resp, err := scoped.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("status code: %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("avatar response status %d", resp.StatusCode)
 	}
-
-	/*
-		log.Println("headers:", resp.Header)
-		switch resp.Header.Get("Content-Type") {
-		case "image/jpeg":
-			this.SaveFile += ".jpeg"
-		case "image/png":
-			this.SaveFile += ".png"
-		}
-	*/
-	/*
-		imgType := resp.Header.Get("Content-Type")
-		if imgType != "image/jpeg" && imgType != "image/png" {
-			return errors.New("not png or jpeg")
-		}
-	*/
-
-	tmpFile := this.SaveFile + ".part" // mv to destination when finished
-	fd, err := os.Create(tmpFile)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxImageBytes+1))
 	if err != nil {
 		return err
 	}
-	_, err = io.Copy(fd, resp.Body)
-	fd.Close()
-	if err != nil {
-		os.Remove(tmpFile)
+	if len(data) > maxImageBytes {
+		return errors.New("avatar exceeds byte limit")
+	}
+	if _, err = decodeImage(bytes.NewReader(data)); err != nil {
 		return err
 	}
-	return os.Rename(tmpFile, this.SaveFile)
+	if err = ctx.Err(); err != nil {
+		return err
+	}
+	if err = os.MkdirAll(filepath.Dir(a.imagePath), 0755); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(filepath.Dir(a.imagePath), "avatar-*.part")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	defer os.Remove(tmp)
+	_, writeErr := f.Write(data)
+	closeErr := f.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if err = ctx.Err(); err != nil {
+		return err
+	}
+	if err = os.Rename(tmp, a.imagePath); err != nil {
+		// Windows may deny a simultaneous replacement after another request
+		// publishes this key. Keep that winner only when it is fresh and valid.
+		if !a.Expired() {
+			if _, decodeErr := decodeFile(a.imagePath); decodeErr == nil {
+				return nil
+			}
+		}
+		return err
+	}
+	return nil
+}
+func (a *Avatar) Update() { _ = a.UpdateTimeout(time.Second) }
+func (a *Avatar) UpdateTimeout(timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return a.update(ctx)
+}
+
+type service struct{ cacheDir, altImage string }
+
+func (s *service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	size := 80
+	for _, key := range []string{"s", "size"} {
+		if values, ok := r.URL.Query()[key]; ok {
+			if len(values) != 1 {
+				http.Error(w, "invalid avatar size", 400)
+				return
+			}
+			v, err := strconv.Atoi(values[0])
+			if err != nil || v < 1 || v > maxImageSide {
+				http.Error(w, "invalid avatar size", 400)
+				return
+			}
+			size = v
+		}
+	}
+	hash := r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]
+	_, sourceErr := setting.ResolveGravatarSource(setting.GravatarSource)
+	if sourceErr == nil && !validHash(hash) {
+		http.Error(w, "invalid avatar identifier", 400)
+		return
+	}
+	a := New(hash, s.cacheDir)
+	a.AlterImage = s.altImage
+	useCache := !setting.DisableGravatar && sourceErr == nil
+	if useCache && a.Expired() {
+		ctx, cancel := context.WithTimeout(r.Context(), time.Second)
+		err := a.update(ctx)
+		cancel()
+		if err != nil {
+			useCache = false
+		}
+	}
+	if !useCache {
+		a.imagePath = ""
+	}
+	var body bytes.Buffer
+	if err := a.Encode(&body, size); err != nil {
+		http.Error(w, "avatar unavailable", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "image/jpeg")
+	// Failures and disabled configuration must not be retained as remote cache hits.
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write(body.Bytes())
+}
+func CacheServer(cacheDir, defaultImgPath string) http.Handler {
+	return &service{cacheDir, defaultImgPath}
 }

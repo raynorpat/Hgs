@@ -1,5 +1,5 @@
 {{range .Feeds}}<article class="hg-feed">
-<img width="28" height="28" src="{{.ActAvatar}}" alt="">
+{{template "shared/avatar" (Avatar .ActAvatar .ActUserName 28)}}
 <div>
 <p>
 <a href="{{AppSubUrl}}/{{.GetActUserName}}">{{.GetActUserName}}</a> {{if eq .GetOpType 1}}{{$.i18n.Tr "ui.activity_created_repository"}}{{else if eq .GetOpType 6}}{{$.i18n.Tr "ui.activity_opened_issue"}}{{else if eq .GetOpType 8}}{{$.i18n.Tr "ui.activity_transferred_repository"}} <code>{{.GetContent}}</code> {{$.i18n.Tr "ui.activity_to"}}{{else if eq .GetOpType 10}}{{$.i18n.Tr "ui.activity_commented_issue"}}{{end}} <a href="{{.GetRepoLink}}">{{.GetRepoUserName}} / {{.GetRepoName}}</a>

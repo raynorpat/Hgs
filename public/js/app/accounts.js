@@ -3,18 +3,6 @@
   const root = document.querySelector('[data-hg-shell]');
   if (!root) return;
 
-  root.querySelectorAll('[data-avatar-fallback]').forEach(image => {
-    const fallback = () => {
-      const path = image.dataset.avatarFallback;
-      if (path) {
-        delete image.dataset.avatarFallback;
-        image.src = path;
-      }
-    };
-    image.addEventListener('error', fallback);
-    if (image.complete && !image.naturalWidth) fallback();
-  });
-
   const show = (selector, visible) => root.querySelectorAll(selector).forEach(section => {
     section.hidden = !visible;
     section.classList.remove('hide', 'hidden');

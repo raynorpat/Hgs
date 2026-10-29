@@ -75,7 +75,6 @@ func SettingsPost(ctx *middleware.Context, form auth.UpdateProfileForm) {
 	ctx.User.Email = form.Email
 	ctx.User.Website = form.Website
 	ctx.User.Location = form.Location
-	ctx.User.Avatar = base.EncodeMd5(form.Avatar)
 	ctx.User.AvatarEmail = form.Avatar
 	if err := models.UpdateUser(ctx.User); err != nil {
 		ctx.Handle(500, "UpdateUser", err)

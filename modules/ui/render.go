@@ -43,6 +43,7 @@ func BuildShell(ctx *middleware.Context, kind ContextKind, active string) Shell 
 	s.CanAdmin = s.SignedIn && ctx.User.IsAdmin && kind != Anonymous
 	if s.SignedIn {
 		s.AvatarURL = ctx.User.AvatarLink()
+		s.AvatarName = ctx.User.Name
 		for _, r := range ctx.User.Name {
 			if unicode.IsLetter(r) || unicode.IsDigit(r) {
 				s.Initials = string(unicode.ToUpper(r))

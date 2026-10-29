@@ -44,3 +44,11 @@ test('null-relatedTarget pointer focusout preserves popout form; outside and Esc
  events.click({target:{closest(){return null;}}});assert.equal(panel.hidden,true,'outside click dismisses');
  open();keys.keydown({key:'Escape',preventDefault(){}});assert.equal(panel.hidden,true);assert.equal(active,trigger,'Escape restores trigger');
 });
+
+test('shared avatars retain their image box, try the local fallback once, then reveal initials',()=>{
+ const events={};const img={dataset:{avatarFallback:'/code/img/avatar_default.jpg'},complete:false,naturalWidth:0,hidden:false,width:28,height:28,src:'/code/avatars/missing',getAttribute(){return this.src;},addEventListener(name,fn){events[name]=fn;}};
+ const root={dataset:{},querySelector(){return null;},querySelectorAll(s){return s==='[data-avatar]'?[img]:[];},addEventListener(){}};
+ vm.runInNewContext(fs.readFileSync(__dirname+'/shell.js','utf8'),{document:{querySelector(){return root;},addEventListener(){}},matchMedia(){return {addEventListener(){}};}});
+ events.error();assert.equal(img.src,'/code/img/avatar_default.jpg');assert.equal(img.hidden,false);assert.equal(img.width,28);assert.equal(img.height,28);
+ events.error();assert.equal(img.hidden,true);assert.equal(img.width,28);assert.equal(img.height,28);
+});

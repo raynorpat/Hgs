@@ -223,7 +223,6 @@ func EditUserPost(ctx *middleware.Context, form auth.AdminEditUserForm) {
 	if len(form.Avatar) == 0 {
 		form.Avatar = form.Email
 	}
-	u.Avatar = base.EncodeMd5(form.Avatar)
 	u.AvatarEmail = form.Avatar
 	u.IsActive = form.Active
 	u.IsAdmin = form.Admin

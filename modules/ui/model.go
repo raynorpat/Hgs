@@ -23,10 +23,10 @@ type NavItem struct {
 	Count                 *int64
 }
 type Shell struct {
-	Kind                               ContextKind
-	Title, SubURL, AvatarURL, Initials string
-	SignedIn, CanAdmin                 bool
-	Navigation                         []NavItem
+	Kind                                           ContextKind
+	Title, SubURL, AvatarURL, AvatarName, Initials string
+	SignedIn, CanAdmin                             bool
+	Navigation                                     []NavItem
 }
 
 // Field supplies associated labels, hints and errors to shared/form_field.

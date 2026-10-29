@@ -118,15 +118,14 @@ func (u *User) HomeLink() string {
 
 // AvatarLink returns user gravatar link.
 func (u *User) AvatarLink() string {
-	switch {
-	case u.UseCustomAvatar:
+	if u.UseCustomAvatar {
 		return setting.AppSubUrl + "/avatars/" + com.ToStr(u.Id)
-	case setting.DisableGravatar:
-		return setting.AppSubUrl + "/img/avatar_default.jpg"
-	case setting.Service.EnableCacheAvatar:
-		return setting.AppSubUrl + "/avatar/" + u.Avatar
 	}
-	return setting.GravatarSource + u.Avatar
+	email := u.AvatarEmail
+	if strings.TrimSpace(email) == "" {
+		email = u.Email
+	}
+	return avatar.Link(email)
 }
 
 // EncodePasswd encodes password to safe format.
@@ -157,6 +156,10 @@ func (u *User) UploadAvatar(data []byte) error {
 		return err
 	}
 	m := resize.Resize(200, 200, img, resize.NearestNeighbor)
+	if strings.TrimSpace(u.AvatarEmail) == "" {
+		u.AvatarEmail = u.Email
+	}
+	u.Avatar = avatar.ProviderHash(u.AvatarEmail)
 
 	sess := x.NewSession()
 	defer sess.Close()
@@ -282,7 +285,7 @@ func CreateUser(u *User) error {
 
 	u.LowerName = strings.ToLower(u.Name)
 	u.AvatarEmail = u.Email
-	u.Avatar = avatar.HashEmail(u.AvatarEmail)
+	u.Avatar = avatar.ProviderHash(u.AvatarEmail)
 	u.Rands = GetUserSalt()
 	u.Salt = GetUserSalt()
 	u.EncodePasswd()
@@ -405,10 +408,10 @@ func UpdateUser(u *User) error {
 		u.Description = u.Description[:255]
 	}
 
-	if u.AvatarEmail == "" {
+	if strings.TrimSpace(u.AvatarEmail) == "" {
 		u.AvatarEmail = u.Email
 	}
-	u.Avatar = avatar.HashEmail(u.AvatarEmail)
+	u.Avatar = avatar.ProviderHash(u.AvatarEmail)
 
 	u.FullName = base.Sanitizer.Sanitize(u.FullName)
 	sess := x.NewSession()

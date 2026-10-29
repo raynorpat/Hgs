@@ -63,7 +63,6 @@ func SettingsPost(ctx *middleware.Context, form auth.UpdateOrgSettingForm) {
 	org.Description = form.Description
 	org.Website = form.Website
 	org.Location = form.Location
-	org.Avatar = base.EncodeMd5(form.Avatar)
 	org.AvatarEmail = form.Avatar
 	if err := models.UpdateUser(org); err != nil {
 		ctx.Handle(500, "UpdateUser", err)

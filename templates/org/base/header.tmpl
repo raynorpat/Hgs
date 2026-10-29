@@ -1,7 +1,7 @@
 <div class="org-header" id="org-header">
     <div class="">
         <a class="text-black" href="{{AppSubUrl}}/org/{{.Org.LowerName}}">
-            <img class="avatar-48" alt="{{.Org.Name}}" src="{{.Org.AvatarLink}}" data-avatar-fallback="{{AppSubUrl}}/img/avatar_default.jpg">
+            {{template "shared/avatar" (Avatar .Org.AvatarLink .Org.Name 40)}}
             <span class="org-name">{{.Org.FullName}}</span>
         </a>
         <ul class="menu hg-tabs">

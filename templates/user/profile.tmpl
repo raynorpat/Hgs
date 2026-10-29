@@ -6,7 +6,7 @@
         <div class="">
             <div>
                 {{if and .SignedUser (eq .SignedUser.Id .Owner.Id)}}<a href="{{AppSubUrl}}/user/settings" id="profile-avatar">{{end}}
-                <img data-avatar-fallback="{{AppSubUrl}}/img/avatar_default.jpg" class="profile-avatar" width="160" height="160" src="{{.Owner.AvatarLink}}" alt="{{.Owner.Name}}">
+                {{template "shared/avatar" (Avatar .Owner.AvatarLink .Owner.Name 160)}}
                 {{if and .SignedUser (eq .SignedUser.Id .Owner.Id)}}</a>{{end}}
                 <div class="text-center" id="profile-name">
                     {{if .Owner.FullName}}<span id="profile-fullname" class="center-block">{{.Owner.FullName}}</span><br>{{end}}

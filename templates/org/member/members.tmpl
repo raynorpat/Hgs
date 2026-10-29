@@ -14,7 +14,7 @@
     <div id="org-member-list">
         {{range .Members}}
         <div class="org-member-item">
-            <img class="avatar-48" alt="{{.Name}}" src="{{.AvatarLink}}" data-avatar-fallback="{{AppSubUrl}}/img/avatar_default.jpg">
+            {{template "shared/avatar" (Avatar .AvatarLink .Name 40)}}
             <a class="text-black" href="{{AppSubUrl}}/{{.Name}}"><span class="member-name"><strong>{{.FullName}}</strong>({{.Name}})</span></a>
             <ul class="grid-6-12">
                 <li class="grid-1-3">

@@ -304,11 +304,9 @@ func NewConfigContext() {
 	PictureService = sec.Key("SERVICE").In("server", []string{"server"})
 	AvatarUploadPath = path.Join(workDir, sec.Key("AVATAR_UPLOAD_PATH").MustString("data/avatars"))
 	os.MkdirAll(AvatarUploadPath, os.ModePerm)
-	switch sec.Key("GRAVATAR_SOURCE").MustString("gravatar") {
-	case "duoshuo":
-		GravatarSource = "http://gravatar.duoshuo.com/avatar/"
-	default:
-		GravatarSource = "//1.gravatar.com/avatar/"
+	GravatarSource, err = ResolveGravatarSource(sec.Key("GRAVATAR_SOURCE").MustString("gravatar"))
+	if err != nil {
+		log.Error(4, "Avatar provider disabled: %v", err)
 	}
 	DisableGravatar = sec.Key("DISABLE_GRAVATAR").MustBool()
 

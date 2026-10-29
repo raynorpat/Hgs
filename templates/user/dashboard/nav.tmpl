@@ -2,7 +2,7 @@
 <h1>{{.i18n.Tr "ui.workspace_context"}}</h1>
 <div class="hg-workspace-switch">
 <button class="hg-button" type="button" data-popout data-popout-target="hg-workspace-context" aria-controls="hg-workspace-context" aria-expanded="false">
-<img width="28" height="28" src="{{.ContextUser.AvatarLink}}" alt=""> {{.ContextUser.Name}}</button>
+{{template "shared/avatar" (Avatar .ContextUser.AvatarLink .ContextUser.Name 28)}} {{.ContextUser.Name}}</button>
 <div id="hg-workspace-context" class="hg-popout" hidden>
 <p>{{.i18n.Tr "home.switch_dashboard_context"}}</p>
 <a href="{{AppSubUrl}}/">{{.SignedUser.Name}}</a>{{range .Orgs}}<a href="{{.DashboardLink}}">{{.Name}}</a>{{end}}<a href="{{AppSubUrl}}/org/create">{{.i18n.Tr "new_org"}}</a>

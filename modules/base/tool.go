@@ -170,17 +170,7 @@ func CreateTimeLimitCode(data string, minutes int, startInf interface{}) string 
 }
 
 // AvatarLink returns avatar link by given e-mail.
-func AvatarLink(email string) string {
-	if setting.DisableGravatar {
-		return setting.AppSubUrl + "/img/avatar_default.jpg"
-	}
-
-	gravatarHash := avatar.HashEmail(email)
-	if setting.Service.EnableCacheAvatar {
-		return setting.AppSubUrl + "/avatar/" + gravatarHash
-	}
-	return setting.GravatarSource + gravatarHash
-}
+func AvatarLink(email string) string { return avatar.Link(email) }
 
 // Seconds-based time units
 const (

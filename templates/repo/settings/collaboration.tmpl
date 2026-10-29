@@ -2,7 +2,7 @@
 <h2>{{.i18n.Tr "repo.settings.collaboration"}}</h2>
 <ul class="hg-members">{{range .Collaborators}}<li>
 <a href="{{AppSubUrl}}/{{.Name}}">
-<img width="28" height="28" src="{{.AvatarLink}}" alt=""> <strong>{{.Name}}</strong>{{if .FullName}} · {{.FullName}}{{end}}</a>{{if not (eq .Id $.Owner.Id)}}<form action="{{$.RepoLink}}/settings/collaboration" method="post" data-prevent-duplicate>{{$.CsrfTokenHtml}}<input type="hidden" name="remove" value="{{.Name}}">
+{{template "shared/avatar" (Avatar .AvatarLink .Name 28)}} <strong>{{.Name}}</strong>{{if .FullName}} · {{.FullName}}{{end}}</a>{{if not (eq .Id $.Owner.Id)}}<form action="{{$.RepoLink}}/settings/collaboration" method="post" data-prevent-duplicate>{{$.CsrfTokenHtml}}<input type="hidden" name="remove" value="{{.Name}}">
 <button class="hg-button hg-button-danger" type="submit">{{$.i18n.Tr "ui.remove_collaborator"}}</button>
 </form>{{end}}</li>{{else}}<li class="hg-empty">{{.i18n.Tr "ui.no_collaborators"}}</li>{{end}}</ul>
 <form class="hg-form" action="{{.RepoLink}}/settings/collaboration" method="post" data-prevent-duplicate>

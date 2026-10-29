@@ -201,6 +201,10 @@ func Profile(ctx *middleware.Context, provider hosting.Provider) {
 		return
 	}
 
+	// Preserve the effective avatar preference before hiding public profile email.
+	if strings.TrimSpace(u.AvatarEmail) == "" {
+		u.AvatarEmail = u.Email
+	}
 	// For security reason, hide e-mail address for anonymous visitors.
 	if !ctx.IsSigned {
 		u.Email = ""

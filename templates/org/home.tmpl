@@ -3,7 +3,7 @@
 
 <div class="org-header" id="org-home-header">
     <div class="">
-        <img class="avatar-100" width="100" height="100" alt="{{.Org.Name}}" src="{{.Org.AvatarLink}}" data-avatar-fallback="{{AppSubUrl}}/img/avatar_default.jpg">
+        {{template "shared/avatar" (Avatar .Org.AvatarLink .Org.Name 100)}}
         <div id="org-home-header-info">
             <h2>
                 {{.Org.FullName}}
@@ -54,7 +54,7 @@
                 <div class="hg-panel-body member-avatar-group">
                     {{range .Members}}
                         {{if or $isMember (.IsPublicMember $.Org.Id)}}
-                        <a href="{{AppSubUrl}}/{{.Name}}" title="{{.Name}}"><img width="40" height="40" alt="{{.Name}}" src="{{.AvatarLink}}" data-avatar-fallback="{{AppSubUrl}}/img/avatar_default.jpg"></a>
+                        <a href="{{AppSubUrl}}/{{.Name}}" title="{{.Name}}">{{template "shared/avatar" (Avatar .AvatarLink .Name 40)}}</a>
                         {{end}}
                     {{end}}
                 </div>
