@@ -4,6 +4,11 @@ package main
 
 import (
 	"archive/zip"
+	"bytes"
+	"crypto/sha256"
+	"fmt"
+	"image/png"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -55,7 +60,7 @@ func put(t *testing.T, name, body string) {
 // rather than asserting how the implementation spells its allowlist.
 func TestPackageAllowlist(t *testing.T) {
 	root := fixture(t)
-	for _, name := range []string{"custom/conf/app.ini", "data/gogs.db", "repos/1/.hg/store/data", "conf/key.pem", "conf/private.ini", "public/img/avatar/private.image", "public/avatar/private.image", ".git/config", "docs/mercurial/scratch.md"} {
+	for _, name := range []string{"custom/conf/app.ini", "data/gogs.db", "repos/1/.hg/store/data", "conf/key.pem", "conf/private.ini", "public/img/avatar/private.image", "public/avatar/private.image", "public/img/avatar/hgs-maintenance.png", "public/avatar/hgs-error.png", ".git/config", "docs/mercurial/scratch.md", "docs/prototypes/status-pages/hgs-maintenance.png"} {
 		put(t, filepath.Join(root, name), "SECRET-CANARY")
 	}
 	out := filepath.Join(root, "dist", "release.zip")
@@ -73,7 +78,7 @@ func TestPackageAllowlist(t *testing.T) {
 		if !f.Mode().IsRegular() || strings.Contains(f.Name, "\\") || strings.Contains(f.Name, "..") {
 			t.Fatalf("unsafe entry %s", f.Name)
 		}
-		if strings.Contains(f.Name, "private") || strings.HasPrefix(f.Name, "custom/") || strings.HasPrefix(f.Name, "data/") || strings.HasPrefix(f.Name, "repos/") || strings.HasPrefix(f.Name, ".git/") || strings.HasPrefix(f.Name, "dist/") || strings.HasSuffix(f.Name, ".pem") || strings.HasSuffix(f.Name, "scratch.md") {
+		if strings.Contains(f.Name, "private") || strings.HasPrefix(f.Name, "public/img/avatar/") || strings.HasPrefix(f.Name, "public/avatar/") || strings.HasPrefix(f.Name, "docs/prototypes/") || strings.HasPrefix(f.Name, "custom/") || strings.HasPrefix(f.Name, "data/") || strings.HasPrefix(f.Name, "repos/") || strings.HasPrefix(f.Name, ".git/") || strings.HasPrefix(f.Name, "dist/") || strings.HasSuffix(f.Name, ".pem") || strings.HasSuffix(f.Name, "scratch.md") {
 			t.Fatalf("leaked %s", f.Name)
 		}
 	}
@@ -89,6 +94,102 @@ func TestPackageAllowlist(t *testing.T) {
 	}
 	if err := packageRelease(root, testBinary, out); err == nil {
 		t.Fatal("overwrote existing archive")
+	}
+}
+
+// Missing/replaced artwork, dropped attribution, or prototype-only packaging
+// must fail at the release boundary, using the exact approved PNG identities.
+func TestHgsStatusAssets(t *testing.T) {
+	root, err := filepath.Abs("..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "status.zip")
+	if err := packageRelease(root, testBinary, out); err != nil {
+		t.Fatal(err)
+	}
+	z, err := zip.OpenReader(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer z.Close()
+	entries := map[string][]byte{}
+	for _, f := range z.File {
+		if strings.HasPrefix(f.Name, "docs/prototypes/") {
+			t.Errorf("packaged prototype %s", f.Name)
+		}
+		if !strings.HasPrefix(f.Name, "public/img/hgs-") {
+			continue
+		}
+		if _, exists := entries[f.Name]; exists {
+			t.Fatalf("duplicate asset %s", f.Name)
+		}
+		r, err := f.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(r)
+		r.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		entries[f.Name] = body
+	}
+	for _, asset := range []struct {
+		name string
+		size int
+		hash string
+	}{
+		{"hgs-maintenance.png", 1139822, "7aa33c7d02e15417481e3993bec1f50e46db32a1c6aef2bb1537cbc024a65f33"},
+		{"hgs-error.png", 1325581, "bbe04093ade6c7a53965fcaef36bf14c268abdd3acd4f0aab985762a2104225c"},
+		{"hgs-not-found.png", 1036863, "2ba57fcb17e12c5fe6fef26763ad3716e4f1c74a156c65c924d63986b79b970a"},
+	} {
+		t.Run(asset.name, func(t *testing.T) {
+			name := "public/img/" + asset.name
+			body, ok := entries[name]
+			if !ok {
+				t.Fatalf("missing local release asset %s", name)
+			}
+			if len(body) != asset.size || fmt.Sprintf("%x", sha256.Sum256(body)) != asset.hash {
+				t.Fatal("release PNG differs from exact approved artwork")
+			}
+			source, err := os.ReadFile(filepath.Join(root, "docs/prototypes/status-pages", asset.name))
+			if err != nil || !bytes.Equal(body, source) {
+				t.Fatalf("release PNG differs from prototype source: %v", err)
+			}
+			img, err := png.Decode(bytes.NewReader(body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if img.Bounds().Dx() != 1218 || img.Bounds().Dy() != 1292 {
+				t.Fatalf("incorrect decoded dimensions: %v", img.Bounds())
+			}
+			var transparent, opaque bool
+			for y := img.Bounds().Min.Y; y < img.Bounds().Max.Y; y++ {
+				for x := img.Bounds().Min.X; x < img.Bounds().Max.X; x++ {
+					_, _, _, a := img.At(x, y).RGBA()
+					transparent = transparent || a == 0
+					opaque = opaque || a == 65535
+				}
+			}
+			if !transparent || !opaque {
+				t.Fatal("missing transparent background or opaque artwork")
+			}
+			t.Logf("exact approved PNG: %d bytes, SHA256 %s, decoded %dx%d, transparent background", len(body), asset.hash, img.Bounds().Dx(), img.Bounds().Dy())
+		})
+	}
+	credit := entries["public/img/hgs-mascot.LICENSE.md"]
+	for _, required := range []string{"Renee French", "https://creativecommons.org/licenses/by/4.0/", "https://go.dev/blog/gopher", "2026-10-26", "hgs-maintenance.png", "hgs-error.png", "hgs-not-found.png", "white laboratory coat", "does not imply endorsement"} {
+		if !bytes.Contains(credit, []byte(required)) {
+			t.Errorf("release attribution missing %q", required)
+		}
+	}
+	prompts, err := os.ReadFile(filepath.Join(root, "docs/prototypes/status-pages/PROMPTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(credit, prompts) {
+		t.Error("release metadata did not retain exact status illustration prompts/provenance")
 	}
 }
 

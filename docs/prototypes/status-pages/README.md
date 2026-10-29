@@ -28,3 +28,7 @@ Original Go Gopher by Renee French: [source and attribution guidance](https://go
 - No browser console errors observed during the checks.
 
 Production status codes, Retry-After, admission control and dependency-free server rendering remain the responsibility of implementation Task 25, behind the existing hosting prerequisite gate.
+
+## Production asset packaging
+
+Task 24 copies these three approved PNGs byte-for-byte to public/img/hgs-maintenance.png, public/img/hgs-error.png and public/img/hgs-not-found.png. The packaged public/img/hgs-mascot.LICENSE.md retains the original credit/source/license, status adaptation notices and the exact PROMPTS.md provenance record. No artwork was regenerated or transformed; the landing mascot and beaker master remain unchanged. Task 25 consumes these local production paths and owns the production status-page routing and rendering.
