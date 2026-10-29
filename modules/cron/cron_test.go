@@ -224,6 +224,19 @@ func (s *startupGatedSchedule) Next(now time.Time) time.Time {
 	return s.Schedule.Next(now)
 }
 
+type firstDueSchedule struct {
+	Schedule
+	first chan<- time.Time
+	once  sync.Once
+}
+
+func (s *firstDueSchedule) Next(now time.Time) time.Time {
+	// Record the first due time before the scheduler can advance Entry.Next.
+	next := s.Schedule.Next(now)
+	s.once.Do(func() { s.first <- next })
+	return next
+}
+
 // Exercise actual asynchronous Runnable dispatch and schedule ordering.
 func TestJob(t *testing.T) {
 	for _, delayed := range []bool{false, true} {
@@ -236,6 +249,8 @@ func TestJob(t *testing.T) {
 			cron.AddJob("", "1 0 0 1 1 ?", observedTestJob{"job3", completed})
 			cron.Schedule("", "", Every(5*time.Second+5*time.Nanosecond), observedTestJob{"job4", completed})
 			cron.Schedule("", "", Every(5*time.Minute), observedTestJob{"job5", completed})
+			firstDue := make(chan time.Time, 1)
+			cron.entries[2].Schedule = &firstDueSchedule{Schedule: cron.entries[2].Schedule, first: firstDue}
 			release := make(chan struct{})
 			entered := make(chan struct{})
 			var once sync.Once
@@ -261,26 +276,51 @@ func TestJob(t *testing.T) {
 				}
 				unblock()
 			}
+			var actual time.Time
+			if delayed {
+				// Force the first callback to precede the snapshot observation.
+				select {
+				case actual = <-completed:
+				case <-time.After(5 * time.Second):
+					t.Fatal("first callback did not reach observation latch")
+				}
+			}
+			var scheduled time.Time
+			select {
+			case scheduled = <-firstDue:
+			case <-time.After(5 * time.Second):
+				t.Fatal("first due time was not recorded")
+			}
 			ready := cron.Entries()
-			scheduled := ready[0].Next
 			if ready[0].Job.(observedTestJob).name != "job2" || scheduled.IsZero() {
 				t.Fatal("first runnable schedule was not initialized")
 			}
+			if delayed && !ready[0].Next.After(scheduled) {
+				t.Fatal("observation did not follow first callback advancement")
+			}
 			// Wait for the actual callback, bounded relative to its scheduled time.
 			// The scheduler has no 10ms goroutine-start/dispatch latency guarantee.
-			deadline := time.Until(scheduled) + 5*time.Second
-			if deadline <= 0 {
-				t.Fatal("initial schedule already exceeded dispatch grace")
-			}
-			select {
-			case <-time.After(deadline):
-				t.Fatalf("job did not complete: started=%s scheduled=%s now=%s", started.Format(time.RFC3339Nano), scheduled.Format(time.RFC3339Nano), time.Now().Format(time.RFC3339Nano))
-			case actual := <-completed:
-				if actual.Before(scheduled) {
-					t.Fatal("job ran before scheduled time")
+			if actual.IsZero() {
+				select {
+				case actual = <-completed:
+				default:
 				}
-				t.Logf("startup=%s scheduled=%s actual=%s dispatch-lateness=%s", started.Format(time.RFC3339Nano), scheduled.Format(time.RFC3339Nano), actual.Format(time.RFC3339Nano), actual.Sub(scheduled))
 			}
+			if actual.IsZero() {
+				deadline := time.Until(scheduled) + 5*time.Second
+				if deadline <= 0 {
+					t.Fatal("initial schedule already exceeded dispatch grace")
+				}
+				select {
+				case <-time.After(deadline):
+					t.Fatalf("job did not complete: started=%s scheduled=%s now=%s", started.Format(time.RFC3339Nano), scheduled.Format(time.RFC3339Nano), time.Now().Format(time.RFC3339Nano))
+				case actual = <-completed:
+				}
+			}
+			if actual.Before(scheduled) || actual.After(scheduled.Add(5*time.Second)) {
+				t.Fatalf("callback=%s outside first-due=%s dispatch window", actual.Format(time.RFC3339Nano), scheduled.Format(time.RFC3339Nano))
+			}
+			t.Logf("startup=%s first-due=%s snapshot-next=%s actual=%s dispatch-lateness=%s", started.Format(time.RFC3339Nano), scheduled.Format(time.RFC3339Nano), ready[0].Next.Format(time.RFC3339Nano), actual.Format(time.RFC3339Nano), actual.Sub(scheduled))
 			expecteds := []string{"job2", "job4", "job5", "job1", "job3", "job0"}
 			for i, entry := range cron.Entries() {
 				if name := entry.Job.(observedTestJob).name; name != expecteds[i] {
