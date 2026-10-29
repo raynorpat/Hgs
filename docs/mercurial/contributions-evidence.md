@@ -1,4 +1,4 @@
-# Contribution indexing evidence
+# Contribution indexing and query evidence
 
 Task 21 implementation is `bb5f7c3`, with fixes in `f619847`. Independent review and scoped re-review accepted all four reported Important fixes with no new blocking findings. This records executed development checks separately from unverified release requirements; profile calendars and authorized activity queries belong to Tasks 22–23.
 
@@ -30,3 +30,17 @@ Final affected checks after these corrections passed: models 24.242s, contributi
 The original `go test ./... -count=1` invocation remains **FAIL**: an unchanged Mercurial descendant-process test failed at its one-second startup deadline. Its isolated unchanged rerun passed 1.793s; affected packages passed individually. This does not turn the full invocation green. Expected fixture diagnostics, a nonfatal module stat-cache permission warning and CRLF notices remain recorded.
 
 Real MySQL/PostgreSQL SQL/TLS interoperability, other native platforms/versions, race/C-compiler, browser and inherited full release requirements remain unverified. Database/container tools are unavailable locally. Loopback driver-boundary tests do not establish live database compatibility or cancellation of legacy xorm operations elsewhere. Changeset email metadata remains an untrusted authorship claim. Task 22 must include visible application/proof/index changes in cursor validity, including earlier-date repairs to existing events.
+
+## Task 22 — authorized query verification
+
+Task 22 implementation `f8c2ca7` and correction `de61241` passed independent task review and scoped re-review after both reported Important findings were fixed. This establishes the development gate; supported database/platform release validation remains open.
+
+Contribution reads use indexed SQL and current canonical authorization before years, counts, deduplication and grouping. No contribution query scans Mercurial history. UTC date projections, bounded authorization batches, whole-group pagination and opaque viewer/scope/filter-bound cursors are covered by focused fixtures. Each group retains its full count and at most 25 representative links; Task 23 provides the cap label and real repository navigation.
+
+The initial broad affected run passed models/contributions/collaboration/user/cmd selectors (72.624/36.392/3.754/3.887/25.388s), and tagged contribution integration passed 20.819s. Later completeness and source-visibility corrections received separate affected runs: 10.193/25.663s and 4.956/6.291s. The strengthened exact proof-swap regression passed 2.669s. Final build and vet exited 0; build retained the nonfatal stat-cache permission warning.
+
+A synthetic organization history contains 5,000 events with 5,000 distinct authors. The measured read returned the independently expected full count with one group and 25 links using 16 queries, 38 transferred rows and a maximum returned batch of 25. These numbers measure query count and transferred rows, not internal database scanning. The additional user-scope foreign-repository completeness probe is outside this measurement.
+
+Actual SQLite tests cover the one-connection callback boundary and a committed edit interleaved with the pinned read snapshot. Earlier deadlock and shared-cache inconsistency failures were retained before correction. The production network database isolation paths have not been exercised against live MySQL/PostgreSQL services. Supported-platform, race and inherited full-suite release gaps remain open.
+
+The review found two additional correctness defects, each reproduced before correction: repairing an unprojected shared changeset through an inaccessible fork changed readable totals without staling an existing cursor, and selecting year 1 admitted Go's zero timestamp. Shared repairs now atomically stamp all affected published memberships in batches of 100; an unchanged private restage does not invalidate the readable snapshot. Selected-year narrowing preserves the timestamp validity bound. The final affected regression union passed models 12.283s and contributions 23.330s. A separate 205-membership test verifies rollback, stored author identity and bounded batches. These repair measurements are distinct from the 5,000-event query measurement above.
