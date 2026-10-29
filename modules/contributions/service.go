@@ -117,26 +117,53 @@ func (s *Service) drain(ctx context.Context) error {
 
 // Run owns no detached tasks. Its caller cancels and joins it before hosting/DB close.
 func (s *Service) Run(ctx context.Context) {
-	reconcile := func() {
-		if err := s.Reconcile(ctx); err != nil && ctx.Err() == nil {
-			log.Warn("contribution reconciliation unavailable")
-		}
-	}
-	reconcile()
 	jobs := time.NewTicker(2 * time.Second)
 	defer jobs.Stop()
 	rebuild := time.NewTicker(5 * time.Minute)
 	defer rebuild.Stop()
+	s.run(ctx, jobs.C, rebuild.C, s.Reconcile, s.drain)
+}
+
+func (s *Service) run(ctx context.Context, jobs, rebuild <-chan time.Time, reconcileWork, drain func(context.Context) error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	reconcile := func() {
+		if err := reconcileWork(ctx); err != nil && ctx.Err() == nil {
+			log.Warn("contribution reconciliation unavailable")
+		}
+	}
+	reconcile()
+	if ctx.Err() != nil {
+		return
+	}
+	// One owned scheduler continues repairing missed notifications even while
+	// the serial index worker is occupied by a long native history scan.
+	reconcilerDone := make(chan struct{})
+	go func() {
+		defer close(reconcilerDone)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-rebuild:
+				if ctx.Err() == nil {
+					reconcile()
+				}
+			}
+		}
+	}()
+	defer func() { cancel(); <-reconcilerDone }()
 	for {
-		if err := s.drain(ctx); err != nil && ctx.Err() == nil {
+		if ctx.Err() != nil {
+			return
+		}
+		if err := drain(ctx); err != nil && ctx.Err() == nil {
 			log.Warn("contribution worker unavailable")
 		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-rebuild.C:
-			reconcile()
-		case <-jobs.C:
+		case <-jobs:
 		}
 	}
 }

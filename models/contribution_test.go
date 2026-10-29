@@ -3,11 +3,127 @@ package models
 import (
 	"bytes"
 	"context"
+	"database/sql"
+	"errors"
 	"github.com/go-xorm/xorm"
 	"strings"
 	"testing"
 	"time"
 )
+
+type competingContributionInsert struct {
+	db       *sql.DB
+	competed bool
+}
+
+func (c *competingContributionInsert) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	if strings.HasPrefix(query, "INSERT") && !c.competed {
+		c.competed = true
+		if _, err := c.db.ExecContext(ctx, query, args...); err != nil {
+			return nil, err
+		}
+	}
+	return c.db.ExecContext(ctx, query, args...)
+}
+func TestContributionEnqueueCompetingInsert(t *testing.T) {
+	newTestDatabase(t)
+	competitor := &competingContributionInsert{db: x.DB().DB}
+	if err := enqueueContributionSQL(context.Background(), competitor, "repository", 999); err != nil {
+		t.Fatal(err)
+	}
+	var job ContributionJob
+	if ok, err := x.Where("object_id = ?", 999).Get(&job); err != nil || !ok || job.Requested != 2 || !competitor.competed {
+		t.Fatalf("competing durable requests lost: %+v %v", job, err)
+	}
+}
+
+func TestContributionSourceDeletionInterleaving(t *testing.T) {
+	for _, kind := range []string{"pull", "review"} {
+		t.Run(kind, func(t *testing.T) {
+			_, author, reviewer, p, c := reviewFixture(t, false)
+			ctx := context.Background()
+			if err := AssignPullReviewers(ctx, author.Id, p.ID, []int64{reviewer.Id}); err != nil {
+				t.Fatal(err)
+			}
+			if err := SubmitPullReview(ctx, reviewer.Id, p.ID, c.ID, ReviewApproved); err != nil {
+				t.Fatal(err)
+			}
+			id := p.ID
+			if kind == "review" {
+				var first ContributionFirstReview
+				if ok, err := x.Where("pull_id = ?", p.ID).Get(&first); err != nil || !ok {
+					t.Fatal(err)
+				}
+				id = first.ID
+			}
+			if err := IndexContributionObject(ctx, kind, id); err != nil {
+				t.Fatal(err)
+			}
+			// Capture the canonical discovery used by the indexer, then finish real
+			// source deletion before the delayed membership publication resumes.
+			stale, ok, err := readContributionObject(contributionEngine(), kind, id)
+			if err != nil || !ok {
+				t.Fatal(err)
+			}
+			if err := DeleteHgRepository(ctx, t.TempDir(), p.SourceRepoID, func(context.Context, int64) error { return nil }, func(context.Context, int64) error { return nil }); err != nil {
+				t.Fatal(err)
+			}
+			_ = publishContributionObject(ctx, stale)
+			var memberships []ContributionRepository
+			if err := x.Find(&memberships); err != nil || len(memberships) != 0 {
+				t.Fatalf("stale %s discovery restored deleted membership: %+v %v", kind, memberships, err)
+			}
+		})
+	}
+}
+
+func TestContributionMergedSourceRetention(t *testing.T) {
+	_, author, reviewer, p, c := reviewFixture(t, false)
+	ctx := context.Background()
+	if err := AssignPullReviewers(ctx, author.Id, p.ID, []int64{reviewer.Id}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SubmitPullReview(ctx, reviewer.Id, p.ID, c.ID, ReviewApproved); err != nil {
+		t.Fatal(err)
+	}
+	var first ContributionFirstReview
+	if ok, err := x.Where("pull_id = ?", p.ID).Get(&first); err != nil || !ok {
+		t.Fatal(err)
+	}
+	if _, err := x.Id(p.ID).Cols("state").Update(&PullRequest{State: PullMerged}); err != nil {
+		t.Fatal(err)
+	}
+	op := &MergeOperation{ID: "contribution-retained-merge", PullID: p.ID, ComparisonID: c.ID, State: MergeFinalized, ResultNode: c.SourceNode}
+	if _, err := x.Insert(op, &ReviewPublication{ID: op.ID, Started: true, Complete: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := DeleteHgRepository(ctx, t.TempDir(), p.SourceRepoID, func(context.Context, int64) error { return nil }, func(context.Context, int64) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	for kind, id := range map[string]int64{"pull": p.ID, "review": first.ID} {
+		if err := IndexContributionObject(ctx, kind, id); err != nil {
+			t.Fatalf("retained %s: %v", kind, err)
+		}
+	}
+	var memberships []ContributionRepository
+	if err := x.Find(&memberships); err != nil || len(memberships) != 2 {
+		t.Fatalf("retained merged history: %+v %v", memberships, err)
+	}
+}
+
+func TestContributionEnqueueRejectedInsert(t *testing.T) {
+	newTestDatabase(t)
+	if _, err := x.Exec("CREATE TRIGGER reject_contribution_job BEFORE INSERT ON contribution_job BEGIN SELECT RAISE(ABORT, 'private rejection'); END"); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnqueueContribution(context.Background(), "repository", 999); !errors.Is(err, ErrContributionStorage) {
+		t.Fatalf("failed insert without durable row returned %v", err)
+	}
+	var jobs []ContributionJob
+	if err := x.Find(&jobs); err != nil || len(jobs) != 0 {
+		t.Fatalf("unexpected jobs: %+v %v", jobs, err)
+	}
+}
 
 func TestContributionIdempotentIndex(t *testing.T) {
 	reload := newTestDatabase(t)

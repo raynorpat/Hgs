@@ -137,3 +137,43 @@ func TestContributionEmailProof(t *testing.T) {
 	default:
 	}
 }
+
+func TestContributionSecondaryThrottle(t *testing.T) {
+	f := accountApp(t, true)
+	oldMail, oldConfirm := setting.MailService, setting.Service.RegisterEmailConfirm
+	t.Cleanup(func() { setting.MailService, setting.Service.RegisterEmailConfirm = oldMail, oldConfirm })
+	setting.MailService = &setting.Mailer{From: "fixture@example.invalid"}
+	setting.Service.RegisterEmailConfirm = true
+	sink, restore := mailer.CaptureIntegrationMail()
+	defer restore()
+	f.request(t, "GET", "/user/settings/email", f.member.Name, nil, false)
+	for i, email := range []string{"first-secondary@example.invalid", "second-secondary@example.invalid"} {
+		w := f.request(t, "POST", "/user/settings/email", f.member.Name, url.Values{"email": {email}}, true)
+		want := 302
+		if i == 1 {
+			want = 429
+		}
+		if w.Code != want {
+			t.Fatalf("add%d: %d %s", i, w.Code, w.Body)
+		}
+	}
+	select {
+	case <-sink:
+	case <-time.After(time.Second):
+		t.Fatal("first confirmation not queued")
+	}
+	emails, err := models.GetEmailAddresses(f.member.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, email := range emails {
+		if email.Email == "second-secondary@example.invalid" {
+			t.Fatal("throttled request persisted an inactive address without activation mail")
+		}
+	}
+	select {
+	case <-sink:
+		t.Fatal("throttled request sent mail")
+	default:
+	}
+}

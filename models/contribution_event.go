@@ -114,77 +114,109 @@ func firstContributionReview(e Engine, reviewer, pull int64, at time.Time) error
 	return enqueueContribution(e, "review", first.ID)
 }
 
+type contributionObject struct {
+	Event                            ContributionEvent
+	RepositoryID, SourceRepositoryID int64
+	SourceDeleted                    bool
+	Kind                             string
+	ID                               int64
+}
+
+func readContributionObject(e Engine, kind string, id int64) (object contributionObject, ok bool, err error) {
+	object.Kind, object.ID = kind, id
+	row := ContributionEvent{Kind: kind, ObjectID: id, SourceKey: fmt.Sprintf("%s:%d", kind, id)}
+	switch kind {
+	case "issue":
+		var v Issue
+		ok, err = e.Id(id).Get(&v)
+		if v.IsPull {
+			ok = false
+		}
+		row.ActorID, row.OccurredAt, object.RepositoryID = v.PosterId, v.Created, v.RepoId
+	case "pull", "review":
+		pullID := id
+		var review ContributionFirstReview
+		if kind == "review" {
+			ok, err = e.Id(id).Get(&review)
+			if err != nil || !ok {
+				return object, ok, err
+			}
+			pullID = review.PullID
+		}
+		var p PullRequest
+		ok, err = e.Id(pullID).Get(&p)
+		if p.SourceDeleted && p.State != PullMerged {
+			ok = false
+		}
+		object.RepositoryID, object.SourceRepositoryID, object.SourceDeleted = p.TargetRepoID, p.SourceRepoID, p.SourceDeleted
+		row.ActorID, row.OccurredAt = p.AuthorID, p.Created
+		if kind == "review" {
+			row.SourceKey = fmt.Sprintf("review:%d:%d", review.ReviewerID, review.PullID)
+			row.ObjectID, row.ActorID, row.OccurredAt = review.PullID, review.ReviewerID, review.OccurredAt
+		}
+	case "repository":
+		var v Repository
+		ok, err = e.Id(id).Get(&v)
+		if v.State != RepositoryReady || v.CreatorID <= 0 {
+			ok = false
+		}
+		row.ActorID, row.OccurredAt, object.RepositoryID = v.CreatorID, v.Created, v.Id
+	default:
+		return object, false, ErrContributionInvalid
+	}
+	object.Event = row
+	return
+}
+
 // IndexContributionObject reads canonical records; recipient Actions never enter it.
 func IndexContributionObject(ctx context.Context, kind string, id int64) error {
-	return contributionTransaction(ctx, func(s *xorm.Session) error {
-		row := ContributionEvent{Kind: kind, ObjectID: id, SourceKey: fmt.Sprintf("%s:%d", kind, id)}
-		var repo int64
-		var ok bool
-		var err error
-		switch kind {
-		case "issue":
-			var v Issue
-			ok, err = s.Id(id).Get(&v)
-			if v.IsPull {
-				ok = false
-			}
-			row.ActorID, row.OccurredAt, repo = v.PosterId, v.Created, v.RepoId
-		case "pull":
-			var v PullRequest
-			ok, err = s.Id(id).Get(&v)
-			if v.SourceDeleted && v.State != PullMerged {
-				ok = false
-			}
-			row.ActorID, row.OccurredAt, repo = v.AuthorID, v.Created, v.TargetRepoID
-		case "review":
-			var v ContributionFirstReview
-			ok, err = s.Id(id).Get(&v)
-			if err != nil || !ok {
-				return err
-			}
-			var p PullRequest
-			ok, err = s.Id(v.PullID).Get(&p)
-			if p.SourceDeleted && p.State != PullMerged {
-				ok = false
-			}
-			row.SourceKey = fmt.Sprintf("review:%d:%d", v.ReviewerID, v.PullID)
-			row.ObjectID, row.ActorID, row.OccurredAt, repo = v.PullID, v.ReviewerID, v.OccurredAt, p.TargetRepoID
-		case "repository":
-			var v Repository
-			ok, err = s.Id(id).Get(&v)
-			if v.State != RepositoryReady || v.CreatorID <= 0 {
-				ok = false
-			}
-			row.ActorID, row.OccurredAt, repo = v.CreatorID, v.Created, v.Id
-		default:
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	object, ok, err := readContributionObject(contributionEngine(), kind, id)
+	if err != nil || !ok {
+		return contributionError(err)
+	}
+	return publishContributionObject(ctx, object)
+}
+
+func publishContributionObject(ctx context.Context, object contributionObject) error {
+	ids := []int64{object.RepositoryID}
+	if object.SourceRepositoryID > 0 && !object.SourceDeleted {
+		ids = append(ids, object.SourceRepositoryID)
+	}
+	// Discovery is only a lock hint. The first canonical read in this transaction
+	// occurs after sorted repository locks, shared with lifecycle deletion. This
+	// also avoids establishing a stale repeatable-read snapshot on MySQL.
+	return contributionError(pullTransactionEngine(contributionEngine(), ctx, ids, func(s *xorm.Session) error {
+		current, ok, err := readContributionObject(s, object.Kind, object.ID)
+		if err != nil || !ok {
+			return err
+		}
+		if current.RepositoryID != object.RepositoryID || current.SourceRepositoryID != object.SourceRepositoryID || current.SourceDeleted != object.SourceDeleted {
 			return ErrContributionInvalid
 		}
-		if err != nil {
-			return err
+		if current.SourceDeleted {
+			// Only finalized source deletion grants target-only merged history.
+			if exists, err := s.Id(current.SourceRepositoryID).Get(new(Repository)); err != nil {
+				return err
+			} else if exists {
+				return ErrContributionInvalid
+			}
 		}
-		if !ok {
-			return nil
-		}
-		var source Repository
-		ok, err = s.Id(repo).Get(&source)
-		if err != nil {
-			return err
-		}
-		if !ok || source.State != RepositoryReady {
-			return nil
-		}
-		eventID, err := insertContributionEvent(s, row)
+		object = current
+		eventID, err := insertContributionEvent(s, object.Event)
 		if err != nil {
 			return err
 		}
 		var membership ContributionRepository
-		ok, err = s.Where("event_id = ? AND repository_id = ?", eventID, repo).Get(&membership)
+		ok, err = s.Where("event_id = ? AND repository_id = ?", eventID, object.RepositoryID).Get(&membership)
 		if err != nil || ok {
 			return err
 		}
-		_, err = s.Insert(&ContributionRepository{EventID: eventID, RepositoryID: repo})
+		_, err = s.Insert(&ContributionRepository{EventID: eventID, RepositoryID: object.RepositoryID})
 		return err
-	})
+	}))
 }
 
 // ContributionSourceIDs supports bounded backfill without materializing history.

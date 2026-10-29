@@ -281,7 +281,20 @@ func SettingsEmailPost(ctx *middleware.Context, form auth.AddEmailForm) {
 			IsActivated: !setting.Service.RegisterEmailConfirm,
 		}
 
-		if err := models.AddEmailAddress(e); err != nil {
+		if setting.Service.RegisterEmailConfirm {
+			if setting.MailService == nil {
+				ctx.Error(503, ctx.Tr("settings.email_verify_disabled"))
+				return
+			}
+			err = models.AddEmailAddressWithConfirmation(ctx.Req.Context(), e, time.Now())
+		} else {
+			err = models.AddEmailAddress(e)
+		}
+		if err != nil {
+			if errors.Is(err, models.ErrEmailProofLimited) {
+				ctx.Error(429, ctx.Tr("settings.email_verify_limited"))
+				return
+			}
 			if err == models.ErrEmailAlreadyUsed {
 				ctx.RenderWithErr(ctx.Tr("form.email_has_been_used"), SETTINGS_EMAILS, &form)
 				return
@@ -292,18 +305,6 @@ func SettingsEmailPost(ctx *middleware.Context, form auth.AddEmailForm) {
 
 			// Send confirmation e-mail
 			if setting.Service.RegisterEmailConfirm {
-				if setting.MailService == nil {
-					ctx.Error(503, ctx.Tr("settings.email_verify_disabled"))
-					return
-				}
-				if err := models.ReserveEmailConfirmationDelivery(ctx.Req.Context(), ctx.User.Id, time.Now()); err != nil {
-					if errors.Is(err, models.ErrEmailProofLimited) {
-						ctx.Error(429, ctx.Tr("settings.email_verify_limited"))
-					} else {
-						ctx.Handle(500, "Email confirmation", err)
-					}
-					return
-				}
 				mailer.SendActivateEmail(ctx.Render, ctx.User, e)
 
 				if err := ctx.Cache.Put("MailResendLimit_"+ctx.User.LowerName, ctx.User.LowerName, 180); err != nil {

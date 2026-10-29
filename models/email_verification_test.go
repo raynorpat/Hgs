@@ -199,3 +199,38 @@ func TestContributionEmailProofContinuousOwnership(t *testing.T) {
 		t.Fatalf("removing duplicate row invalidated still-owned primary: %d %v", id, err)
 	}
 }
+
+func TestContributionEmailConfirmationAtomic(t *testing.T) {
+	newTestDatabase(t)
+	u := &User{Name: "atomic-confirm", LowerName: "atomic-confirm", Email: "atomic-primary@example.invalid", IsActive: true}
+	if _, err := x.Insert(u); err != nil {
+		t.Fatal(err)
+	}
+	ctx, now := context.Background(), time.Now()
+	first := &EmailAddress{Uid: u.Id, Email: "atomic-first@example.invalid"}
+	if err := AddEmailAddressWithConfirmation(ctx, first, now); err != nil {
+		t.Fatal(err)
+	}
+	second := &EmailAddress{Uid: u.Id, Email: "atomic-second@example.invalid"}
+	if err := AddEmailAddressWithConfirmation(ctx, second, now.Add(time.Second)); !errors.Is(err, ErrEmailProofLimited) {
+		t.Fatalf("second delivery: %v", err)
+	}
+	if found, err := x.Where("email = ?", second.Email).Get(new(EmailAddress)); err != nil || found {
+		t.Fatalf("throttled row persisted: %v %v", found, err)
+	}
+	if _, err := CreateEmailVerification(ctx, u.Id, u.Email, now.Add(time.Second)); !errors.Is(err, ErrEmailProofLimited) {
+		t.Fatalf("explicit verification bypassed shared bound: %v", err)
+	}
+	if _, err := x.Exec("CREATE TRIGGER reject_confirmation_email BEFORE INSERT ON email_address BEGIN SELECT RAISE(ABORT, 'private failure'); END"); err != nil {
+		t.Fatal(err)
+	}
+	if err := AddEmailAddressWithConfirmation(ctx, second, now.Add(181*time.Second)); err == nil {
+		t.Fatal("insert failure succeeded")
+	}
+	if _, err := x.Exec("DROP TRIGGER reject_confirmation_email"); err != nil {
+		t.Fatal(err)
+	}
+	if err := AddEmailAddressWithConfirmation(ctx, second, now.Add(181*time.Second)); err != nil {
+		t.Fatalf("failed insert consumed delivery reservation: %v", err)
+	}
+}

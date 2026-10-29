@@ -655,6 +655,16 @@ func GetEmailAddresses(uid int64) ([]*EmailAddress, error) {
 }
 
 func AddEmailAddress(email *EmailAddress) error {
+	return addEmailAddress(context.Background(), email, nil)
+}
+
+// AddEmailAddressWithConfirmation reserves delivery and creates the legacy
+// additional-address row atomically. Sending remains outside the transaction.
+func AddEmailAddressWithConfirmation(ctx context.Context, email *EmailAddress, now time.Time) error {
+	return addEmailAddress(ctx, email, &now)
+}
+
+func addEmailAddress(ctx context.Context, email *EmailAddress, confirmation *time.Time) error {
 	used, err := IsEmailUsed(email.Email)
 	if err != nil {
 		return err
@@ -662,9 +672,14 @@ func AddEmailAddress(email *EmailAddress) error {
 		return ErrEmailAlreadyUsed
 	}
 
-	return contributionTransaction(context.Background(), func(s *xorm.Session) error {
+	return contributionTransaction(ctx, func(s *xorm.Session) error {
 		if err := lockEmailVerification(s); err != nil {
 			return err
+		}
+		if confirmation != nil {
+			if err := reserveVerificationDelivery(s, email.Uid, *confirmation, false); err != nil {
+				return err
+			}
 		}
 		if _, err := s.Insert(email); err != nil {
 			return err

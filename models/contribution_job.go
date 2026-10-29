@@ -6,6 +6,7 @@ package models
 
 import (
 	"context"
+	"database/sql"
 	"time"
 )
 
@@ -45,6 +46,14 @@ func EnqueueContribution(ctx context.Context, kind string, objectID int64) error
 	if owned {
 		defer db.Close()
 	}
+	return enqueueContributionSQL(ctx, db, kind, objectID)
+}
+
+type contributionExecutor interface {
+	ExecContext(context.Context, string, ...interface{}) (sql.Result, error)
+}
+
+func enqueueContributionSQL(ctx context.Context, db contributionExecutor, kind string, objectID int64) error {
 	update := "UPDATE contribution_job SET requested = requested + 1 WHERE kind = ? AND object_id = ?"
 	insert := "INSERT INTO contribution_job (kind, object_id, requested, completed) VALUES (?, ?, 1, 0)"
 	if DbCfg.Type == "postgres" {
@@ -62,7 +71,18 @@ func EnqueueContribution(ctx context.Context, kind string, objectID int64) error
 	_, err = db.ExecContext(ctx, insert, kind, objectID)
 	// A concurrent first insertion is resolved by incrementing its unique row.
 	if err != nil {
-		_, err = db.ExecContext(ctx, update, kind, objectID)
+		result, retryErr := db.ExecContext(ctx, update, kind, objectID)
+		if retryErr != nil {
+			return contributionError(retryErr)
+		}
+		n, retryErr := result.RowsAffected()
+		if retryErr != nil {
+			return contributionError(retryErr)
+		}
+		if n != 1 {
+			return ErrContributionStorage
+		}
+		return nil
 	}
 	return contributionError(err)
 }
