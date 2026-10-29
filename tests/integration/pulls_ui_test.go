@@ -427,3 +427,28 @@ func TestPullUIStaleConflictAndBinary(t *testing.T) {
 	}
 
 }
+
+func TestProfileContributionPublicPullDestination(t *testing.T) {
+	f := seededPullHTTP(t)
+	p := f.create(t)
+	c, err := f.service.RefreshComparison(context.Background(), f.owner.Id, p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = models.AddAccess(&models.Access{UserId: f.reader.Id, RepoId: f.public.Id, Mode: models.WRITABLE}); err != nil {
+		t.Fatal(err)
+	}
+	if err = models.AssignPullReviewers(context.Background(), f.owner.Id, p.ID, []int64{f.reader.Id}); err != nil {
+		t.Fatal(err)
+	}
+	if err = models.SubmitPullReview(context.Background(), f.reader.Id, p.ID, c.ID, models.ReviewApproved); err != nil {
+		t.Fatal(err)
+	}
+	w := f.get(t, f.route+"/1", "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "Actual fork proposal") || !strings.Contains(w.Body.String(), f.reader.Name) {
+		t.Fatalf("public contribution destination HTTP %d: %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), `action="/code`+f.route+`/1/review"`) {
+		t.Fatal("guest transcript exposed review mutation form")
+	}
+}

@@ -224,8 +224,28 @@ func ListPullReviews(ctx context.Context, actor, pull int64) (rows []PullReview,
 		return rows, err
 	}
 
-	err = mutatePull(ctx, actor, pull, func(s *xorm.Session, p PullRequest, _, _ RepositoryAccess) error {
-		if err := retirePullReviewAuthority(s); err != nil {
+	// Reading a public transcript does not require a mutation-capable actor.
+	// Keep policy maintenance inside the same current-read transaction and scope
+	// it to this pull; mutation entry points still use mutatePull unchanged.
+	err = pullTransaction(ctx, []int64{p.SourceRepoID, p.TargetRepoID}, func(s *xorm.Session) error {
+		if actor != 0 {
+			if _, err := enabledPolicyAccount(s, actor, true); err != nil {
+				return err
+			}
+		}
+		var current PullRequest
+		ok, err := policyGet(s, true, "pull_request", "id = ?", &current, p.ID)
+		if err != nil {
+			return err
+		}
+		if !ok || current.SourceRepoID != p.SourceRepoID || current.TargetRepoID != p.TargetRepoID || current.SourceDeleted != p.SourceDeleted {
+			return ErrPullNotExist
+		}
+		if _, _, err = pullReads(s, actor, current, true); err != nil {
+			return err
+		}
+		p = current
+		if err := retirePullReviewAuthorityFor(s, p.ID); err != nil {
 			return err
 		}
 		if err := s.Where("pull_id = ?", p.ID).Asc("id").Find(&rows); err != nil {
@@ -262,12 +282,24 @@ func ListPullEvents(ctx context.Context, actor, pull int64) ([]PullEvent, error)
 // Opposing lock orders may deadlock; callers must propagate failure and roll back
 // the permission change together with retirement and its audit events.
 func retirePullReviewAuthority(e *xorm.Session) error {
+	return retirePullReviewAuthorityFor(e, 0)
+}
+
+// A positive pull ID limits read-triggered maintenance to its authorized transcript.
+// Policy mutations retain the global scan through retirePullReviewAuthority.
+func retirePullReviewAuthorityFor(e *xorm.Session, pullID int64) error {
 	var live []PullReview
 	var query *xorm.Session
+	predicate := "(state = ? OR state = ?)"
+	args := []interface{}{ReviewApproved, ReviewChangesRequested}
+	if pullID > 0 {
+		predicate += " AND pull_id = ?"
+		args = append(args, pullID)
+	}
 	if DbCfg.Type == "sqlite3" {
-		query = e.Where("state = ? OR state = ?", ReviewApproved, ReviewChangesRequested).Asc("id")
+		query = e.Where(predicate, args...).Asc("id")
 	} else {
-		query = e.Sql("SELECT * FROM pull_review WHERE state = ? OR state = ? ORDER BY id FOR UPDATE", ReviewApproved, ReviewChangesRequested)
+		query = e.Sql("SELECT * FROM pull_review WHERE "+predicate+" ORDER BY id FOR UPDATE", args...)
 	}
 	if err := query.Find(&live); err != nil {
 		return err

@@ -394,3 +394,92 @@ func TestPullCreateWithReviewersAndAssignedFilter(t *testing.T) {
 		t.Fatalf("assignment survived authority loss %+v %v", page, err)
 	}
 }
+
+func TestProfilePublicReviewDestination(t *testing.T) {
+	for _, private := range []bool{false, true} {
+		t.Run(map[bool]string{false: "public", true: "private"}[private], func(t *testing.T) {
+			_, author, reviewer, p, c := reviewFixture(t, private)
+			ctx := context.Background()
+			if err := AssignPullReviewers(ctx, author.Id, p.ID, []int64{reviewer.Id}); err != nil {
+				t.Fatal(err)
+			}
+			if err := SubmitPullReview(ctx, reviewer.Id, p.ID, c.ID, ReviewApproved); err != nil {
+				t.Fatal(err)
+			}
+			rows, err := ListPullReviews(ctx, 0, p.ID)
+			if private {
+				if err == nil || len(rows) != 0 {
+					t.Fatal("guest read private review transcript")
+				}
+				return
+			}
+			if _, err := GetPullRecordByID(ctx, 0, p.ID); err != nil {
+				t.Fatal("public read prerequisite", err)
+			}
+			if err != nil || len(rows) != 1 || rows[0].State != ReviewApproved || !rows[0].Eligible {
+				t.Fatalf("guest public transcript: %+v err=%v", rows, err)
+			}
+
+			second := PullRequest{SourceRepoID: p.SourceRepoID, TargetRepoID: p.TargetRepoID, Title: "Separate public proposal", Body: p.Body, SourceSelection: p.SourceSelection, TargetSelection: p.TargetSelection}
+			second, err = CreatePullRecord(ctx, author.Id, second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			other, err := ReservePullComparison(ctx, author.Id, second.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			other.SourceNode, other.TargetNode, other.BaseNode = c.SourceNode, c.TargetNode, c.BaseNode
+			other.State = "ready"
+			other.SnapshotComplete = true
+			if err = CompletePullComparison(ctx, author.Id, other); err != nil {
+				t.Fatal(err)
+			}
+			if err = AssignPullReviewers(ctx, author.Id, second.ID, []int64{reviewer.Id}); err != nil {
+				t.Fatal(err)
+			}
+			if err = SubmitPullReview(ctx, reviewer.Id, second.ID, other.ID, ReviewApproved); err != nil {
+				t.Fatal(err)
+			}
+			// Simulate canonical authority loss independently of the retirement helper.
+			if _, err = x.Where("user_id = ? AND repo_id = ?", reviewer.Id, p.TargetRepoID).Delete(new(Access)); err != nil {
+				t.Fatal(err)
+			}
+			rows, err = ListPullReviews(ctx, 0, p.ID)
+			if err != nil || len(rows) != 1 || rows[0].Eligible || rows[0].State != ReviewInactive {
+				t.Fatalf("guest read retained revoked authority: %+v %v", rows, err)
+			}
+			if reviewState(t, p.ID, reviewer.Id) != ReviewInactive {
+				t.Fatal("guest read did not persist authority retirement")
+			}
+
+			if reviewState(t, second.ID, reviewer.Id) != ReviewApproved {
+				t.Fatal("guest read retired unrelated pull")
+			}
+			var audit []PullEvent
+			if err = x.Where("pull_id = ? AND kind = ?", p.ID, "review-authority-lost").Find(&audit); err != nil || len(audit) != 1 || audit[0].ReviewerID != reviewer.Id {
+				t.Fatalf("scoped retirement audit: %+v %v", audit, err)
+			}
+			if err = AddAccess(&Access{UserId: reviewer.Id, RepoId: p.TargetRepoID, Mode: WRITABLE}); err != nil {
+				t.Fatal(err)
+			}
+			rows, err = ListPullReviews(ctx, 0, p.ID)
+			if err != nil || len(rows) != 1 || rows[0].State != ReviewInactive {
+				t.Fatalf("regrant revived old decision: %+v %v", rows, err)
+			}
+			if _, err = ListPullReviews(ctx, -1, p.ID); err == nil {
+				t.Fatal("negative actor read accepted")
+			}
+			reviewer.IsActive = false
+			if err = UpdateUser(reviewer); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = ListPullReviews(ctx, reviewer.Id, p.ID); err == nil {
+				t.Fatal("disabled actor read accepted")
+			}
+			if err := SubmitPullReview(ctx, 0, p.ID, c.ID, ReviewApproved); err == nil {
+				t.Fatal("anonymous read admitted anonymous mutation")
+			}
+		})
+	}
+}
