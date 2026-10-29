@@ -57,6 +57,84 @@ func draftRow(actor, repo int64, page string, now time.Time) *EditorDraft {
 	disposal := sha256.Sum256([]byte("disposal-token"))
 	return &EditorDraft{PageID: page, CollectionID: "collection", ActorID: actor, RepositoryID: repo, Kind: "issue_new", PageSecretHash: secret[:], DisposalTokenHash: disposal[:], PayloadJSON: `{"Title":"","Body":"","Metadata":{}}`, ExpiresAt: now.Add(30 * time.Minute)}
 }
+
+func TestEditorDraftTimeZoneComparisons(t *testing.T) {
+	ctx := context.Background()
+	for _, hour := range []int{0, 23} {
+		instant := time.Date(2026, 10, 28, hour, 30, 0, 0, time.UTC)
+		for _, zone := range []struct {
+			name   string
+			offset int
+		}{{"UTC", 0}, {"positive", 8 * 60 * 60}, {"negative", -7 * 60 * 60}} {
+			t.Run(fmt.Sprintf("%02dUTC/%s", hour, zone.name), func(t *testing.T) {
+				now := instant.In(time.FixedZone(zone.name, zone.offset))
+				for _, live := range []bool{true, false} {
+					t.Run(fmt.Sprint("cap_live=", live), func(t *testing.T) {
+						actor, repo, _ := draftDatabase(t)
+						seed := draftRow(actor, repo, "seed", instant)
+						if !live {
+							seed.ExpiresAt = instant.Add(-time.Second)
+						}
+						if _, err := x.Insert(seed); err != nil {
+							t.Fatal(err)
+						}
+						err := NewEditorDraftStore().Create(ctx, draftRow(actor, repo, "next", instant), 1, now)
+						if live && !errors.Is(err, ErrEditorDraftLimitExceeded) {
+							t.Fatalf("live row did not count toward cap: %v", err)
+						}
+						if !live && err != nil {
+							t.Fatalf("expired row still counted toward cap: %v", err)
+						}
+					})
+				}
+				t.Run("save", func(t *testing.T) {
+					actor, repo, _ := draftDatabase(t)
+					row := draftRow(actor, repo, "live", instant)
+					if _, err := x.Insert(row); err != nil {
+						t.Fatal(err)
+					}
+					store := NewEditorDraftStore()
+					if err := store.SaveIfLive(ctx, row.PageID, 0, 1, `{"Body":"saved"}`, instant.Add(30*time.Minute), now); err != nil {
+						t.Fatalf("same live instant refused save: %v", err)
+					}
+					stored, err := store.Find(ctx, row.PageID)
+					if err != nil || stored.Version != 1 || stored.PayloadJSON != `{"Body":"saved"}` || !stored.ExpiresAt.Equal(instant.Add(30*time.Minute)) {
+						t.Fatal("live save changed the version, payload or expiry instant")
+					}
+					if err := store.SaveIfLive(ctx, row.PageID, 0, 1, `{"Body":"stale"}`, instant.Add(time.Hour), now); !errors.Is(err, ErrEditorDraftStaleVersion) {
+						t.Fatalf("stale save was accepted: %v", err)
+					}
+					if err := store.SaveIfLive(ctx, row.PageID, 1, 2, `{"Body":"late"}`, instant.Add(time.Hour), now.Add(30*time.Minute)); !errors.Is(err, ErrEditorDraftExpired) {
+						t.Fatalf("expired save was accepted: %v", err)
+					}
+				})
+				t.Run("purge", func(t *testing.T) {
+					actor, repo, _ := draftDatabase(t)
+					for _, seed := range []struct {
+						page   string
+						expiry time.Time
+					}{{"expired", instant.Add(-time.Second)}, {"boundary", instant}, {"live", instant.Add(time.Second)}} {
+						row := draftRow(actor, repo, seed.page, instant)
+						row.ExpiresAt = seed.expiry
+						if _, err := x.Insert(row); err != nil {
+							t.Fatal(err)
+						}
+					}
+					if err := NewEditorDraftStore().PurgeExpired(ctx, now); err != nil {
+						t.Fatal(err)
+					}
+					for _, page := range []string{"expired", "boundary", "live"} {
+						found, err := x.Id(page).Get(new(EditorDraft))
+						if err != nil || found != (page == "live") {
+							t.Errorf("purge retained wrong row set for %s: found=%t err=%v", page, found, err)
+						}
+					}
+				})
+			})
+		}
+	}
+}
+
 func TestEditorDraftLimitsAndExpiry(t *testing.T) {
 	a, r, now := draftDatabase(t)
 	s := NewEditorDraftStore()

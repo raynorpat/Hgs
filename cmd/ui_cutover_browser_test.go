@@ -26,6 +26,7 @@ import (
 type draftFixtureOptions struct {
 	idle            int64
 	prefix, failure string
+	discard         *draftFixtureDiscardObserver
 }
 
 func parseDraftFixtureOptions(idle, prefix, failure string) (draftFixtureOptions, error) {
@@ -46,7 +47,7 @@ func parseDraftFixtureOptions(idle, prefix, failure string) (draftFixtureOptions
 		o.prefix = prefix
 	}
 	switch failure {
-	case "", "save-outage", "reject-cookie", "delay-save":
+	case "", "save-outage", "reject-cookie", "delay-save", "drop-discard":
 	default:
 		return o, fmt.Errorf("unknown fixture failure mode")
 	}
@@ -114,6 +115,30 @@ func (w *draftFixtureResponse) Write(body []byte) (int, error) {
 	return w.ResponseWriter.Write(body)
 }
 func draftFixtureHandler(base http.Handler, o draftFixtureOptions) http.Handler {
+	if o.failure == "drop-discard" {
+		path := regexp.MustCompile("^" + regexp.QuoteMeta(o.prefix) + `/user/drafts/([0-9a-f]{64})/discard$`)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			match := path.FindStringSubmatch(r.URL.Path)
+			if r.Method != http.MethodPost || match == nil {
+				base.ServeHTTP(w, r)
+				return
+			}
+			hijacker, ok := w.(http.Hijacker)
+			if !ok {
+				panic(http.ErrAbortHandler)
+			}
+			connection, _, err := hijacker.Hijack()
+			if err != nil {
+				panic(http.ErrAbortHandler)
+			}
+			if err = connection.Close(); err != nil {
+				panic(http.ErrAbortHandler)
+			}
+			if o.discard != nil {
+				o.discard.dropped(match[1])
+			}
+		})
+	}
 	if o.failure != "reject-cookie" && o.failure != "delay-save" {
 		return base
 	}
@@ -174,6 +199,8 @@ func TestSharedUICutoverBrowserFixture(t *testing.T) {
 	}
 	host := a.holder.Service()
 	ctx := context.Background()
+	requests, cancelRequests := context.WithCancel(ctx)
+	defer cancelRequests()
 	work := filepath.Join(a.root, "work")
 	run := func(path string, args ...string) string {
 		t.Helper()
@@ -240,6 +267,10 @@ func TestSharedUICutoverBrowserFixture(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		if options.failure == "drop-discard" {
+			options.discard = startDraftFixtureDiscardObserver(t, requests, draftFixtureDB(t))
+			defer options.discard.stop()
+		}
 		a.handler = draftFixtureHandler(a.handler, options)
 		stopDrafts := startDraftPurger(user.NewDraftService().PurgeExpired, func() bool { return a.holder.Service() != nil })
 		defer stopDrafts()
@@ -250,6 +281,9 @@ func TestSharedUICutoverBrowserFixture(t *testing.T) {
 		if options.failure == "reject-cookie" {
 			t.Log("COOKIE: browser rejection simulation via nonmatching Domain on ONLY hgs_draft; native auth/CSRF cookies unchanged")
 		}
+		if options.failure == "drop-discard" {
+			t.Log("DROP_DISCARD: exact native disposal connection closes without success; first affected live saved row is retained, explicitly aged in the owned DB, then observed through the unchanged one-minute purger; no wall-clock 30-minute pass is claimed")
+		}
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -257,8 +291,6 @@ func TestSharedUICutoverBrowserFixture(t *testing.T) {
 	}
 	stop := make(chan struct{})
 	var once sync.Once
-	requests, cancelRequests := context.WithCancel(ctx)
-	defer cancelRequests()
 	server := &http.Server{BaseContext: func(net.Listener) context.Context { return requests }, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" && r.URL.Path == "/fixture/stop" {
 			w.Write([]byte("stopping owned fixture"))

@@ -52,6 +52,15 @@ func lockDraftAccountDeletion(s *xorm.Session, actor int64) error {
 
 func NewEditorDraftStore() *EditorDraftStore { return &EditorDraftStore{} }
 
+func draftQueryTime(now time.Time) time.Time {
+	// Xorm writes SQLite datetime fields in UTC; raw query arguments otherwise
+	// retain their supplied zone. Match the stored representation of this instant.
+	if DbCfg.Type == "sqlite3" {
+		return now.UTC()
+	}
+	return now
+}
+
 // The pinned Engine contains a pointer mutex and shared table/cache/DB objects.
 // This request-local view changes only logging flags and its logger, never the
 // shared dialect logger via SetLogger. Tables have already been synchronized;
@@ -380,6 +389,7 @@ func draftTransaction(ctx context.Context, r *EditorDraft, p editorDraftPayload,
 }
 func (s *EditorDraftStore) Create(ctx context.Context, r *EditorDraft, maxLive int, now time.Time) (err error) {
 	defer func() { err = draftStoreError(err) }()
+	now = draftQueryTime(now)
 	p, err := draftPayload(r.PayloadJSON)
 	if err != nil {
 		return err
@@ -449,6 +459,7 @@ func (s *EditorDraftStore) Find(ctx context.Context, page string) (result *Edito
 }
 func (s *EditorDraftStore) SaveIfLive(ctx context.Context, page string, expected, next int64, payload string, expiry, now time.Time) (err error) {
 	defer func() { err = draftStoreError(err) }()
+	now = draftQueryTime(now)
 	var r EditorDraft
 	ok, err := draftEngine().Id(page).Get(&r)
 	if err != nil {
@@ -510,6 +521,6 @@ func (s *EditorDraftStore) PurgeExpired(ctx context.Context, now time.Time) (err
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	_, err = draftEngine().Where("expires_at <= ?", now).Delete(new(EditorDraft))
+	_, err = draftEngine().Where("expires_at <= ?", draftQueryTime(now)).Delete(new(EditorDraft))
 	return err
 }

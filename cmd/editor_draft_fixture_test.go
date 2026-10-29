@@ -2,17 +2,267 @@ package cmd
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/go-xorm/xorm"
 	"github.com/gogits/gogs/models"
+	"github.com/gogits/gogs/modules/editordraft"
 	"github.com/gogits/gogs/modules/setting"
+	"github.com/gogits/gogs/routers/user"
 )
+
+func TestEditorDraftFixtureDropDiscardOptions(t *testing.T) {
+	if _, err := parseDraftFixtureOptions("", "", "drop-discard"); err != nil {
+		t.Fatal("drop-discard mode is unavailable")
+	}
+	if _, err := parseDraftFixtureOptions("", "", "drop-discard,save-outage"); err == nil {
+		t.Fatal("combined failure modes were accepted")
+	}
+}
+
+func TestEditorDraftFixtureDropDiscardTransportScope(t *testing.T) {
+	page := strings.Repeat("a", 64)
+	for _, prefix := range []string{"", "/draft-discard"} {
+		t.Run("prefix="+prefix, func(t *testing.T) {
+			var calls atomic.Int32
+			base := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				w.Header().Set("X-Native-Fixture", "unchanged")
+				w.WriteHeader(http.StatusAccepted)
+				w.Write([]byte("native response"))
+			})
+			server := httptest.NewServer(draftFixtureHandler(base, draftFixtureOptions{prefix: prefix, failure: "drop-discard"}))
+			defer server.Close()
+			client := server.Client()
+			client.Timeout = 3 * time.Second
+			for _, tc := range []struct {
+				method, path string
+				drop         bool
+			}{
+				{"GET", prefix + "/user/drafts/" + page + "/discard", false},
+				{"POST", prefix + "/user/drafts/" + page + "/discard", true},
+				{"DELETE", prefix + "/user/drafts/" + page + "/discard", false},
+				{"POST", "/wrong" + prefix + "/user/drafts/" + page + "/discard", false},
+				{"POST", prefix + "/user/drafts/short/discard", false},
+				{"POST", prefix + "/user/drafts/" + strings.Repeat("A", 64) + "/discard", false},
+				{"POST", prefix + "/user/drafts/" + page + "/extra/discard", false},
+				{"POST", prefix + "/user/drafts/" + page + "/discard/", false},
+				{"POST", prefix + "/user/drafts/" + page + "/save", false},
+				{"POST", prefix + "/user/drafts/" + page + "/restore", false},
+				{"POST", prefix + "/user/drafts/open", false},
+				{"GET", prefix + "/user/drafts/session", false},
+				{"POST", prefix + "/user/drafts/check", false},
+				{"POST", prefix + "/user/login", false},
+				{"POST", prefix + "/alice/project/issues/new", false},
+			} {
+				before := calls.Load()
+				req, err := http.NewRequest(tc.method, server.URL+tc.path, strings.NewReader("{}"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				response, err := client.Do(req)
+				if response != nil {
+					response.Body.Close()
+				}
+				if tc.drop {
+					if err == nil || response != nil || calls.Load() != before {
+						t.Fatal("discard did not fail at transport before native dispatch")
+					}
+				} else {
+					if err != nil {
+						var transport *url.Error
+						if errors.As(err, &transport) {
+							t.Fatalf("unrelated route transport failed: %v", transport.Err)
+						}
+						t.Fatal("unrelated route request failed")
+					}
+					if response.StatusCode != http.StatusAccepted || response.Header.Get("X-Native-Fixture") != "unchanged" || calls.Load() != before+1 {
+						t.Fatalf("unrelated native route changed: %s %s", tc.method, tc.path)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestEditorDraftFixtureDropDiscardWithoutHijacker(t *testing.T) {
+	nativeCalled := false
+	base := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { nativeCalled = true })
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "http://localhost/code/user/drafts/"+strings.Repeat("a", 64)+"/discard", nil)
+	defer func() {
+		if recover() != http.ErrAbortHandler || nativeCalled || w.Body.Len() != 0 || w.Flushed {
+			t.Error("unsupported connection drop did not abort without native success")
+		}
+	}()
+	draftFixtureHandler(base, draftFixtureOptions{prefix: "/code", failure: "drop-discard"}).ServeHTTP(w, r)
+}
+
+func TestEditorDraftFixtureDropDiscardOwnedExpiry(t *testing.T) {
+	a := newViewApp(t)
+	db := draftFixtureDB(t)
+	service := user.NewDraftService()
+	collection := strings.Repeat("c", 64)
+	save := func() editordraft.Grant {
+		t.Helper()
+		grant, err := service.Open(context.Background(), a.alice.Id, collection, editordraft.Target{RepositoryID: a.repo.Id, Kind: "issue_new"})
+		if err != nil {
+			t.Fatal("native owned draft open failed")
+		}
+		before := time.Now()
+		snapshot, err := service.Save(context.Background(), a.alice.Id, collection, grant.PageID, grant.PageSecret, 0, editordraft.Payload{Body: "owned unload fixture"})
+		if err != nil || snapshot.Version != 1 || snapshot.ExpiresAt.Before(before.Add(30*time.Minute)) || snapshot.ExpiresAt.After(time.Now().Add(30*time.Minute)) {
+			t.Fatal("native save did not retain the production 30-minute TTL")
+		}
+		persisted := readDraftFixtureRow(t, db, grant.PageID)
+		if difference := snapshot.ExpiresAt.Sub(persisted.ExpiresAt); difference < 0 || difference >= time.Second {
+			t.Fatal("persisted initial expiry differs from native 30-minute save expiry")
+		}
+		return grant
+	}
+	grant, other := save(), save()
+	before, unrelated := readDraftFixtureRow(t, db, grant.PageID), readDraftFixtureRow(t, db, other.PageID)
+	initial := make(chan struct{})
+	var initialOnce sync.Once
+	stopPurger := startDraftPurger(func(ctx context.Context) error {
+		err := service.PurgeExpired(ctx)
+		initialOnce.Do(func() { close(initial) })
+		return err
+	}, func() bool { return true })
+	t.Cleanup(stopPurger)
+	select {
+	case <-initial:
+	case <-time.After(3 * time.Second):
+		t.Fatal("owned purger did not finish its initial pass")
+	}
+	observer := startDraftFixtureDiscardObserver(t, context.Background(), db)
+	var nativeCalls atomic.Int32
+	base := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nativeCalls.Add(1)
+		a.handler.ServeHTTP(w, r)
+	})
+	server := httptest.NewServer(draftFixtureHandler(base, draftFixtureOptions{prefix: "/gogs", failure: "drop-discard", discard: observer}))
+	t.Cleanup(server.Close)
+	client := server.Client()
+	client.Timeout = 3 * time.Second
+	response, err := client.Get(server.URL + "/gogs/user/drafts/session")
+	if err != nil || response.StatusCode != http.StatusUnauthorized || nativeCalls.Load() != 1 {
+		t.Fatal("native unauthenticated control route did not remain available")
+	}
+	response.Body.Close()
+	response, err = client.Post(server.URL+"/gogs/user/drafts/"+grant.PageID+"/discard", "application/json", strings.NewReader(`{"DisposalToken":"`+grant.DisposalToken+`"}`))
+	if response != nil {
+		response.Body.Close()
+	}
+	if err == nil || response != nil || nativeCalls.Load() != 1 {
+		t.Fatal("owned discard reached native handler or returned a response")
+	}
+	aged := waitDraftFixtureEligibility(t, db, grant.PageID)
+	before.ExpiresAt = aged.ExpiresAt
+	if !reflect.DeepEqual(before, aged) || aged.Discarded || aged.Version != 1 || aged.PayloadJSON == "" {
+		t.Fatal("failed discard did not retain the same saved row with only expiry aged")
+	}
+	if !reflect.DeepEqual(unrelated, readDraftFixtureRow(t, db, other.PageID)) {
+		t.Fatal("aging changed another owned row")
+	}
+	select {
+	case <-observer.done:
+	case <-time.After(75 * time.Second):
+		t.Fatal("existing one-minute purger did not remove the eligible owned row")
+	}
+	if found, err := db.Id(grant.PageID).Get(new(models.EditorDraft)); err != nil || found {
+		t.Fatal("eligible owned row still exists after observed purge")
+	}
+	if !reflect.DeepEqual(unrelated, readDraftFixtureRow(t, db, other.PageID)) {
+		t.Fatal("purger removed or changed the unrelated live row")
+	}
+}
+
+func TestEditorDraftFixtureDropDiscardEarlyStop(t *testing.T) {
+	newViewApp(t)
+	db := draftFixtureDB(t)
+	for _, afterDrop := range []bool{false, true} {
+		t.Run(fmt.Sprint("after_drop=", afterDrop), func(t *testing.T) {
+			page := strings.Repeat("b", 64)
+			owner, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			observer := startDraftFixtureDiscardObserver(t, owner, db)
+			if afterDrop {
+				row := &models.EditorDraft{PageID: page, Version: 1, PayloadJSON: `{}`, ExpiresAt: time.Now().Add(30 * time.Minute)}
+				if _, err := db.Insert(row); err != nil {
+					t.Fatal("owned stop fixture insert failed")
+				}
+				observer.dropped(page)
+				waitDraftFixtureEligibility(t, db, page)
+				cancel()
+				select {
+				case <-observer.done:
+				case <-time.After(time.Second):
+					t.Fatal("owner cancellation did not stop the purge observer")
+				}
+			}
+			start := time.Now()
+			observer.stop()
+			if time.Since(start) > time.Second {
+				t.Fatal("early stop waited for purger interval")
+			}
+			select {
+			case <-observer.done:
+			default:
+				t.Fatal("stop returned before observer joined")
+			}
+			observer.dropped(page)
+			if afterDrop {
+				if found, err := db.Id(page).Get(new(models.EditorDraft)); err != nil || !found {
+					t.Fatal("observer itself deleted the aged row on early stop")
+				}
+			}
+		})
+	}
+}
+
+func readDraftFixtureRow(t *testing.T, db *xorm.Engine, page string) models.EditorDraft {
+	t.Helper()
+	var row models.EditorDraft
+	if found, err := db.Id(page).Get(&row); err != nil || !found {
+		t.Fatal("expected owned fixture row is missing")
+	}
+	return row
+}
+
+func waitDraftFixtureEligibility(t *testing.T, db *xorm.Engine, page string) models.EditorDraft {
+	t.Helper()
+	deadline := time.After(3 * time.Second)
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		row := readDraftFixtureRow(t, db, page)
+		if !row.ExpiresAt.After(time.Now()) {
+			eligible, err := db.Where("page_id = ? AND expires_at <= ?", page, time.Now().UTC()).Count(new(models.EditorDraft))
+			if err != nil || eligible != 1 {
+				t.Fatal("aged row is not eligible under the real purge SQL predicate")
+			}
+			return row
+		}
+		select {
+		case <-deadline:
+			t.Fatal("failed-discard row never became expiry eligible")
+		case <-ticker.C:
+		}
+	}
+}
 
 func TestEditorDraftFixtureAttachments(t *testing.T) {
 	enabled, path, types, files, size := setting.AttachmentEnabled, setting.AttachmentPath, setting.AttachmentAllowedTypes, setting.AttachmentMaxFiles, setting.AttachmentMaxSize
