@@ -25,7 +25,8 @@ const (
 	// ControlPath is the only path the control endpoint serves. A hook
 	// POSTs a HookRequest there with "Authorization: Bearer <capability>";
 	// 204 allows the transaction, anything else denies it.
-	ControlPath = "/hook"
+	ControlPath     = "/hook"
+	PublicationPath = "/published"
 	// CallbackTimeout bounds one hook callback on both ends.
 	CallbackTimeout = 5 * time.Second
 
@@ -41,7 +42,7 @@ type HookRequest struct {
 }
 
 func (c *Controller) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != ControlPath {
+	if r.URL.Path != ControlPath && r.URL.Path != PublicationPath {
 		http.NotFound(w, r)
 		return
 	}
@@ -64,6 +65,14 @@ func (c *Controller) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), CallbackTimeout)
 	defer cancel()
+	if r.URL.Path == PublicationPath {
+		if c.Published(ctx, capability, req.RepoID, req.Hook, req.OperationID) != nil {
+			http.Error(w, "publication notification unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	if c.CheckOperation(ctx, capability, req.RepoID, req.Hook, req.OperationID) != nil {
 		http.Error(w, "write not authorized", http.StatusForbidden)
 		return

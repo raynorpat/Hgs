@@ -5,8 +5,11 @@
 package user
 
 import (
+	"errors"
 	"io/ioutil"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Unknwon/com"
 
@@ -30,6 +33,57 @@ const (
 	NOTIFICATION          base.TplName = "user/notification"
 	SECURITY              base.TplName = "user/security"
 )
+
+func SettingsEmailVerify(ctx *middleware.Context) {
+	if ctx.User == nil {
+		ctx.Error(401)
+		return
+	}
+	if setting.MailService == nil {
+		ctx.Error(503, ctx.Tr("settings.email_verify_disabled"))
+		return
+	}
+	id, err := strconv.ParseInt(ctx.Query("id"), 10, 64)
+	if err != nil || id < 0 {
+		ctx.Error(400)
+		return
+	}
+	emails, err := models.GetEmailAddresses(ctx.User.Id)
+	if err != nil {
+		ctx.Handle(500, "Email verification", models.ErrContributionStorage)
+		return
+	}
+	selected := ""
+	for _, email := range emails {
+		if (id == 0 && email.IsPrimary) || (id > 0 && email.Id == id) {
+			selected = email.Email
+			break
+		}
+	}
+	if selected == "" {
+		ctx.Error(404)
+		return
+	}
+	code, err := models.CreateEmailVerification(ctx.Req.Context(), ctx.User.Id, selected, time.Now())
+	if errors.Is(err, models.ErrEmailProofLimited) {
+		ctx.Error(429, ctx.Tr("settings.email_verify_limited"))
+		return
+	}
+	if errors.Is(err, models.ErrEmailProofInvalid) {
+		ctx.Error(400, ctx.Tr("settings.email_verify_invalid"))
+		return
+	}
+	if err != nil {
+		ctx.Handle(500, "Email verification", err)
+		return
+	}
+	if err = mailer.SendEmailVerification(ctx.Render, ctx.User, selected, code); err != nil {
+		ctx.Error(503, ctx.Tr("settings.email_verify_disabled"))
+		return
+	}
+	ctx.Flash.Success(ctx.Tr("settings.email_verify_sent"))
+	ctx.Redirect(setting.AppSubUrl + "/user/settings/email")
+}
 
 func Settings(ctx *middleware.Context) {
 	ctx.Data["Title"] = ctx.Tr("settings")
@@ -128,6 +182,7 @@ func SettingsAvatar(ctx *middleware.Context, form auth.UploadAvatarForm) {
 }
 
 func SettingsEmails(ctx *middleware.Context) {
+	ctx.Data["CanVerifyEmail"] = setting.MailService != nil
 	ctx.Data["Title"] = ctx.Tr("settings")
 	ctx.Data["PageIsUserSettings"] = true
 	ctx.Data["PageIsSettingsEmails"] = true
@@ -144,6 +199,7 @@ func SettingsEmails(ctx *middleware.Context) {
 }
 
 func SettingsEmailPost(ctx *middleware.Context, form auth.AddEmailForm) {
+	ctx.Data["CanVerifyEmail"] = setting.MailService != nil
 	ctx.Data["Title"] = ctx.Tr("settings")
 	ctx.Data["PageIsUserSettings"] = true
 	ctx.Data["PageIsSettingsEmails"] = true
@@ -236,6 +292,18 @@ func SettingsEmailPost(ctx *middleware.Context, form auth.AddEmailForm) {
 
 			// Send confirmation e-mail
 			if setting.Service.RegisterEmailConfirm {
+				if setting.MailService == nil {
+					ctx.Error(503, ctx.Tr("settings.email_verify_disabled"))
+					return
+				}
+				if err := models.ReserveEmailConfirmationDelivery(ctx.Req.Context(), ctx.User.Id, time.Now()); err != nil {
+					if errors.Is(err, models.ErrEmailProofLimited) {
+						ctx.Error(429, ctx.Tr("settings.email_verify_limited"))
+					} else {
+						ctx.Handle(500, "Email confirmation", err)
+					}
+					return
+				}
 				mailer.SendActivateEmail(ctx.Render, ctx.User, e)
 
 				if err := ctx.Cache.Put("MailResendLimit_"+ctx.User.LowerName, ctx.User.LowerName, 180); err != nil {

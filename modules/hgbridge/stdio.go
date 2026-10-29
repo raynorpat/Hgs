@@ -54,7 +54,7 @@ func NewStdioBridge(runner *hg.Runner, controller *Controller, hookExecutable, c
 	}
 	b := &StdioBridge{runner: runner, controller: controller, rc: map[bool]string{}}
 	for canWrite, name := range map[bool]string{false: "stdio-reader.rc", true: "stdio-writer.rc"} {
-		hooks, err := HookConfig(hookExecutable, canWrite)
+		hooks, err := TransportHookConfig(hookExecutable, canWrite)
 		if err != nil {
 			return nil, err
 		}

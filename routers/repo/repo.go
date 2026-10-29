@@ -99,7 +99,7 @@ func CreatePost(ctx *middleware.Context, form auth.CreateRepoForm, provider host
 		ctx.Error(503)
 		return
 	}
-	repo, err := models.CreateHgRepository(ctx.Req.Context(), service.Runner(), service.RepositoryRoot(), models.CreateHgRepositoryOptions{OwnerID: ctxUser.Id, Name: form.RepoName, Description: form.Description, Private: form.Private})
+	repo, err := models.CreateHgRepository(ctx.Req.Context(), service.Runner(), service.RepositoryRoot(), models.CreateHgRepositoryOptions{OwnerID: ctxUser.Id, ActorID: ctx.User.Id, Name: form.RepoName, Description: form.Description, Private: form.Private})
 
 	if err == nil {
 		log.Trace("Repository created: %s/%s", ctxUser.Name, repo.Name)

@@ -260,7 +260,10 @@ func CreatePullRecord(ctx context.Context, actor int64, p PullRequest) (PullRequ
 		if _, err := sess.Insert(&p); err != nil {
 			return err
 		}
-		return assignPullReviewers(sess, actor, p, p.ReviewerIDs)
+		if err := assignPullReviewers(sess, actor, p, p.ReviewerIDs); err != nil {
+			return err
+		}
+		return enqueueContribution(sess, "pull", p.ID)
 	})
 	if err != nil {
 		return PullRequest{}, err

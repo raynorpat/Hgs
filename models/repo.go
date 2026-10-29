@@ -35,6 +35,7 @@ var (
 
 // Repository represents a Mercurial repository.
 type Repository struct {
+	CreatorID   int64 `xorm:"'creator_id'"`
 	Id          int64
 	OwnerId     int64  `xorm:"UNIQUE(s)"`
 	Owner       *User  `xorm:"-"`
@@ -463,6 +464,9 @@ func deleteRepositoryRows(repo *Repository) error {
 
 	defer sess.Rollback()
 	if err = deleteRepositoryPullRows(sess, repoId); err != nil {
+		return err
+	}
+	if err = deleteContributionRepository(sess, repoId); err != nil {
 		return err
 	}
 	if err = forkDependents(sess, repoId); err != nil {

@@ -24,6 +24,7 @@ type Message struct {
 	Type    string
 	Massive bool
 	Info    string
+	Private bool
 }
 
 // create mail content
@@ -51,6 +52,14 @@ func processMailQueue() {
 		select {
 		case msg := <-mailQueue:
 			num, err := Send(msg)
+			if msg.Private {
+				if err != nil {
+					log.Error(4, "Email verification delivery failed")
+				} else {
+					log.Trace("Email verification delivered")
+				}
+				continue
+			}
 			tos := strings.Join(msg.To, "; ")
 			info := ""
 			if err != nil {
@@ -152,7 +161,9 @@ func sendMail(settings *setting.Mailer, recipients []string, msgContent []byte) 
 
 // Direct Send mail message
 func Send(msg *Message) (int, error) {
-	log.Trace("Sending mails to: %s", strings.Join(msg.To, "; "))
+	if !msg.Private {
+		log.Trace("Sending mails to: %s", strings.Join(msg.To, "; "))
+	}
 
 	// get message body
 	content := msg.Content()

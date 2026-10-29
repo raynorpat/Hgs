@@ -141,7 +141,7 @@ func BeginForkProvisioning(actor, sourceID int64, opts CreateHgRepositoryOptions
 	if len(opts.Description) > 255 {
 		opts.Description = opts.Description[:255]
 	}
-	repo := &Repository{OwnerId: owner.Id, Owner: owner, Name: opts.Name, LowerName: strings.ToLower(opts.Name), Description: opts.Description, IsPrivate: source.IsPrivate, State: RepositoryProvisioning, StorageNonce: hex.EncodeToString(nonce)}
+	repo := &Repository{CreatorID: actor, OwnerId: owner.Id, Owner: owner, Name: opts.Name, LowerName: strings.ToLower(opts.Name), Description: opts.Description, IsPrivate: source.IsPrivate, State: RepositoryProvisioning, StorageNonce: hex.EncodeToString(nonce)}
 	if _, err = sess.Insert(repo); err != nil {
 		return op, nil, err
 	}
@@ -340,6 +340,9 @@ func PublishFork(ctx context.Context, root string, op ForkProvisioning) (*Reposi
 		}
 	}
 	if _, err = sess.Id(op.ID).Delete(new(ForkProvisioning)); err != nil {
+		return nil, err
+	}
+	if err = enqueueContribution(sess, "repository", repo.Id); err != nil {
 		return nil, err
 	}
 	if err = sess.Commit(); err != nil {

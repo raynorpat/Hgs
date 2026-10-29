@@ -113,6 +113,9 @@ func TestHostingComparisonRootFailureBeforePublication(t *testing.T) {
 	if holder.Service() != nil || holder.sshListener != nil {
 		t.Fatal("service/listener published before recovery")
 	}
+	if holder.contributionDone != nil || holder.contributionCancel != nil {
+		t.Fatal("contribution worker started before initialization/recovery succeeded")
+	}
 	if err := holder.Shutdown(context.Background()); err != nil {
 		t.Fatal(err)
 	}

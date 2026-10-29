@@ -49,9 +49,10 @@ type Authorize func(context.Context, Grant) error
 // Controller holds the capabilities of live write sessions and answers the
 // hook callbacks for them. Authority exists only in this process's memory.
 type Controller struct {
-	authorize Authorize
-	ttl       time.Duration
-	now       func() time.Time
+	authorize   Authorize
+	publication func(context.Context, int64) error
+	ttl         time.Duration
+	now         func() time.Time
 
 	ln  net.Listener
 	srv *http.Server
@@ -59,6 +60,35 @@ type Controller struct {
 	mu     sync.Mutex
 	closed bool
 	grants map[[sha256.Size]byte]session
+}
+
+// SetPublicationObserver configures an enqueue-only observer before admission.
+func (c *Controller) SetPublicationObserver(observer func(context.Context, int64) error) {
+	c.mu.Lock()
+	c.publication = observer
+	c.mu.Unlock()
+}
+
+// Published identifies a native post-commit signal. It never reauthorizes a
+// completed transaction, nor accepts review-operation subtransactions.
+func (c *Controller) Published(ctx context.Context, capability string, repoID int64, hook, operationID string) error {
+	if hook != "txnclose" || operationID != "" {
+		return ErrDenied
+	}
+	s, ok := c.lookup(sha256.Sum256([]byte(capability)))
+	if !ok || s.operationID != "" || !s.grant.CanWrite || s.grant.RepoID != repoID {
+		return ErrDenied
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	observer := c.publication
+	c.mu.Unlock()
+	if observer == nil {
+		return nil
+	}
+	return observer(ctx, s.grant.RepoID)
 }
 
 type session struct {

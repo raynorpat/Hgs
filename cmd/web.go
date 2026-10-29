@@ -366,6 +366,7 @@ func newWebHandler(holder *hostingHolder) http.Handler {
 		m.Post("/avatar", binding.MultipartForm(auth.UploadAvatarForm{}), user.SettingsAvatar)
 		m.Get("/email", user.SettingsEmails)
 		m.Post("/email", bindIgnErr(auth.AddEmailForm{}), user.SettingsEmailPost)
+		m.Post("/email/verify", protectedPOST, user.SettingsEmailVerify)
 		m.Get("/password", user.SettingsPassword)
 		m.Post("/password", bindIgnErr(auth.ChangePasswordForm{}), user.SettingsPasswordPost)
 		m.Get("/ssh", user.SettingsSSHKeys)

@@ -10,7 +10,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gogits/gogs/models"
 	"github.com/gogits/gogs/modules/collaboration"
+	"github.com/gogits/gogs/modules/contributions"
 	"github.com/gogits/gogs/modules/hg"
 	"github.com/gogits/gogs/modules/hosting"
 	"github.com/gogits/gogs/modules/log"
@@ -22,13 +24,15 @@ import (
 // hostingHolder is owned by runWeb, including initialization after installation.
 // Requests obtain the current service through the injected hosting.Provider.
 type hostingHolder struct {
-	mu          sync.RWMutex
-	once        sync.Once
-	service     *hosting.Service
-	sshListener net.Listener
-	err         error
-	closed      bool
-	errors      chan error
+	mu                 sync.RWMutex
+	once               sync.Once
+	service            *hosting.Service
+	sshListener        net.Listener
+	err                error
+	closed             bool
+	errors             chan error
+	contributionCancel context.CancelFunc
+	contributionDone   chan struct{}
 }
 
 func (h *hostingHolder) Service() *hosting.Service {
@@ -57,6 +61,7 @@ func (h *hostingHolder) Initialize() error {
 			cfg.SSHAddress = ""
 		}
 		cfg.RepositoryCleanup = collaboration.RepositoryCleanup(cfg.RepositoryRoot, cfg.ReviewArtifactRoot, filepath.Join(setting.StaticRootPath, "public"), setting.AvatarUploadPath)
+		cfg.RepositoryPublished = func(ctx context.Context, id int64) error { return models.EnqueueContribution(ctx, "repository", id) }
 		service, err := hosting.New(context.Background(), cfg)
 		if err != nil {
 			h.err = err
@@ -93,6 +98,26 @@ func (h *hostingHolder) Initialize() error {
 			}()
 		}
 		h.service = service
+		index := contributions.NewService(service.Runner(), func(ctx context.Context, id int64) (string, error) {
+			if err := ctx.Err(); err != nil {
+				return "", err
+			}
+			return models.ReadyRepositoryStorage(service.RepositoryRoot(), id)
+		}, func(ctx context.Context, actor, id int64) (bool, error) {
+			if err := ctx.Err(); err != nil {
+				return false, err
+			}
+			access, err := models.RepositoryAccessFor(actor, id)
+			return access.Read, err
+		}, time.Now)
+		if err := index.SetMaintenanceRead(service.WithMaintenanceRead); err != nil {
+			h.err = err
+			return
+		}
+		indexContext, cancel := context.WithCancel(context.Background())
+		h.contributionCancel = cancel
+		h.contributionDone = make(chan struct{})
+		go func() { defer close(h.contributionDone); index.Run(indexContext) }()
 	})
 	return h.err
 }
@@ -100,10 +125,15 @@ func (h *hostingHolder) Shutdown(ctx context.Context) error {
 	h.mu.Lock()
 	h.closed = true
 	service := h.service
+	cancel, done := h.contributionCancel, h.contributionDone
 	if h.sshListener != nil {
 		h.sshListener.Close()
 	}
 	h.mu.Unlock()
+	if cancel != nil {
+		cancel()
+		<-done
+	}
 	if service != nil {
 		return service.Shutdown(ctx)
 	}

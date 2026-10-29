@@ -149,6 +149,12 @@ func NewIssue(issue *Issue) (err error) {
 		sess.Rollback()
 		return err
 	}
+	if !issue.IsPull {
+		if err = enqueueContribution(sess, "issue", issue.Id); err != nil {
+			sess.Rollback()
+			return err
+		}
+	}
 
 	if err = sess.Commit(); err != nil {
 		return err

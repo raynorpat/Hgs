@@ -15,6 +15,17 @@ type PullEvent struct {
 }
 
 func pullEvent(e Engine, pull, actor, reviewer, comparison int64, kind, reason string) error {
-	_, err := e.Insert(&PullEvent{PullID: pull, ActorID: actor, ReviewerID: reviewer, ComparisonID: comparison, Kind: kind, Reason: reason})
-	return err
+	row := &PullEvent{PullID: pull, ActorID: actor, ReviewerID: reviewer, ComparisonID: comparison, Kind: kind, Reason: reason}
+	if _, err := e.Insert(row); err != nil {
+		return err
+	}
+	if kind == "review-submitted" && actor == reviewer && (reason == string(ReviewApproved) || reason == string(ReviewChangesRequested)) {
+		// Legacy xorm defers copying generated timestamps into the bean until
+		// commit. Read the canonical value inside this transaction instead.
+		if _, err := e.Id(row.ID).Get(row); err != nil {
+			return err
+		}
+		return firstContributionReview(e, reviewer, pull, row.Created)
+	}
+	return nil
 }

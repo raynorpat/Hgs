@@ -52,6 +52,14 @@ func hgHook(ctx context.Context, args []string, env []string) error {
 		return errReadOnly
 	case "check":
 		return RunHGHook(ctx, args[1], env)
+	case "notify":
+		if args[1] != "txnclose" {
+			return errors.New("unsupported publication notification")
+		}
+		if err := runHGCallback(ctx, args[1], env, hgbridge.PublicationPath); err != nil {
+			fmt.Fprintln(os.Stderr, "gogs: publication notification deferred; reconciliation will retry")
+		}
+		return nil
 	}
 	return fmt.Errorf("unknown hook mode %q", args[0])
 }
@@ -60,6 +68,10 @@ func hgHook(ctx context.Context, args []string, env []string) error {
 // to the parent's control endpoint. Missing context, an unreachable or slow
 // endpoint, and any answer but 2xx all reject the transaction.
 func RunHGHook(ctx context.Context, hook string, env []string) error {
+	return runHGCallback(ctx, hook, env, hgbridge.ControlPath)
+}
+
+func runHGCallback(ctx context.Context, hook string, env []string, controlPath string) error {
 	vars := make(map[string]string, 3)
 	for _, kv := range env {
 		if k, v, ok := strings.Cut(kv, "="); ok && strings.HasPrefix(k, "GOGS_HG_") {
@@ -83,7 +95,7 @@ func RunHGHook(ctx context.Context, hook string, env []string) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, hgHookTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+addr+hgbridge.ControlPath, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+addr+controlPath, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}

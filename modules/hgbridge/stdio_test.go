@@ -130,7 +130,7 @@ func TestStdioBridgeAppliesGrant(t *testing.T) {
 	b, ctl, target := newTestStdioBridge(t, 0)
 	for _, canWrite := range []bool{false, true} {
 		exe, _ := os.Executable()
-		want, _ := HookConfig(exe, canWrite)
+		want, _ := TransportHookConfig(exe, canWrite)
 		rc, err := os.ReadFile(b.rc[canWrite])
 		lines := strings.Split(strings.TrimSuffix(string(rc), "\n"), "\n")
 		if err != nil || lines[0] != "[hooks]" || len(lines) != len(want)+1 {

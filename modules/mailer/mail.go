@@ -135,9 +135,32 @@ func SendActivateEmail(r macaron.Render, user *models.User, email *models.EmailA
 	}
 
 	msg := NewMailMessage([]string{email.Email}, subject, body)
-	msg.Info = fmt.Sprintf("UID: %d, send activate email to %s", user.Id, email.Email)
+	msg.Info = fmt.Sprintf("UID: %d, send activate email", user.Id)
 
 	SendAsync(&msg)
+}
+
+// SendEmailVerification uses the existing confirmation presentation with a
+// purpose-bound, code-only URL. Queue pressure is reported without an orphan sender.
+func SendEmailVerification(r macaron.Render, u *models.User, email, code string) error {
+	if setting.MailService == nil {
+		return errors.New("email verification unavailable")
+	}
+	data := GetMailTmplData(u)
+	data["VerificationURL"] = setting.AppUrl + "user/activate_email?code=" + url.QueryEscape(code)
+	body, err := r.HTMLString(string(AUTH_ACTIVATE_EMAIL), data)
+	if err != nil {
+		return errors.New("email verification rendering unavailable")
+	}
+	msg := NewMailMessage([]string{email}, "Verify your e-mail address", body)
+	msg.Info = fmt.Sprintf("UID: %d, explicit email verification", u.Id)
+	msg.Private = true
+	select {
+	case mailQueue <- &msg:
+		return nil
+	default:
+		return errors.New("email verification delivery unavailable")
+	}
 }
 
 // Send reset password email.

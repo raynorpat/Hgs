@@ -28,6 +28,7 @@ import (
 type Provider interface{ Service() *Service }
 
 type Config struct {
+	RepositoryPublished                                                              func(context.Context, int64) error
 	RepositoryCleanup                                                                models.RepositoryCollaborationCleanup
 	ReviewArtifactRoot                                                               string
 	ReviewOperationTimeout                                                           time.Duration
@@ -161,6 +162,7 @@ func New(ctx context.Context, cfg Config) (s *Service, err error) {
 	if s.controller, err = hgbridge.NewController(s.authorize, ttl); err != nil {
 		return nil, err
 	}
+	s.controller.SetPublicationObserver(cfg.RepositoryPublished)
 	owned := s
 	defer func() {
 		if err != nil {

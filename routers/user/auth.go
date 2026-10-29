@@ -5,7 +5,9 @@
 package user
 
 import (
+	"errors"
 	"strings"
+	"time"
 
 	"github.com/macaron-contrib/captcha"
 
@@ -273,6 +275,14 @@ func SignUpPost(ctx *middleware.Context, cpt *captcha.Captcha, form auth.Registe
 
 	// Send confirmation e-mail, no need for social account.
 	if !isOauth && setting.Service.RegisterEmailConfirm && u.Id > 1 {
+		if setting.MailService == nil {
+			ctx.Error(503, ctx.Tr("settings.email_verify_disabled"))
+			return
+		}
+		if err := models.ReserveEmailConfirmationDelivery(ctx.Req.Context(), u.Id, time.Now()); err != nil {
+			ctx.Handle(500, "Email confirmation", err)
+			return
+		}
 		mailer.SendRegisterMail(ctx.Render, u)
 		ctx.Data["IsSendRegisterMail"] = true
 		ctx.Data["Email"] = u.Email
@@ -298,8 +308,13 @@ func Activate(ctx *middleware.Context) {
 		}
 		// Resend confirmation e-mail.
 		if setting.Service.RegisterEmailConfirm && ctx.Req.Method == "POST" {
-			if ctx.Cache.IsExist("MailResendLimit_" + ctx.User.LowerName) {
+			if setting.MailService == nil {
+				ctx.Data["ServiceNotEnabled"] = true
+			} else if err := models.ReserveEmailConfirmationDelivery(ctx.Req.Context(), ctx.User.Id, time.Now()); errors.Is(err, models.ErrEmailProofLimited) {
 				ctx.Data["ResendLimited"] = true
+			} else if err != nil {
+				ctx.Handle(500, "Email confirmation", err)
+				return
 			} else {
 				ctx.Data["Hours"] = setting.Service.ActiveCodeLives / 60
 				mailer.SendActiveMail(ctx.Render, ctx.User)
@@ -317,17 +332,7 @@ func Activate(ctx *middleware.Context) {
 	}
 
 	// Verify code.
-	if user := models.VerifyUserActiveCode(code); user != nil {
-		user.IsActive = true
-		user.Rands = models.GetUserSalt()
-		if err := models.UpdateUser(user); err != nil {
-			if err == models.ErrUserNotExist {
-				ctx.Error(404)
-			} else {
-				ctx.Handle(500, "UpdateUser", err)
-			}
-			return
-		}
+	if user, err := models.ConsumeEmailVerification(ctx.Req.Context(), code, "", true, time.Now()); err == nil {
 
 		log.Trace("User activated: %s", user.Name)
 
@@ -346,16 +351,13 @@ func ActivateEmail(ctx *middleware.Context) {
 	email_string := ctx.Query("email")
 
 	// Verify code.
-	if email := models.VerifyActiveEmailCode(code, email_string); email != nil {
-		err := email.Activate()
-		if err != nil {
-			ctx.Handle(500, "ActivateEmail", err)
-		}
-
-		log.Trace("Email activated: %s", email.Email)
-
+	if _, err := models.ConsumeEmailVerification(ctx.Req.Context(), code, email_string, false, time.Now()); err == nil {
 		ctx.Flash.Success(ctx.Tr("settings.activate_email_success"))
-
+	} else if !errors.Is(err, models.ErrEmailProofInvalid) {
+		ctx.Handle(500, "ActivateEmail", err)
+		return
+	} else {
+		ctx.Flash.Error(ctx.Tr("settings.email_verify_invalid"))
 	}
 
 	ctx.Redirect(setting.AppSubUrl + "/user/settings/email")

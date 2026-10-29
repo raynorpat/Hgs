@@ -20,6 +20,15 @@
                                 <div class="email-content">
                                     <p><strong>{{.Email}}</strong> {{if .IsPrimary}} <span class="email-primary">{{$.i18n.Tr "settings.primary"}}</span> {{end}}</p>
                                </div>
+                               {{if .IsVerified}}
+                               <span>{{$.i18n.Tr "settings.email_verified"}}</span>
+                               {{else if $.CanVerifyEmail}}
+                               <form action="{{AppSubUrl}}/user/settings/email/verify" method="post" data-prevent-duplicate>
+                                    {{$.CsrfTokenHtml}}
+                                    <input name="id" type="hidden" value="{{.Id}}">
+                                    <button class="hg-button">{{$.i18n.Tr "settings.email_verify"}}</button>
+                               </form>
+                               {{end}}
                                {{if not .IsPrimary}}
                                {{if .IsActivated}}
                                <form action="{{AppSubUrl}}/user/settings/email" method="post" data-prevent-duplicate>

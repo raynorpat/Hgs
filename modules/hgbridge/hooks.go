@@ -65,6 +65,22 @@ func HookConfig(executable string, canWrite bool) (map[string]string, error) {
 	return cfg, nil
 }
 
+// TransportHookConfig adds an advisory native transaction-close observation.
+// Review publication uses HookConfig, because its multiple transactions are not
+// complete publication until the hosting journal is durably concluded.
+func TransportHookConfig(executable string, canWrite bool) (map[string]string, error) {
+	cfg, err := HookConfig(executable, canWrite)
+	if err != nil || !canWrite {
+		return cfg, err
+	}
+	exe, err := quoteFor(runtime.GOOS, executable)
+	if err != nil {
+		return nil, err
+	}
+	cfg["hooks.txnclose"] = exe + " " + HookCommand + " notify txnclose"
+	return cfg, nil
+}
+
 // quoteFor quotes exe for the shell Mercurial runs hooks with: cmd.exe on
 // Windows, /bin/sh elsewhere.
 func quoteFor(goos, exe string) (string, error) {

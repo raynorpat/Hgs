@@ -129,6 +129,7 @@ func (s *Service) WithRepositoryMutation(ctx context.Context, actor int64, e Mut
 	}
 	if complete {
 		r.mu.Unlock()
+		s.notifyRepositoryPublished(e.RepoID)
 		return nil
 	}
 	for id := range ids {
@@ -155,7 +156,6 @@ func (s *Service) WithRepositoryMutation(ctx context.Context, actor int64, e Mut
 			stop()
 		}
 		r.mu.Lock()
-		defer r.mu.Unlock()
 		if !started {
 			if abortErr := models.AbortReviewPublication(e.OperationID); abortErr == nil {
 				for id := range ids {
@@ -166,6 +166,10 @@ func (s *Service) WithRepositoryMutation(ctx context.Context, actor int64, e Mut
 		delete(r.activeOperations, e.OperationID)
 		delete(r.sessions, publication)
 		close(publication.done)
+		r.mu.Unlock()
+		if completed {
+			s.notifyRepositoryPublished(e.RepoID)
+		}
 	}()
 	if statusErr != nil {
 		return statusErr
@@ -277,6 +281,9 @@ func (s *Service) finishRevokedPublication(ctx context.Context, e MutationExpect
 		return readErr
 	}
 	if current.Complete || current.Failed || current.Aborted {
+		if current.Complete {
+			s.notifyRepositoryPublished(e.RepoID)
+		}
 		return nil
 	}
 	op = current
@@ -293,7 +300,6 @@ func (s *Service) finishRevokedPublication(ctx context.Context, e MutationExpect
 	}
 	r := s.sessions
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	var err error
 	if !op.Started {
 		err = models.AbortReviewPublication(op.ID)
@@ -301,12 +307,17 @@ func (s *Service) finishRevokedPublication(ctx context.Context, e MutationExpect
 		err = models.ConcludeRevokedReviewPublication(op.ID, e.RepoID, complete, repair)
 	}
 	if err != nil {
+		r.mu.Unlock()
 		return err
 	}
 	for id, owner := range r.reservations {
 		if owner == op.ID && (!repair || id != e.RepoID) {
 			delete(r.reservations, id)
 		}
+	}
+	r.mu.Unlock()
+	if complete {
+		s.notifyRepositoryPublished(e.RepoID)
 	}
 	return nil
 }

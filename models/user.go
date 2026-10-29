@@ -6,6 +6,7 @@ package models
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Unknwon/com"
+	"github.com/go-xorm/xorm"
 	"github.com/nfnt/resize"
 
 	"github.com/gogits/gogs/modules/avatar"
@@ -101,6 +103,7 @@ type EmailAddress struct {
 	Email       string `xorm:"UNIQUE NOT NULL"`
 	IsActivated bool
 	IsPrimary   bool `xorm:"-"`
+	IsVerified  bool `xorm:"-"`
 }
 
 // DashboardLink returns the user dashboard page link.
@@ -290,16 +293,24 @@ func CreateUser(u *User) error {
 	u.Salt = GetUserSalt()
 	u.EncodePasswd()
 
-	sess := x.NewSession()
+	sess := contributionEngine().NewSession()
 	defer sess.Close()
 	if err = sess.Begin(); err != nil {
 		return err
+	}
+	defer sess.Rollback()
+	if err = lockEmailVerification(sess); err != nil {
+		return contributionError(err)
 	}
 
 	if _, err = sess.Insert(u); err != nil {
 		sess.Rollback()
 		return err
-	} else if err = sess.Commit(); err != nil {
+	}
+	if err = invalidateEmailVerification(sess, u.Email); err != nil {
+		return contributionError(err)
+	}
+	if err = sess.Commit(); err != nil {
 		return err
 	}
 
@@ -369,8 +380,8 @@ func VerifyActiveEmailCode(code, email string) *EmailAddress {
 		data := com.ToStr(user.Id) + email + user.LowerName + user.Passwd + user.Rands
 
 		if base.VerifyTimeLimitCode(data, minutes, prefix) {
-			emailAddress := &EmailAddress{Email: email}
-			if has, _ := x.Get(emailAddress); has {
+			emailAddress := &EmailAddress{Email: email, Uid: user.Id}
+			if has, _ := contributionEngine().Get(emailAddress); has {
 				return emailAddress
 			}
 		}
@@ -389,7 +400,7 @@ func ChangeUserName(u *User, newUserName string) (err error) {
 
 // UpdateUser updates user's information.
 func UpdateUser(u *User) error {
-	has, err := x.Where("id!=?", u.Id).And("type=?", INDIVIDUAL).And("email=?", u.Email).Get(new(User))
+	has, err := contributionEngine().Where("id!=?", u.Id).And("type=?", INDIVIDUAL).And("email=?", u.Email).Get(new(User))
 	if err != nil {
 		return err
 	} else if has {
@@ -414,14 +425,26 @@ func UpdateUser(u *User) error {
 	u.Avatar = avatar.ProviderHash(u.AvatarEmail)
 
 	u.FullName = base.Sanitizer.Sanitize(u.FullName)
-	sess := x.NewSession()
+	sess := contributionEngine().NewSession()
 	defer sess.Close()
 	defer sess.Rollback()
 	if err = sess.Begin(); err != nil {
 		return err
 	}
+	if err = lockEmailVerification(sess); err != nil {
+		return contributionError(err)
+	}
+	var prior User
+	if _, err = sess.Id(u.Id).Get(&prior); err != nil {
+		return contributionError(err)
+	}
 	if _, err = sess.Id(u.Id).AllCols().Update(u); err != nil {
 		return err
+	}
+	for _, email := range []string{prior.Email, u.Email} {
+		if err = invalidateEmailVerification(sess, email); err != nil {
+			return contributionError(err)
+		}
 	}
 	return commitRetiringReviews(sess)
 }
@@ -445,17 +468,25 @@ func DeleteUser(u *User) error {
 		return ErrUserHasOrgs
 	}
 
-	sess := x.NewSession()
+	sess := contributionEngine().NewSession()
 	defer sess.Close()
 	if err := sess.Begin(); err != nil {
 		return err
 	}
 	defer sess.Rollback()
+	if err := lockEmailVerification(sess); err != nil {
+		return contributionError(err)
+	}
 	if err := lockDraftAccountDeletion(sess, u.Id); err != nil {
 		return err
 	}
 	if _, err := sess.Where("actor_id = ?", u.Id).Delete(new(EditorDraft)); err != nil {
 		return err
+	}
+	for _, bean := range []interface{}{new(EmailVerification), new(EmailVerificationChallenge), new(EmailVerificationDelivery)} {
+		if _, err := sess.Where("user_id = ?", u.Id).Delete(bean); err != nil {
+			return contributionError(err)
+		}
 	}
 	for _, bean := range []interface{}{&Follow{FollowId: u.Id}, &Oauth2{Uid: u.Id}, &Action{UserId: u.Id}, &Watch{UserId: u.Id}, &Access{UserId: u.Id}, &EmailAddress{Uid: u.Id}, &PublicKey{OwnerId: u.Id}, u} {
 		if _, err := sess.Delete(bean); err != nil {
@@ -467,12 +498,15 @@ func DeleteUser(u *User) error {
 
 // DeleteInactivateUsers deletes all inactivate users and email addresses.
 func DeleteInactivateUsers() error {
-	sess := x.NewSession()
+	sess := contributionEngine().NewSession()
 	defer sess.Close()
 	if err := sess.Begin(); err != nil {
 		return err
 	}
 	defer sess.Rollback()
+	if err := lockEmailVerification(sess); err != nil {
+		return contributionError(err)
+	}
 	var inactive []User
 	if err := sess.Where("is_active = ?", false).Asc("id").Find(&inactive); err != nil {
 		return err
@@ -489,6 +523,11 @@ func DeleteInactivateUsers() error {
 		if !found || current.IsActive {
 			continue
 		}
+		for _, bean := range []interface{}{new(EmailVerification), new(EmailVerificationChallenge), new(EmailVerificationDelivery)} {
+			if _, err := sess.Where("user_id = ?", u.Id).Delete(bean); err != nil {
+				return contributionError(err)
+			}
+		}
 		if _, err := sess.Where("actor_id = ?", u.Id).Delete(new(EditorDraft)); err != nil {
 			return err
 		}
@@ -496,8 +535,17 @@ func DeleteInactivateUsers() error {
 			return err
 		}
 	}
+	var removed []EmailAddress
+	if err := sess.Where("is_activated=?", false).Find(&removed); err != nil {
+		return err
+	}
 	if _, err := sess.Where("is_activated=?", false).Delete(new(EmailAddress)); err != nil {
 		return err
+	}
+	for _, email := range removed {
+		if err := invalidateEmailVerification(sess, email.Email); err != nil {
+			return contributionError(err)
+		}
 	}
 	return commitRetiringReviews(sess)
 }
@@ -596,6 +644,13 @@ func GetEmailAddresses(uid int64) ([]*EmailAddress, error) {
 	if !isPrimaryFound {
 		emails = append(emails, &EmailAddress{Email: u.Email, IsActivated: true, IsPrimary: true})
 	}
+	for _, email := range emails {
+		actor, err := VerifiedContributionAuthor(context.Background(), email.Email)
+		if err != nil {
+			return nil, err
+		}
+		email.IsVerified = actor == uid
+	}
 	return emails, nil
 }
 
@@ -607,8 +662,15 @@ func AddEmailAddress(email *EmailAddress) error {
 		return ErrEmailAlreadyUsed
 	}
 
-	_, err = x.Insert(email)
-	return err
+	return contributionTransaction(context.Background(), func(s *xorm.Session) error {
+		if err := lockEmailVerification(s); err != nil {
+			return err
+		}
+		if _, err := s.Insert(email); err != nil {
+			return err
+		}
+		return invalidateEmailVerification(s, email.Email)
+	})
 }
 
 func (email *EmailAddress) Activate() error {
@@ -626,56 +688,72 @@ func (email *EmailAddress) Activate() error {
 }
 
 func DeleteEmailAddress(email *EmailAddress) error {
-	has, err := x.Get(email)
-	if err != nil {
-		return err
-	} else if !has {
-		return ErrEmailNotExist
-	}
-
-	if _, err = x.Delete(email); err != nil {
-		return err
-	}
-
-	return nil
-
+	return contributionTransaction(context.Background(), func(s *xorm.Session) error {
+		if err := lockEmailVerification(s); err != nil {
+			return err
+		}
+		has, err := s.Get(email)
+		if err != nil {
+			return err
+		}
+		if !has {
+			return ErrEmailNotExist
+		}
+		if _, err = s.Delete(email); err != nil {
+			return err
+		}
+		return invalidateEmailVerification(s, email.Email)
+	})
 }
 
 func MakeEmailPrimary(email *EmailAddress) error {
-	has, err := x.Get(email)
-	if err != nil {
-		return err
-	} else if !has {
-		return ErrEmailNotExist
-	}
+	return contributionTransaction(context.Background(), func(s *xorm.Session) error {
+		if err := lockEmailVerification(s); err != nil {
+			return err
+		}
+		has, err := s.Get(email)
+		if err != nil {
+			return err
+		} else if !has {
+			return ErrEmailNotExist
+		}
 
-	if !email.IsActivated {
-		return ErrEmailNotActivated
-	}
+		if !email.IsActivated {
+			return ErrEmailNotActivated
+		}
 
-	user := &User{Id: email.Uid}
-	has, err = x.Get(user)
-	if err != nil {
-		return err
-	} else if !has {
-		return ErrUserNotExist
-	}
+		user := &User{Id: email.Uid}
+		has, err = s.Get(user)
+		if err != nil {
+			return err
+		} else if !has {
+			return ErrUserNotExist
+		}
 
-	// Make sure the former primary email doesn't disappear
-	former_primary_email := &EmailAddress{Email: user.Email}
-	has, err = x.Get(former_primary_email)
-	if err != nil {
-		return err
-	} else if !has {
-		former_primary_email.Uid = user.Id
-		former_primary_email.IsActivated = user.IsActive
-		x.Insert(former_primary_email)
-	}
+		// Make sure the former primary email doesn't disappear
+		former_primary_email := &EmailAddress{Email: user.Email, Uid: user.Id}
+		has, err = s.Get(former_primary_email)
+		if err != nil {
+			return err
+		} else if !has {
+			former_primary_email.Uid = user.Id
+			former_primary_email.IsActivated = user.IsActive
+			if _, err = s.Insert(former_primary_email); err != nil {
+				return err
+			}
+		}
 
-	user.Email = email.Email
-	_, err = x.Id(user.Id).AllCols().Update(user)
-
-	return err
+		user.Email = email.Email
+		if _, err = s.Id(user.Id).Cols("email").Update(user); err != nil {
+			return err
+		}
+		for _, address := range []string{former_primary_email.Email, user.Email} {
+			if err = invalidateEmailVerification(s, address); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // UserCommit represents a commit with validation of user.

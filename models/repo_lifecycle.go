@@ -101,6 +101,39 @@ func storageMarkerContent(repo *Repository) []byte {
 	return []byte(fmt.Sprintf("%d %s\n", repo.Id, repo.StorageNonce))
 }
 
+// ReadyRepositoryStorage validates the current owned allocation without granting
+// a lifecycle lease; callers must retain hosting maintenance/read admission.
+func ReadyRepositoryStorage(root string, id int64) (string, error) {
+	repo, err := GetRepositoryById(id)
+	if err != nil {
+		return "", err
+	}
+	if repo.State != RepositoryReady {
+		return "", ErrRepoNotExist
+	}
+	p, err := RepositoryStoragePath(root, id)
+	if err != nil {
+		return "", err
+	}
+	if err = checkPlainChild(root, p); err != nil {
+		return "", err
+	}
+	dot := filepath.Join(p, ".hg")
+	if err = checkPlainChild(p, dot); err != nil {
+		return "", err
+	}
+	marker := filepath.Join(dot, storageMarker)
+	fi, err := os.Lstat(marker)
+	if err != nil || !fi.Mode().IsRegular() {
+		return "", errors.New("repository ownership marker unavailable")
+	}
+	b, err := os.ReadFile(marker)
+	if err != nil || !bytes.Equal(b, storageMarkerContent(repo)) {
+		return "", errors.New("repository storage identity mismatch")
+	}
+	return p, nil
+}
+
 // checkPlainChild verifies that dir, an entry of parent, is a directory and
 // not a symbolic link, junction or other reparse point, and that it resolves
 // to that entry of parent. Missing dir is reported as fs.ErrNotExist.
@@ -194,6 +227,7 @@ func removeStaging(root string, repo *Repository) error {
 
 type CreateHgRepositoryOptions struct {
 	OwnerID           int64
+	ActorID           int64
 	Name, Description string
 	Private           bool
 }
@@ -212,6 +246,12 @@ func CreateHgRepository(ctx context.Context, runner *hg.Runner, root string, opt
 	if err != nil {
 		return nil, err
 	}
+	if opts.ActorID > 0 {
+		creator, err := GetUserById(opts.ActorID)
+		if err != nil || creator.IsOrganization() {
+			return nil, ErrInvalidCredential
+		}
+	}
 	if has, err := IsRepositoryExist(u, opts.Name); err != nil {
 		return nil, err
 	} else if has {
@@ -226,6 +266,7 @@ func CreateHgRepository(ctx context.Context, runner *hg.Runner, root string, opt
 		opts.Description = opts.Description[:255]
 	}
 	repo := &Repository{
+		CreatorID:    opts.ActorID,
 		OwnerId:      u.Id,
 		Owner:        u,
 		Name:         opts.Name,
@@ -325,6 +366,10 @@ func publishRepository(u *User, repo *Repository) (err error) {
 			sess.Rollback()
 			return err
 		}
+	}
+	if err = enqueueContribution(sess, "repository", repo.Id); err != nil {
+		sess.Rollback()
+		return err
 	}
 	if err = sess.Commit(); err != nil {
 		return err

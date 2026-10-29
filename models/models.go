@@ -48,6 +48,8 @@ func init() {
 	sql.Register("sqlite3", &sqlite.Driver{})
 
 	tables = append(tables,
+		new(ContributionEvent), new(ContributionRepository), new(ContributionStage), new(ContributionIndexState), new(ContributionJob), new(ContributionFirstReview),
+		new(EmailVerification), new(EmailVerificationChallenge), new(EmailVerificationDelivery), new(EmailVerificationState),
 		new(User), new(PublicKey), new(Follow), new(Oauth2), new(AccessToken),
 		new(Repository), new(RepositoryVisit), new(EditorDraft), new(Watch), new(Star), new(Action), new(Access),
 		new(Issue), new(Comment), new(Attachment), new(IssueUser), new(Label), new(Milestone),
@@ -72,12 +74,12 @@ func LoadModelsConfig() {
 	DbCfg.Path = sec.Key("PATH").MustString("data/gogs.db")
 }
 
-func getEngine() (*xorm.Engine, error) {
+func databaseConnectionString(network, address string) (string, error) {
 	cnnstr := ""
 	switch DbCfg.Type {
 	case "mysql":
-		cnnstr = fmt.Sprintf("%s:%s@tcp(%s)/%s?charset=utf8",
-			DbCfg.User, DbCfg.Passwd, DbCfg.Host, DbCfg.Name)
+		cnnstr = fmt.Sprintf("%s:%s@%s(%s)/%s?charset=utf8",
+			DbCfg.User, DbCfg.Passwd, network, address, DbCfg.Name)
 	case "postgres":
 		var host, port = "127.0.0.1", "5432"
 		fields := strings.Split(DbCfg.Host, ":")
@@ -93,7 +95,15 @@ func getEngine() (*xorm.Engine, error) {
 		os.MkdirAll(path.Dir(DbCfg.Path), os.ModePerm)
 		cnnstr = sqliteDSN(DbCfg.Path)
 	default:
-		return nil, fmt.Errorf("Unknown database type: %s", DbCfg.Type)
+		return "", fmt.Errorf("Unknown database type: %s", DbCfg.Type)
+	}
+	return cnnstr, nil
+}
+
+func getEngine() (*xorm.Engine, error) {
+	cnnstr, err := databaseConnectionString("tcp", DbCfg.Host)
+	if err != nil {
+		return nil, err
 	}
 	return xorm.NewEngine(DbCfg.Type, cnnstr)
 }

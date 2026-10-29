@@ -98,7 +98,7 @@ func NewHTTPBridge(runner *hg.Runner, controller *Controller, hookExecutable str
 	if err != nil {
 		return nil, err
 	}
-	writer, err := HookConfig(hookExecutable, true)
+	writer, err := TransportHookConfig(hookExecutable, true)
 	if err != nil {
 		return nil, err
 	}

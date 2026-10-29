@@ -180,6 +180,18 @@ func deleteRepositoryPullRows(s *xorm.Session, repoID int64) error {
 		p := d.Pull
 		purge := p.TargetRepoID == repoID || d.AcceptedComparisonID == 0
 		if purge {
+			if _, err := s.Exec("DELETE FROM contribution_job WHERE kind = ? AND object_id IN (SELECT id FROM contribution_first_review WHERE pull_id = ?)", "review", p.ID); err != nil {
+				return err
+			}
+			if _, err := s.Where("kind = ? AND object_id = ?", "pull", p.ID).Delete(new(ContributionJob)); err != nil {
+				return err
+			}
+			if _, err := s.Exec("DELETE FROM contribution_repository WHERE event_id IN (SELECT id FROM contribution_event WHERE kind IN ('pull','review') AND object_id = ?)", p.ID); err != nil {
+				return err
+			}
+			if _, err := s.Where("pull_id = ?", p.ID).Delete(new(ContributionFirstReview)); err != nil {
+				return err
+			}
 			for _, bean := range []interface{}{new(PullComment), new(PullReview), new(PullEvent), new(PullComparison)} {
 				if _, err := s.Where("pull_id = ?", p.ID).Delete(bean); err != nil {
 					return err

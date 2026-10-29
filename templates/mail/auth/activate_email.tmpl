@@ -1,6 +1,11 @@
 {{template "mail/header" .}}
 <p>Hi {{.User.Name}},</p>
 <p>Please verify your email address within <strong>{{.ActiveCodeLives}} hours</strong>.</p>
+{{if .VerificationURL}}
+<p><a href="{{.VerificationURL}}" style="color:#0052CC;font-weight:bold;">Verify your email address</a></p>
+<p style="font-size:13px;overflow-wrap:anywhere;">Or copy this link into your browser:<br><a href="{{.VerificationURL}}" style="color:#0052CC;">{{.VerificationURL}}</a></p>
+{{else}}
 <p><a href="{{.AppUrl}}user/activate_email?code={{.Code}}&email={{.Email}}" style="color:#0052CC;font-weight:bold;">Verify your email address</a></p>
 <p style="font-size:13px;overflow-wrap:anywhere;">Or copy this link into your browser:<br><a href="{{.AppUrl}}user/activate_email?code={{.Code}}&email={{.Email}}" style="color:#0052CC;">{{.AppUrl}}user/activate_email?code={{.Code}}&email={{.Email}}</a></p>
+{{end}}
 {{template "mail/footer" .}}
