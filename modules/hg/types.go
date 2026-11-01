@@ -12,6 +12,7 @@ import (
 var (
 	ErrEmptyRepository = errors.New("hg: repository has no changesets")
 	ErrNotFound        = errors.New("hg: no such reference, changeset or file")
+	ErrReadService     = errors.New("hg: read service unavailable")
 	// ErrUnsupportedEncoding reports a name Mercurial's command line cannot
 	// take or give back unchanged on every platform.
 	ErrUnsupportedEncoding = errors.New("hg: name cannot be passed to Mercurial losslessly")
