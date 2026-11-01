@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -41,7 +43,7 @@ func (c *ReadClient) SetEndpoint(addr, token string) {
 // relative returns the slash path of an absolute path under the root.
 func (c *ReadClient) relative(path string) (string, error) {
 	rel, err := filepath.Rel(c.root, path)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("hg: %q is not under %q", path, c.root)
 	}
 	return filepath.ToSlash(rel), nil
@@ -75,7 +77,7 @@ func (c *ReadClient) do(ctx context.Context, method, endpoint string, query url.
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		return nil, fmt.Errorf("%w: %v", ErrReadService, err)
+		return nil, fmt.Errorf("%w: %w", ErrReadService, err)
 	}
 	return resp, nil
 }
@@ -174,15 +176,23 @@ func (c *ReadClient) Stream(ctx context.Context, endpoint string, params url.Val
 }
 
 // Close drops a repository from the service's registry. A service that is not
-// running holds nothing open, so a failed connection counts as released.
+// running holds nothing open, so no endpoint or a refused dial counts as
+// released. Any other failure may have reached the service and is an error.
 func (c *ReadClient) Close(ctx context.Context, path string) error {
 	rel, err := c.relative(path)
 	if err != nil {
 		return err
 	}
+	c.mu.RLock()
+	started := c.addr != ""
+	c.mu.RUnlock()
+	if !started {
+		return nil
+	}
 	resp, err := c.do(ctx, http.MethodPost, "/close", url.Values{"repo": {rel}}, nil)
 	if err != nil {
-		if ctx.Err() == nil {
+		var opErr *net.OpError
+		if errors.As(err, &opErr) && opErr.Op == "dial" {
 			return nil
 		}
 		return err

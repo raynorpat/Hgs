@@ -141,7 +141,7 @@ func TestRelative(t *testing.T) {
 	if err != nil || got != "a/b" {
 		t.Fatalf("got %q, %v", got, err)
 	}
-	for _, p := range []string{filepath.Join(root, "..", "x"), filepath.Dir(root)} {
+	for _, p := range []string{filepath.Join(root, "..", "x"), filepath.Dir(root), root} {
 		if _, err := c.relative(p); err == nil {
 			t.Fatalf("%s: want error", p)
 		}
@@ -156,6 +156,23 @@ func TestCloseRefusedConnectionIsReleased(t *testing.T) {
 	c := NewReadClient(root)
 	c.SetEndpoint(addr, "")
 	if err := c.Close(context.Background(), filepath.Join(root, "r")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCloseDroppedConnectionIsAnError(t *testing.T) {
+	c := newTestReadClient(t, func(w http.ResponseWriter, r *http.Request) {
+		conn, _, _ := w.(http.Hijacker).Hijack()
+		conn.Close()
+	})
+	if err := c.Close(context.Background(), filepath.Join(c.root, "r")); !errors.Is(err, ErrReadService) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestCloseWithoutEndpoint(t *testing.T) {
+	root := t.TempDir()
+	if err := NewReadClient(root).Close(context.Background(), filepath.Join(root, "r")); err != nil {
 		t.Fatal(err)
 	}
 }
