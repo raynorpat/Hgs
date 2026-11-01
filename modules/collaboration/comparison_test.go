@@ -49,7 +49,7 @@ func newComparisonFixture(t *testing.T, private ...bool) *comparisonFixture {
 	}
 	f.artifacts = filepath.Join(f.root, "comparisons")
 	var err error
-	f.host, err = hosting.New(f.ctx, hosting.Config{Mercurial: hg.Config{Executable: exe, ConfigPath: filepath.Join(f.root, "config", "hgrc"), MaxProcesses: 1}, RepositoryRoot: filepath.Join(f.root, "repos"), ReviewArtifactRoot: f.artifacts, HostKeyPath: filepath.Join(f.root, "keys", "host"), PublicURL: "https://example.test"})
+	f.host, err = hosting.New(f.ctx, hosting.Config{Mercurial: hg.Config{Hgqlserve: hgqlservePath(t), Executable: exe, ConfigPath: filepath.Join(f.root, "config", "hgrc"), MaxProcesses: 1}, RepositoryRoot: filepath.Join(f.root, "repos"), ReviewArtifactRoot: f.artifacts, HostKeyPath: filepath.Join(f.root, "keys", "host"), PublicURL: "https://example.test"})
 	if err != nil {
 		t.Fatal(err)
 	}

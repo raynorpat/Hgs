@@ -826,3 +826,12 @@ var urlPassword = regexp.MustCompile(`(://[^:/@\s]+:)[^@\s]+@`)
 func redact(args []string) string {
 	return urlPassword.ReplaceAllString(strings.Join(args, " "), "${1}***@")
 }
+
+func hgqlservePath(t testing.TB) string {
+	t.Helper()
+	p := os.Getenv("GOGS_TEST_HGQLSERVE")
+	if p == "" {
+		t.Skip("GOGS_TEST_HGQLSERVE is not set")
+	}
+	return p
+}

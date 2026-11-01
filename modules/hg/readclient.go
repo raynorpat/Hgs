@@ -43,6 +43,13 @@ func (c *ReadClient) SetEndpoint(addr, token string) {
 // relative returns the slash path of an absolute path under the root.
 func (c *ReadClient) relative(path string) (string, error) {
 	rel, err := filepath.Rel(c.root, path)
+	if err != nil || !within(path, c.root) {
+		// The root is canonical, so retry with the path's symlinks resolved.
+		resolved, rerr := resolve(path)
+		if rerr == nil {
+			rel, err = filepath.Rel(c.root, resolved)
+		}
+	}
 	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("hg: %q is not under %q", path, c.root)
 	}

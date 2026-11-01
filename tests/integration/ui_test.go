@@ -302,7 +302,7 @@ func newUIFixture(t *testing.T, prefix string) *uiFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := hosting.New(context.Background(), hosting.Config{RepositoryCleanup: collaboration.RepositoryCleanup(setting.RepoRootPath, filepath.Join(root, "comparisons"), publicRoot, setting.AvatarUploadPath), Mercurial: hg.Config{Executable: hgPath(t), ConfigPath: filepath.Join(root, "managed", "hgrc"), MaxProcesses: 1}, ReviewArtifactRoot: filepath.Join(root, "comparisons"), RepositoryRoot: setting.RepoRootPath, HostKeyPath: filepath.Join(root, "host-key"), PublicURL: setting.AppUrl, AppSubURL: prefix})
+	service, err := hosting.New(context.Background(), hosting.Config{RepositoryCleanup: collaboration.RepositoryCleanup(setting.RepoRootPath, filepath.Join(root, "comparisons"), publicRoot, setting.AvatarUploadPath), Mercurial: hg.Config{Hgqlserve: hgqlservePath(t), Executable: hgPath(t), ConfigPath: filepath.Join(root, "managed", "hgrc"), MaxProcesses: 1}, ReviewArtifactRoot: filepath.Join(root, "comparisons"), RepositoryRoot: setting.RepoRootPath, HostKeyPath: filepath.Join(root, "host-key"), PublicURL: setting.AppUrl, AppSubURL: prefix})
 	if err != nil {
 		t.Fatal(err)
 	}

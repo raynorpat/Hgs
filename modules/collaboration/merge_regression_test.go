@@ -63,7 +63,7 @@ func (f *comparisonFixture) restart() {
 		f.t.Fatal(err)
 	}
 	var err error
-	f.host, err = hosting.New(f.ctx, hosting.Config{Mercurial: hg.Config{Executable: os.Getenv("GOGS_TEST_HG"), ConfigPath: filepath.Join(f.root, "config", "hgrc"), MaxProcesses: 1}, RepositoryRoot: filepath.Join(f.root, "repos"), ReviewArtifactRoot: f.artifacts, HostKeyPath: filepath.Join(f.root, "keys", "host"), PublicURL: "https://example.test"})
+	f.host, err = hosting.New(f.ctx, hosting.Config{Mercurial: hg.Config{Hgqlserve: hgqlservePath(f.t), Executable: os.Getenv("GOGS_TEST_HG"), ConfigPath: filepath.Join(f.root, "config", "hgrc"), MaxProcesses: 1}, RepositoryRoot: filepath.Join(f.root, "repos"), ReviewArtifactRoot: f.artifacts, HostKeyPath: filepath.Join(f.root, "keys", "host"), PublicURL: "https://example.test"})
 	if err != nil {
 		f.t.Fatal(err)
 	}

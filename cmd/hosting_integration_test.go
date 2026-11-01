@@ -34,6 +34,10 @@ func TestHostingNativeComposition(t *testing.T) {
 	if hgExe == "" {
 		t.Fatal("GOGS_TEST_HG must name native Mercurial")
 	}
+	hgqlserve := os.Getenv("GOGS_TEST_HGQLSERVE")
+	if hgqlserve == "" {
+		t.Skip("GOGS_TEST_HGQLSERVE is not set")
+	}
 	root := t.TempDir()
 	repoRoot, err := filepath.Abs("..")
 	if err != nil {
@@ -55,6 +59,7 @@ func TestHostingNativeComposition(t *testing.T) {
 	setting.Names = []string{"English"}
 	setting.Service.RequireSignInView = false
 	setting.Mercurial.Executable = hgExe
+	setting.Mercurial.Hgqlserve = hgqlserve
 	setting.Mercurial.ConfigPath = filepath.Join(root, "config", "hgrc")
 	setting.Mercurial.ReviewArtifactRoot = filepath.Join(root, "comparisons")
 	setting.Mercurial.MaxProcesses = 2

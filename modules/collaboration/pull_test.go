@@ -48,7 +48,7 @@ func TestPullCreateNativeEndpoints(t *testing.T) {
 	if err := models.CreateUser(owner); err != nil {
 		t.Fatal(err)
 	}
-	host, err := hosting.New(context.Background(), hosting.Config{Mercurial: hg.Config{Executable: exe, ConfigPath: filepath.Join(root, "config", "hgrc")}, RepositoryRoot: filepath.Join(root, "repos"), HostKeyPath: filepath.Join(root, "keys", "host"), PublicURL: "https://example.test"})
+	host, err := hosting.New(context.Background(), hosting.Config{Mercurial: hg.Config{Hgqlserve: hgqlservePath(t), Executable: exe, ConfigPath: filepath.Join(root, "config", "hgrc")}, RepositoryRoot: filepath.Join(root, "repos"), HostKeyPath: filepath.Join(root, "keys", "host"), PublicURL: "https://example.test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,3 +183,12 @@ type pullProvider struct {
 }
 
 func (p *pullProvider) Service() *hosting.Service { p.reads.Add(1); return p.host }
+
+func hgqlservePath(t testing.TB) string {
+	t.Helper()
+	p := os.Getenv("GOGS_TEST_HGQLSERVE")
+	if p == "" {
+		t.Skip("GOGS_TEST_HGQLSERVE is not set")
+	}
+	return p
+}

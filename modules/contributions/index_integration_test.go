@@ -36,7 +36,7 @@ func TestContributionVisibleHistoryNative(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	host, err := hosting.New(ctx, hosting.Config{Mercurial: hg.Config{Executable: exe, ConfigPath: filepath.Join(root, "config", "hgrc"), MaxProcesses: 2}, RepositoryRoot: filepath.Join(root, "repos"), HostKeyPath: filepath.Join(root, "hostkey"), PublicURL: "https://example.invalid"})
+	host, err := hosting.New(ctx, hosting.Config{Mercurial: hg.Config{Hgqlserve: hgqlservePath(t), Executable: exe, ConfigPath: filepath.Join(root, "config", "hgrc"), MaxProcesses: 2}, RepositoryRoot: filepath.Join(root, "repos"), HostKeyPath: filepath.Join(root, "hostkey"), PublicURL: "https://example.invalid"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,4 +139,13 @@ func TestContributionVisibleHistoryNative(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("106 visible nodes, all named heads and merge, secret exclusion, 100-entry page cap, concurrent snapshot/dirty replay and fork dedup in %s", time.Since(started))
+}
+
+func hgqlservePath(t testing.TB) string {
+	t.Helper()
+	p := os.Getenv("GOGS_TEST_HGQLSERVE")
+	if p == "" {
+		t.Skip("GOGS_TEST_HGQLSERVE is not set")
+	}
+	return p
 }

@@ -44,6 +44,7 @@ type Service struct {
 	cfg            Config
 	runner         *hg.Runner
 	inspector      *hg.Runner
+	reads          *hg.ReadServer
 	hookExecutable string
 	controller     *hgbridge.Controller
 	http           *hgbridge.HTTPBridge
@@ -147,6 +148,34 @@ func New(ctx context.Context, cfg Config) (s *Service, err error) {
 	if err = s.runner.Check(ctx); err != nil {
 		return nil, err
 	}
+	artifacts := cfg.ReviewArtifactRoot
+	if artifacts == "" {
+		artifacts = cfg.RepositoryRoot
+	}
+	readRoot, err := hg.CommonRoot(cfg.RepositoryRoot, artifacts)
+	if err != nil {
+		return nil, err
+	}
+	// The service needs an existing, canonical root.
+	if err = os.MkdirAll(readRoot, 0700); err != nil {
+		return nil, err
+	}
+	if readRoot, err = filepath.EvalSymlinks(readRoot); err != nil {
+		return nil, err
+	}
+	client := hg.NewReadClient(readRoot)
+	reads, err := hg.StartReadServer(ctx, cfg.Mercurial.Hgqlserve, readRoot, filepath.Join(filepath.Dir(cfg.Mercurial.ConfigPath), "hgqlserve"), client)
+	if err != nil {
+		return nil, err
+	}
+	s.reads = reads
+	defer func() {
+		if err != nil {
+			reads.Stop(context.Background())
+		}
+	}()
+	s.runner.SetReads(client)
+	s.inspector.SetReads(client)
 	if err = s.reconcileRevokedPublicationsAtStartup(ctx); err != nil {
 		return nil, err
 	}
@@ -279,7 +308,7 @@ func (s *Service) Shutdown(ctx context.Context) error {
 		case <-cleanupCtx.Done():
 			err = errors.Join(err, cleanupCtx.Err())
 		}
-		s.shutdownErr = errors.Join(err, sshErr, s.controller.Close(cleanupCtx))
+		s.shutdownErr = errors.Join(err, sshErr, s.controller.Close(cleanupCtx), s.reads.Stop(cleanupCtx))
 	})
 	return s.shutdownErr
 }

@@ -109,6 +109,10 @@ func fixture(t *testing.T) (*Service, *models.User, *models.Repository) {
 }
 func fixtureConfig(t *testing.T, configure func(*Config)) (*Service, *models.User, *models.Repository) {
 	t.Helper()
+	hgqlserve := os.Getenv("GOGS_TEST_HGQLSERVE")
+	if hgqlserve == "" {
+		t.Skip("GOGS_TEST_HGQLSERVE is not set")
+	}
 	root := t.TempDir()
 	oldDb, oldLog, oldRequire := models.DbCfg, setting.LogRootPath, setting.Service.RequireSignInView
 	models.DbCfg.Type = "sqlite3"
@@ -129,7 +133,7 @@ func fixtureConfig(t *testing.T, configure func(*Config)) (*Service, *models.Use
 		t.Fatal(err)
 	}
 	exe, _ := os.Executable()
-	cfg := Config{Mercurial: hg.Config{Executable: exe, ConfigPath: filepath.Join(root, "config", "hgrc")}, RepositoryRoot: filepath.Join(root, "repos"), HostKeyPath: filepath.Join(root, "keys", "host"), PublicURL: "https://example.test"}
+	cfg := Config{Mercurial: hg.Config{Executable: exe, Hgqlserve: hgqlserve, ConfigPath: filepath.Join(root, "config", "hgrc")}, RepositoryRoot: filepath.Join(root, "repos"), HostKeyPath: filepath.Join(root, "keys", "host"), PublicURL: "https://example.test"}
 	if configure != nil {
 		configure(&cfg)
 	}

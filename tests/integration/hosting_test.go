@@ -220,6 +220,7 @@ PROVIDER = memory
 MODE = console
 ROOT_PATH = %s
 `, runUser, httpPort, httpPort, filepath.ToSlash(assets), filepath.ToSlash(certPath), filepath.ToSlash(keyPath), a.sshAddress, sshPort, filepath.ToSlash(filepath.Join(a.root, "hostkey")), models.DbCfg.Path, filepath.ToSlash(a.repoRoot), filepath.ToSlash(v.server), filepath.ToSlash(filepath.Join(a.root, "managed", "hgrc")), filepath.ToSlash(filepath.Join(a.root, "log")))
+	config = strings.Replace(config, "[mercurial]", "[mercurial]\nHGQLSERVE = "+filepath.ToSlash(hgqlservePath(t)), 1)
 	if a.direct {
 		config = strings.Replace(config, "PROVIDER = memory", "PROVIDER = file\nPROVIDER_CONFIG = "+filepath.ToSlash(filepath.Join(a.root, "sessions")), 1)
 	}

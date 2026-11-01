@@ -109,6 +109,7 @@ var (
 	// Mercurial settings.
 	Mercurial struct {
 		Executable             string
+		Hgqlserve              string
 		ReviewArtifactRoot     string
 		ReviewOperationTimeout time.Duration
 		ConfigPath             string
@@ -344,6 +345,12 @@ func InitRuntimeConfig() {
 	if !filepath.IsAbs(Mercurial.Executable) {
 		if resolved, err := exec.LookPath(Mercurial.Executable); err == nil {
 			Mercurial.Executable = resolved
+		}
+	}
+	Mercurial.Hgqlserve = sec.Key("HGQLSERVE").MustString("hgqlserve")
+	if !filepath.IsAbs(Mercurial.Hgqlserve) {
+		if resolved, err := exec.LookPath(Mercurial.Hgqlserve); err == nil {
+			Mercurial.Hgqlserve = resolved
 		}
 	}
 	Mercurial.ConfigPath = sec.Key("CONFIG_PATH").MustString(filepath.Join(workDir, "data", "hg", "hgrc"))

@@ -17,6 +17,8 @@ type Config struct {
 	// ConfigPath is the absolute path of the managed hgrc, used as the sole
 	// HGRCPATH entry. The runner rewrites it at startup.
 	ConfigPath string
+	// Hgqlserve is the absolute path of the hgqlserve read service binary.
+	Hgqlserve string
 	// MaxProcesses bounds concurrently running hg processes started by the
 	// runner. Zero means DefaultMaxProcesses.
 	MaxProcesses int

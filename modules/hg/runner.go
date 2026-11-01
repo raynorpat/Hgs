@@ -50,6 +50,7 @@ type Runner struct {
 	cfg                          Config
 	slots                        chan struct{}
 	publicationIsolationVerified atomic.Bool
+	reads                        *ReadClient
 
 	// Tests shorten these; production uses the package constants.
 	queueTimeout, idleTimeout time.Duration
@@ -102,6 +103,15 @@ func NewRunner(cfg Config) (*Runner, error) {
 		queueTimeout: QueueTimeout,
 		idleTimeout:  cfg.IdleTimeout,
 	}, nil
+}
+
+// SetReads sets the client that serves this runner's repository reads.
+func (r *Runner) SetReads(c *ReadClient) { r.reads = c }
+
+// Release drops the repository at path from the read service, so the
+// directory can be removed or renamed.
+func (r *Runner) Release(ctx context.Context, path string) error {
+	return r.reads.Close(ctx, path)
 }
 
 // Check verifies the executable is a supported Mercurial with the features

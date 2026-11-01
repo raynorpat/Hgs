@@ -39,6 +39,10 @@ func newViewAppHg(t *testing.T, executable string) *viewApp {
 }
 func newViewAppPrefix(t *testing.T, executable, subURL string) *viewApp {
 	t.Helper()
+	hgqlserve := os.Getenv("GOGS_TEST_HGQLSERVE")
+	if hgqlserve == "" {
+		t.Skip("GOGS_TEST_HGQLSERVE is not set")
+	}
 	root := t.TempDir()
 	source, _ := filepath.Abs("..")
 	oldDB, oldHas := models.DbCfg, models.HasEngine
@@ -78,6 +82,7 @@ func newViewAppPrefix(t *testing.T, executable, subURL string) *viewApp {
 		executable, _ = os.Executable()
 	}
 	setting.Mercurial.Executable = executable
+	setting.Mercurial.Hgqlserve = hgqlserve
 	setting.Mercurial.ConfigPath = filepath.Join(root, "config", "hgrc")
 	setting.Mercurial.ReviewArtifactRoot = filepath.Join(root, "comparisons")
 	setting.Mercurial.MaxProcesses = 2

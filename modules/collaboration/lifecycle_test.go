@@ -83,7 +83,7 @@ func TestCollaborationLifecycleRecovery(t *testing.T) {
 	if err := models.NewEngine(); err != nil {
 		t.Fatal(err)
 	}
-	f.host, err = hosting.New(f.ctx, hosting.Config{Mercurial: hg.Config{Executable: os.Getenv("GOGS_TEST_HG"), ConfigPath: filepath.Join(f.root, "config", "hgrc"), MaxProcesses: 1}, RepositoryRoot: filepath.Join(f.root, "repos"), ReviewArtifactRoot: f.artifacts, HostKeyPath: filepath.Join(f.root, "keys", "host"), PublicURL: "https://example.test", RepositoryCleanup: RepositoryCleanup(filepath.Join(f.root, "repos"), f.artifacts)})
+	f.host, err = hosting.New(f.ctx, hosting.Config{Mercurial: hg.Config{Hgqlserve: hgqlservePath(t), Executable: os.Getenv("GOGS_TEST_HG"), ConfigPath: filepath.Join(f.root, "config", "hgrc"), MaxProcesses: 1}, RepositoryRoot: filepath.Join(f.root, "repos"), ReviewArtifactRoot: f.artifacts, HostKeyPath: filepath.Join(f.root, "keys", "host"), PublicURL: "https://example.test", RepositoryCleanup: RepositoryCleanup(filepath.Join(f.root, "repos"), f.artifacts)})
 	if err != nil {
 		t.Fatal(err)
 	}

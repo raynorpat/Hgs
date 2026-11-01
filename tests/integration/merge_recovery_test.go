@@ -35,7 +35,7 @@ func TestPullMergeTransportWriterAndProcessRestart(t *testing.T) {
 			if err := os.WriteFile(a.config, config, 0600); err != nil {
 				t.Fatal(err)
 			}
-			host, err := hosting.New(ctx, hosting.Config{Mercurial: hg.Config{Executable: hgPath(t), ConfigPath: filepath.Join(a.root, "preparation", "hgrc"), MaxProcesses: 1}, RepositoryRoot: a.repoRoot, ReviewArtifactRoot: artifacts, HostKeyPath: filepath.Join(a.root, "preparation-key"), PublicURL: "https://example.test"})
+			host, err := hosting.New(ctx, hosting.Config{Mercurial: hg.Config{Hgqlserve: hgqlservePath(t), Executable: hgPath(t), ConfigPath: filepath.Join(a.root, "preparation", "hgrc"), MaxProcesses: 1}, RepositoryRoot: a.repoRoot, ReviewArtifactRoot: artifacts, HostKeyPath: filepath.Join(a.root, "preparation-key"), PublicURL: "https://example.test"})
 			if err != nil {
 				t.Fatal(err)
 			}

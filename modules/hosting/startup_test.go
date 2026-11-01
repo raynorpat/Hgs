@@ -51,6 +51,10 @@ func TestHostingReservedName(t *testing.T) {
 }
 
 func TestHostingRejectsMissingUnsupportedMercurial(t *testing.T) {
+	// It reaches the database, which only the fixture-based tests set up.
+	if os.Getenv("GOGS_TEST_HGQLSERVE") == "" {
+		t.Skip("GOGS_TEST_HGQLSERVE is not set")
+	}
 	root := t.TempDir()
 	cfg := Config{PublicURL: "https://example.test", RepositoryRoot: filepath.Join(root, "repos"), HostKeyPath: filepath.Join(root, "host"), Mercurial: hg.Config{Executable: filepath.Join(root, "missing"), ConfigPath: filepath.Join(root, "hgrc")}}
 	if _, err := New(context.Background(), cfg); err == nil {
