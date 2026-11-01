@@ -154,7 +154,7 @@ func New(ctx context.Context, cfg Config) (s *Service, err error) {
 	}
 	readRoot, err := hg.CommonRoot(cfg.RepositoryRoot, artifacts)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("hosting: repository root %q and REVIEW_ARTIFACT_ROOT %q must share a parent directory below the filesystem root; move one store so they do: %w", cfg.RepositoryRoot, artifacts, err)
 	}
 	// The service needs an existing, canonical root.
 	if err = os.MkdirAll(readRoot, 0700); err != nil {

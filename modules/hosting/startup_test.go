@@ -2,6 +2,7 @@ package hosting
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,6 +51,16 @@ func TestHostingReservedName(t *testing.T) {
 	}
 }
 
+func TestHostingRejectsStoresWithoutCommonRoot(t *testing.T) {
+	s, _, _ := fixture(t)
+	cfg := s.cfg
+	vol := filepath.VolumeName(cfg.RepositoryRoot) + string(filepath.Separator)
+	cfg.RepositoryRoot, cfg.ReviewArtifactRoot = filepath.Join(vol, "gogs-repos"), filepath.Join(vol, "gogs-comparisons")
+	_, err := New(context.Background(), cfg)
+	if !errors.Is(err, hg.ErrNoCommonRoot) || !strings.Contains(err.Error(), "REVIEW_ARTIFACT_ROOT") || !strings.Contains(err.Error(), "move one store") || !strings.Contains(err.Error(), "gogs-repos") || !strings.Contains(err.Error(), "gogs-comparisons") {
+		t.Fatalf("got %v", err)
+	}
+}
 func TestHostingRejectsMissingUnsupportedMercurial(t *testing.T) {
 	// It reaches the database, which only the fixture-based tests set up.
 	if os.Getenv("GOGS_TEST_HGQLSERVE") == "" {

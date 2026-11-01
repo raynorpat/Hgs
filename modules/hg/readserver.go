@@ -140,6 +140,7 @@ func (s *ReadServer) launch(ctx context.Context) (*Child, error) {
 	fail := func(err error) (*Child, error) {
 		c.kill(ErrStopped)
 		<-c.done
+		s.client.SetEndpoint("", "")
 		c.Stdout.Close()
 		c.Stderr.Close()
 		return nil, err
@@ -197,6 +198,8 @@ func (s *ReadServer) supervise() {
 		s.mu.Unlock()
 		started := c.started
 		<-c.done
+		// A dead child's port may be reused by another listener.
+		s.client.SetEndpoint("", "")
 		for {
 			select {
 			case <-s.stop:
@@ -260,6 +263,7 @@ func (s *ReadServer) Stop(ctx context.Context) error {
 		return ctx.Err()
 	}
 	<-c.done
+	s.client.SetEndpoint("", "")
 	c.Stdout.Close()
 	c.Stderr.Close()
 	return nil
