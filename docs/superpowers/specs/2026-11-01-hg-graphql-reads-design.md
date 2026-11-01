@@ -87,9 +87,10 @@ Reads inside write flows run on stores those flows are building, so they move wi
 
 An open repository's memory-mapped files block delete and rename on Windows. `POST /close` runs before:
 
-- `DeleteHgRepository` and the staging renames in `models/repo_lifecycle.go`
-- the rename in `models/repo_fork_provision.go`
+- repository deletion, through the existing `DrainRepository` hook, which runs before `DeleteHgRepository` touches storage
 - removal of comparison and prepared-merge artifacts
+
+Fork and provisioning staging renames need no `/close`, because the service never opened those stores.
 
 A failed `/close` stops the operation, so it cannot half-finish on a locked repository. If the service is down, no repository is held open by it, so the client treats a refused connection as released.
 
