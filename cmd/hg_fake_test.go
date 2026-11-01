@@ -48,8 +48,6 @@ func fakeViewHg(args []string) int {
 		fmt.Print(`"pretxnopen" "pretxnclose" "pretxnclose-bookmark" "pretxnclose-phase" "prepushkey"`)
 	case "init":
 		return boolExit(os.MkdirAll(filepath.Join(args[1], ".hg"), 0700))
-	case "branches":
-		fmt.Print(read("refs"))
 	case "manifest":
 		if read("tree-index-overlap") != "" {
 			os.WriteFile(filepath.Join(root, "tree-entered"), []byte("1"), 0600)
@@ -87,9 +85,6 @@ func fakeViewHg(args []string) int {
 		switch {
 		case strings.Contains(all, "-r null"):
 			fmt.Printf(`[{"node":%q}]`, strings.Repeat("0", 40))
-		case strings.Contains(all, "bookmark() or tag()"):
-		case strings.Contains(all, "{node}"):
-			fmt.Print(viewNode)
 		default:
 			if strings.Contains(all, "sort(") && read("history") != "" {
 				fmt.Print(read("history"))

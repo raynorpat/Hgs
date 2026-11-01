@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,12 +36,6 @@ func TestMain(m *testing.M) {
 			os.Exit(3)
 		}
 		switch args[0] {
-		case "branches":
-			fmt.Print(read("heads"))
-		case "log":
-			if args[len(args)-1] == "{node}" {
-				fmt.Print(testNode)
-			}
 		case "manifest":
 			fmt.Print(read("manifest"))
 		case "cat":
@@ -63,11 +59,29 @@ func fixture(t *testing.T, manifest, body string) (*ReadmeService, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range map[string]string{"heads": fmt.Sprintf(`{"rev":1,"node":%q,"branch":"default","head":"1"}`, testNode), "manifest": manifest, "content": body} {
+	for name, data := range map[string]string{"manifest": manifest, "content": body} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
+	// References and the served check come from a fake read service; a "fail"
+	// fixture naming "branches" makes it fail.
+	service := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if b, _ := os.ReadFile(filepath.Join(dir, "fail")); string(b) == "branches" {
+			fmt.Fprint(w, `{"errors":[{"message":"fake","extensions":{"code":"INTERNAL"}}]}`)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		if strings.Contains(string(body), `"operationName":"Served"`) {
+			fmt.Fprintf(w, `{"data":{"repo":{"changeset":{"id":%q}}}}`, testNode)
+			return
+		}
+		fmt.Fprintf(w, `{"data":{"repo":{"refs":[{"kind":"BRANCH","name":"default","nameBase64":"ZGVmYXVsdA==","node":%q,"revision":1,"closed":false}]}}}`, testNode)
+	}))
+	t.Cleanup(service.Close)
+	reads := hg.NewReadClient(dir)
+	reads.SetEndpoint(strings.TrimPrefix(service.URL, "http://"), "")
+	runner.SetReads(reads)
 	repo := filepath.Join(dir, "repo")
 	if err := os.MkdirAll(filepath.Join(repo, ".hg"), 0700); err != nil {
 		t.Fatal(err)

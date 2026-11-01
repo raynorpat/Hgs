@@ -3,6 +3,7 @@ package hg
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +29,7 @@ func TestHistoryRejectsInvalidCursor(t *testing.T) {
 
 func TestHistoryStartsAtExplicitSnapshot(t *testing.T) {
 	r, repo := newBrowseRunner(t, "")
+	useFakeReads(t, r, filepath.Dir(repo), map[string]string{"Changeset": fakeChangesetData(baseNode)})
 	writeFakeFixture(t, r, "fake-log", `{"node":"`+string(baseNode)+`","rev":0,"p1node":"`+strings.Repeat("0", 40)+`","p2node":"`+strings.Repeat("0", 40)+`","author":"t","desc":"root","branch":"default","date":[0,0]}`+"\n")
 	page, err := r.History(context.Background(), repo, HistoryQuery{Snapshot: baseNode, SnapshotRevision: 0, BeforeRevision: -1})
 	if err != nil || len(page.Entries) != 1 || page.Entries[0].Node != baseNode {

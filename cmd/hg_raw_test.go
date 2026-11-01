@@ -116,7 +116,7 @@ func (w *viewBlockedHTML) Write(p []byte) (int, error) {
 func TestMercurialViewReleasesBeforeBlockedErrorPage(t *testing.T) {
 	a := newViewApp(t)
 	a.populate(t, 1)
-	a.fixture(t, "changeset", "invalid changeset output\n")
+	a.reads.set(map[string]string{"Changeset": "invalid changeset output\n"})
 	w := &viewBlockedHTML{header: http.Header{}, ready: make(chan struct{}), unblock: make(chan struct{})}
 	done := make(chan struct{})
 	go func() {

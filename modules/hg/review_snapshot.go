@@ -83,14 +83,10 @@ func (r *Runner) reviewCapability(ctx context.Context) error {
 }
 
 func (r *Runner) reviewReferences(ctx context.Context, path string) ([]Reference, error) {
-	var out bytes.Buffer
-	if err := r.reviewRun(ctx, path, []string{"branches", "--closed", "-T", branchHeadsTemplate}, &out); err != nil {
+	if err := reviewPath(path); err != nil {
 		return nil, err
 	}
-	if err := r.reviewRun(ctx, path, []string{"log", "-r", referencesRevset, "-T", referencesTemplate}, &out); err != nil {
-		return nil, err
-	}
-	return parseReferences(out.Bytes())
+	return r.readRefs(ctx, path)
 }
 
 func (r *Runner) ResolveReview(ctx context.Context, path string, selection ReviewSelection) (ReviewEndpoint, error) {
@@ -158,21 +154,10 @@ func (r *Runner) reviewChangeset(ctx context.Context, path string, node NodeID) 
 	if _, err := ParseNodeID(string(node)); err != nil {
 		return Changeset{}, err
 	}
-	var out bytes.Buffer
-	if err := r.reviewRun(ctx, path, []string{"log", "-r", nodeRevset(node), "-T", changesetTemplate}, &out); err != nil {
+	if err := reviewPath(path); err != nil {
 		return Changeset{}, err
 	}
-	entries, err := parseChangesets(out.Bytes())
-	if err != nil {
-		return Changeset{}, err
-	}
-	if len(entries) == 0 {
-		return Changeset{}, ErrNotFound
-	}
-	if len(entries) != 1 || entries[0].Node != node {
-		return Changeset{}, errors.New("hg: unexpected review changeset result")
-	}
-	return entries[0], nil
+	return r.readChangeset(ctx, path, node)
 }
 
 type reviewMetadata struct {
@@ -413,6 +398,9 @@ func (r *Runner) CloneVisible(ctx context.Context, sourcePath, outputPath string
 			_ = os.RemoveAll(outputPath)
 		}
 	}()
+	// The reads below open outputPath in the service; release it before the
+	// caller renames it or the cleanup above removes it.
+	defer func() { _ = r.Release(ctx, outputPath) }()
 	if err := r.reviewRun(ctx, "", []string{"clone", "--pull", "-U", "--", sourcePath, outputPath}, nil); err != nil {
 		return err
 	}

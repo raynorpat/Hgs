@@ -38,7 +38,7 @@ func (r *Runner) ReviewPublicationState(ctx context.Context, q PublishReviewRequ
 	if _, err := ParseNodeID(string(p.Result)); err != nil {
 		return false, false, err
 	}
-	cs, e := r.reviewChangeset(ctx, q.TargetPath, p.Result)
+	cs, e := r.publicationChangeset(ctx, q.TargetPath, p.Result)
 	// Only a successful, empty native result query proves absence. Inspection
 	// failures must keep the target quarantined during terminal reconciliation.
 	if e != nil && !errors.Is(e, ErrNotFound) {
@@ -84,6 +84,27 @@ func (r *Runner) ReviewPublicationState(ctx context.Context, q PublishReviewRequ
 		return imported, false, ErrNotFound
 	}
 	return imported, false, nil
+}
+
+// publicationChangeset reads the publication target with Mercurial itself:
+// the hook callbacks that inspect publication state run inside the
+// publication's own transaction on that store.
+func (r *Runner) publicationChangeset(ctx context.Context, path string, node NodeID) (Changeset, error) {
+	var out bytes.Buffer
+	if err := r.reviewRun(ctx, path, []string{"log", "-r", nodeRevset(node), "-T", changesetTemplate}, &out); err != nil {
+		return Changeset{}, err
+	}
+	entries, err := parseChangesets(out.Bytes())
+	if err != nil {
+		return Changeset{}, err
+	}
+	if len(entries) == 0 {
+		return Changeset{}, ErrNotFound
+	}
+	if len(entries) != 1 || entries[0].Node != node {
+		return Changeset{}, errors.New("hg: unexpected review changeset result")
+	}
+	return entries[0], nil
 }
 
 // PublishReview consists of two native transactions under the hosting service's

@@ -109,7 +109,8 @@ func fakeCalls(t *testing.T, r *Runner) [][]string {
 
 func TestLandingSelectsOpenDefaultHead(t *testing.T) {
 	ctx := context.Background()
-	r, repo := newBrowseRunner(t, "browse-refs.jsonl")
+	r, repo := newBrowseRunner(t, "")
+	fake := useFakeReads(t, r, filepath.Dir(repo), map[string]string{"Refs": fakeRefsData(t, parseGoldenReferences(t, "browse-refs.jsonl"))})
 	selected, err := r.Landing(ctx, repo)
 	if err != nil {
 		t.Fatal(err)
@@ -118,17 +119,18 @@ func TestLandingSelectsOpenDefaultHead(t *testing.T) {
 	if selected != newerDefaultNode {
 		t.Errorf("landing %s; want the newer open default head %s", selected, newerDefaultNode)
 	}
-	if calls := fakeCalls(t, r); len(calls) != 2 {
-		t.Errorf("landing ran %d Mercurial commands; want 2", len(calls))
+	if calls := fake.requests(); len(calls) != 1 {
+		t.Errorf("landing ran %d service queries; want 1", len(calls))
 	}
 
-	r, repo = newBrowseRunner(t, "browse-refs-closed.jsonl")
+	r, repo = newBrowseRunner(t, "")
+	useFakeReads(t, r, filepath.Dir(repo), map[string]string{"Refs": fakeRefsData(t, parseGoldenReferences(t, "browse-refs-closed.jsonl"))})
 	if n, err := r.Landing(ctx, repo); err != nil || n != closedTipNode {
 		t.Errorf("all-closed landing %s, %v; want tip %s", n, err, closedTipNode)
 	}
 
 	r, repo = newBrowseRunner(t, "")
-	writeFakeFixture(t, r, "fake-log", "")
+	useFakeReads(t, r, filepath.Dir(repo), map[string]string{"Refs": fakeRefsData(t, nil)})
 	if _, err := r.Landing(ctx, repo); !errors.Is(err, ErrEmptyRepository) {
 		t.Errorf("empty landing: %v", err)
 	}
@@ -139,7 +141,8 @@ func TestLandingSelectsOpenDefaultHead(t *testing.T) {
 
 func TestReferencesRemainDistinct(t *testing.T) {
 	ctx := context.Background()
-	r, repo := newBrowseRunner(t, "browse-refs.jsonl")
+	r, repo := newBrowseRunner(t, "")
+	useFakeReads(t, r, filepath.Dir(repo), map[string]string{"Refs": fakeRefsData(t, parseGoldenReferences(t, "browse-refs.jsonl"))})
 	refs, err := r.References(ctx, repo)
 	if err != nil {
 		t.Fatal(err)
@@ -226,7 +229,11 @@ func TestReferencesMergeHeadAndNamedReferences(t *testing.T) {
 
 func TestLiteralReferenceCannotInjectRevset(t *testing.T) {
 	ctx := context.Background()
-	r, repo := newBrowseRunner(t, "browse-refs.jsonl")
+	r, repo := newBrowseRunner(t, "")
+	fake := useFakeReads(t, r, filepath.Dir(repo), map[string]string{
+		"Refs":   fakeRefsData(t, parseGoldenReferences(t, "browse-refs.jsonl")),
+		"Served": fakeError("NOT_FOUND"),
+	})
 	if n, err := r.Resolve(ctx, repo, RefSelection{RefBookmark, hostileName}); err != nil || n != featureOpenNode {
 		t.Errorf("hostile bookmark resolved to %s, %v", n, err)
 	}
@@ -235,32 +242,29 @@ func TestLiteralReferenceCannotInjectRevset(t *testing.T) {
 			t.Errorf("bookmark %q resolved to %s, %v; want ErrNotFound", name, n, err)
 		}
 	}
-	// Node selections are validated before Mercurial sees them.
-	for _, name := range []string{hostileName, "tip", "0", string(newerDefaultNode)[:12], strings.Repeat("0", 40), strings.Repeat("f", 40), string(newerDefaultNode) + ")"} {
+	// Node selections are validated before the service sees them.
+	before := len(fake.requests())
+	for _, name := range []string{hostileName, "tip", "0", string(newerDefaultNode)[:12], string(newerDefaultNode) + ")"} {
 		if n, err := r.Resolve(ctx, repo, RefSelection{RefNode, name}); !errors.Is(err, ErrNotFound) {
 			t.Errorf("node %q resolved to %s, %v; want ErrNotFound", name, n, err)
 		}
 	}
-	for _, call := range fakeCalls(t, r) {
-		for _, arg := range call {
-			if strings.Contains(arg, "all()") || strings.Contains(arg, "same") {
-				t.Errorf("a reference name reached Mercurial: %q", call)
-			}
+	if after := len(fake.requests()); after != before {
+		t.Errorf("an invalid node reached the service: %v", fake.requests()[before:])
+	}
+	// A valid node the service does not serve is not found either.
+	for _, name := range []string{strings.Repeat("0", 40), strings.Repeat("f", 40)} {
+		if n, err := r.Resolve(ctx, repo, RefSelection{RefNode, name}); !errors.Is(err, ErrNotFound) {
+			t.Errorf("node %q resolved to %s, %v; want ErrNotFound", name, n, err)
 		}
 	}
 
-	writeFakeFixture(t, r, "fake-visible", string(newerDefaultNode))
+	useFakeReads(t, r, filepath.Dir(repo), map[string]string{"Served": fakeServedData(newerDefaultNode)})
+	fake = useFakeReads(t, r, filepath.Dir(repo), map[string]string{"Served": fakeServedData(newerDefaultNode)})
 	if n, err := r.Resolve(ctx, repo, RefSelection{RefNode, strings.ToUpper(string(newerDefaultNode))}); err != nil || n != newerDefaultNode {
 		t.Errorf("node selection resolved to %s, %v", n, err)
 	}
-	calls := fakeCalls(t, r)
-	want := []string{"-R", repo, "log", "-r", "id(" + string(newerDefaultNode) + ") and not secret()", "-T", "{node}"}
-	if last := calls[len(calls)-1]; strings.Join(last, "\x00") != strings.Join(want, "\x00") {
-		t.Errorf("node lookup ran %q; want %q", last, want)
-	}
-	// Unknown or secret nodes print nothing.
-	writeFakeFixture(t, r, "fake-visible", "")
-	if n, err := r.Resolve(ctx, repo, RefSelection{RefNode, string(newerDefaultNode)}); !errors.Is(err, ErrNotFound) {
-		t.Errorf("invisible node resolved to %s, %v", n, err)
+	if reqs := fake.requests(); len(reqs) != 1 || !strings.Contains(reqs[0], `"operationName":"Served"`) || !strings.Contains(reqs[0], `"id":"`+string(newerDefaultNode)+`"`) {
+		t.Errorf("node lookup sent %q", reqs)
 	}
 }

@@ -54,6 +54,52 @@ type HistoryPage struct {
 
 const changesetTemplate = `{dict(node, rev, p1node, p2node, author, desc, branch, date)|json}\n`
 
+// changesetSelection is the service's fields for a Changeset.
+const changesetSelection = `id revision branch user comments time { time } parents { id }`
+
+type gqlChangeset struct {
+	ID, Branch, User, Comments string
+	Revision                   int64
+	Time                       struct{ Time int64 }
+	Parents                    []struct{ ID string }
+}
+
+func (g gqlChangeset) changeset() (Changeset, error) {
+	node, err := ParseNodeID(g.ID)
+	if err != nil || g.Revision < 0 {
+		return Changeset{}, errors.New("hg: invalid changeset metadata")
+	}
+	cs := Changeset{Node: node, Revision: g.Revision, User: g.User, Message: g.Comments, Branch: g.Branch, Date: time.Unix(g.Time.Time, 0).UTC(), Parents: []NodeID{}}
+	for _, p := range g.Parents {
+		parent, err := ParseNodeID(p.ID)
+		if err != nil {
+			return Changeset{}, errors.New("hg: invalid changeset parent")
+		}
+		cs.Parents = append(cs.Parents, parent)
+	}
+	return cs, nil
+}
+
+// readChangeset reads one changeset from the service; hidden and secret
+// changesets are ErrNotFound.
+func (r *Runner) readChangeset(ctx context.Context, path string, node NodeID) (Changeset, error) {
+	var out struct {
+		Repo struct{ Changeset gqlChangeset }
+	}
+	err := r.readQuery(ctx, path, "Changeset", `query Changeset($repo: String!, $id: NodeId!) { repo(path: $repo) { changeset(id: $id) { `+changesetSelection+` } } }`, map[string]interface{}{"id": string(node)}, &out)
+	if err != nil {
+		return Changeset{}, err
+	}
+	cs, err := out.Repo.Changeset.changeset()
+	if err != nil {
+		return Changeset{}, err
+	}
+	if cs.Node != node {
+		return Changeset{}, fmt.Errorf("%w: answered for changeset %s", ErrReadService, cs.Node)
+	}
+	return cs, nil
+}
+
 // Changeset reads Mercurial's author, date and ordered parents without
 // inventing committer metadata. Hidden and secret changesets are not served.
 func (r *Runner) Changeset(ctx context.Context, path string, node NodeID) (Changeset, error) {
@@ -63,14 +109,7 @@ func (r *Runner) Changeset(ctx context.Context, path string, node NodeID) (Chang
 	}
 	ctx, cancel := context.WithTimeout(ctx, BrowserCommandTimeout)
 	defer cancel()
-	entries, err := r.readChangesets(ctx, path, []string{"log", "-r", nodeRevset(node), "-T", changesetTemplate})
-	if err != nil {
-		return Changeset{}, err
-	}
-	if len(entries) != 1 || entries[0].Node != node {
-		return Changeset{}, ErrNotFound
-	}
-	return entries[0], nil
+	return r.readChangeset(ctx, path, node)
 }
 
 func (r *Runner) readChangesets(ctx context.Context, path string, args []string) ([]Changeset, error) {

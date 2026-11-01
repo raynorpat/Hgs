@@ -108,9 +108,29 @@ func NewRunner(cfg Config) (*Runner, error) {
 // SetReads sets the client that serves this runner's repository reads.
 func (r *Runner) SetReads(c *ReadClient) { r.reads = c }
 
+// readQuery runs a read-service operation against the repository at path.
+// The query declares $repo; vars supplies the rest.
+func (r *Runner) readQuery(ctx context.Context, path, operation, query string, vars map[string]interface{}, out interface{}) error {
+	if r.reads == nil {
+		return fmt.Errorf("%w: no read client", ErrReadService)
+	}
+	rel, err := r.reads.relative(path)
+	if err != nil {
+		return err
+	}
+	all := map[string]interface{}{"repo": rel}
+	for k, v := range vars {
+		all[k] = v
+	}
+	return r.reads.Query(ctx, operation, query, all, out)
+}
+
 // Release drops the repository at path from the read service, so the
 // directory can be removed or renamed.
 func (r *Runner) Release(ctx context.Context, path string) error {
+	if r.reads == nil {
+		return nil
+	}
 	return r.reads.Close(ctx, path)
 }
 

@@ -27,11 +27,15 @@ type reviewFixture struct {
 
 func newReviewFixture(t *testing.T) *reviewFixture {
 	t.Helper()
-	root := t.TempDir()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	r, err := NewRunner(Config{Executable: os.Getenv("GOGS_TEST_HG"), ConfigPath: filepath.Join(root, "managed", "hgrc")})
 	if err != nil {
 		t.Fatal(err)
 	}
+	startReads(t, r, root)
 	f := &reviewFixture{t: t, r: r, root: root, work: filepath.Join(root, "work"), ctx: context.Background(), nodes: map[string]NodeID{}}
 	f.hg("", "init", f.work)
 	f.write("a", "base\n")

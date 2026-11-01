@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/gogits/gogs/models"
+	"github.com/gogits/gogs/modules/hg"
 	"github.com/gogits/gogs/modules/setting"
 )
 
@@ -31,6 +32,7 @@ type viewApp struct {
 	root, config string
 	alice, bob   *models.User
 	repo         *models.Repository
+	reads        *readFake
 }
 
 func newViewApp(t *testing.T) *viewApp { return newViewAppHg(t, "") }
@@ -78,7 +80,8 @@ func newViewAppPrefix(t *testing.T, executable, subURL string) *viewApp {
 	setting.Service.RequireSignInView = false
 	setting.Service.EnableNotifyMail = false
 	setting.Service.EnableReverseProxyAuth = false
-	if executable == "" {
+	fakeHg := executable == ""
+	if fakeHg {
 		executable, _ = os.Executable()
 	}
 	setting.Mercurial.Executable = executable
@@ -111,6 +114,12 @@ func newViewAppPrefix(t *testing.T, executable, subURL string) *viewApp {
 		}
 	})
 	s := a.holder.Service()
+	if fakeHg {
+		// Reads of changesets and references go to a fake read service.
+		client, fake := newFakeReadAPI(t, map[string]string{"Refs": viewRefs(), "Changeset": readError("NOT_FOUND"), "Served": readError("NOT_FOUND")})
+		s.Runner().SetReads(client)
+		a.reads = fake
+	}
 	var err error
 	a.repo, err = models.CreateHgRepository(context.Background(), s.Runner(), s.RepositoryRoot(), models.CreateHgRepositoryOptions{OwnerID: a.alice.Id, Name: "project"})
 	if err != nil {
@@ -147,7 +156,17 @@ func (a *viewApp) arguments() []string {
 	return strings.Split(strings.TrimSpace(string(b)), "\n")
 }
 func (a *viewApp) populate(t *testing.T, n int) {
-	a.fixture(t, "refs", fmt.Sprintf(`{"rev":1,"node":%q,"branch":"default","head":"1","bookmarks":["default","slash/ref"],"tags":["default"]}`+"\n", viewNode))
+	// The refs fixture still makes the fake Mercurial answer history queries.
+	a.fixture(t, "refs", fmt.Sprintf(`{"rev":1,"node":%q,"branch":"default","head":"1"}`+"\n", viewNode))
+	a.reads.set(map[string]string{
+		"Refs": viewRefs(
+			hg.Reference{Kind: hg.RefBranch, Name: "default", Node: viewNode, Revision: 1},
+			hg.Reference{Kind: hg.RefBookmark, Name: "default", Node: viewNode, Revision: 1},
+			hg.Reference{Kind: hg.RefBookmark, Name: "slash/ref", Node: viewNode, Revision: 1},
+			hg.Reference{Kind: hg.RefTag, Name: "default", Node: viewNode, Revision: 1}),
+		"Changeset": viewChangeset(viewNode, 1, "<script>alert(1)</script>"),
+		"Served":    viewServed(viewNode),
+	})
 	var b strings.Builder
 	for i := 0; i < n; i++ {
 		fmt.Fprintf(&b, "644   f%03d.txt\n", i)
@@ -173,7 +192,7 @@ func TestTreeViewBoundedInvocations(t *testing.T) {
 		a.fixture(t, "tree-index-overlap", "1")
 		a.fixture(t, "tree-entered", "")
 		a.fixture(t, "index-finished", "")
-		before := len(a.arguments())
+		before, readsBefore := len(a.arguments()), a.reads.total()
 		if err := models.EnqueueContribution(context.Background(), "repository", a.repo.Id); err != nil {
 			t.Fatal(err)
 		}
@@ -185,13 +204,14 @@ func TestTreeViewBoundedInvocations(t *testing.T) {
 			case strings.HasPrefix(args, "log -r max(not secret()) "), strings.HasPrefix(args, "log -r sort(((0:1) and not secret()), -rev) -l 101 "):
 				background++
 				t.Logf("contribution worker: %s", args)
-			case strings.HasPrefix(args, "branches --closed "), strings.HasPrefix(args, "manifest "), strings.HasPrefix(args, "log -r sort((bookmark() or tag()) and not secret(), -rev) "), strings.HasPrefix(args, "log -r id("+viewNode+") and not secret() "):
+			case strings.HasPrefix(args, "manifest "):
 				foreground++
 				t.Logf("tree request: %s", args)
 			default:
 				t.Fatalf("unattributed command: %s", args)
 			}
 		}
+		foreground += a.reads.total() - readsBefore
 		t.Logf("tree %d latency %s foreground %d background %d", n, time.Since(start), foreground, background)
 		if w.Code != 200 || foreground > 5 || background < 2 || !strings.Contains(w.Body.String(), fmt.Sprintf("f%03d.txt", n-1)) {
 			t.Fatalf("tree %d status %d foreground %d background %d", n, w.Code, foreground, background)
@@ -201,8 +221,15 @@ func TestTreeViewBoundedInvocations(t *testing.T) {
 func TestMercurialViewSelection(t *testing.T) {
 	a := newViewApp(t)
 	a.populate(t, 1)
-	a.fixture(t, "refs", fmt.Sprintf(`{"rev":1,"node":%q,"branch":"default","head":"1"}`+"\n"+`{"rev":2,"node":%q,"branch":"default","head":"1","closed":"1","bookmarks":["default","slash/ref"]}`+"\n"+`{"rev":3,"node":%q,"branch":"another","head":"1","tags":["default"]}`+"\n", viewNode, viewNode2, strings.Repeat("c", 40)))
-	for kind, node := range map[string]string{"branch": viewNode, "bookmark": viewNode2, "tag": strings.Repeat("c", 40)} {
+	another := strings.Repeat("c", 40)
+	a.reads.set(map[string]string{"Refs": viewRefs(
+		hg.Reference{Kind: hg.RefBranch, Name: "another", Node: hg.NodeID(another), Revision: 3},
+		hg.Reference{Kind: hg.RefTag, Name: "default", Node: hg.NodeID(another), Revision: 3},
+		hg.Reference{Kind: hg.RefBranch, Name: "default", Node: viewNode2, Revision: 2, Closed: true},
+		hg.Reference{Kind: hg.RefBookmark, Name: "default", Node: viewNode2, Revision: 2},
+		hg.Reference{Kind: hg.RefBookmark, Name: "slash/ref", Node: viewNode2, Revision: 2},
+		hg.Reference{Kind: hg.RefBranch, Name: "default", Node: viewNode, Revision: 1})})
+	for kind, node := range map[string]string{"branch": viewNode, "bookmark": viewNode2, "tag": another} {
 		q := url.Values{"ref_kind": {kind}, "ref_name": {"default"}}
 		w := a.request(t, "GET", "/gogs/alice/project?"+q.Encode(), "", "")
 		if w.Code != 302 || w.Header().Get("Location") != "/gogs/alice/project/src/"+node {
@@ -361,8 +388,8 @@ func TestHomeListsReferencesOnce(t *testing.T) {
 	if w := a.request(t, "GET", "/gogs/alice/project", "", ""); w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	if n := a.commands("branches"); n != 1 {
-		t.Errorf("home ran branches %d times, want once", n)
+	if n := a.reads.count("Refs"); n != 1 {
+		t.Errorf("home listed references %d times, want once", n)
 	}
 }
 
@@ -373,7 +400,7 @@ func TestCommitPageLooksUpChangesetOnce(t *testing.T) {
 	if w := a.request(t, "GET", "/gogs/alice/project/commit/"+viewNode, "", ""); w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	if n := a.commands("log", "id("+viewNode+")"); n != 1 {
+	if n := a.reads.count("Changeset", "Served"); n != 1 {
 		t.Errorf("commit page looked the changeset up %d times, want once", n)
 	}
 }
@@ -601,6 +628,7 @@ func TestMercurialViewHistoryCursor(t *testing.T) {
 		return fmt.Sprintf(`{"node":%q,"rev":%d,"p1node":%q,"p2node":%q,"author":"t","desc":"revision %d","branch":"default","date":[1,0]}`+"\n", viewNode, rev, strings.Repeat("0", 40), strings.Repeat("0", 40), rev)
 	}
 	a.fixture(t, "changeset", changeset(31))
+	a.reads.set(map[string]string{"Changeset": viewChangeset(viewNode, 31, "revision 31")})
 	var history strings.Builder
 	for rev := 31; rev >= 0; rev-- {
 		history.WriteString(changeset(rev))

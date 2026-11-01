@@ -119,11 +119,15 @@ func newIntegrationRunner(t *testing.T) (*Runner, string) {
 	if exe == "" {
 		t.Fatal("GOGS_TEST_HG must name the Mercurial executable for integration tests")
 	}
-	root := t.TempDir()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	r, err := NewRunner(Config{Executable: exe, ConfigPath: filepath.Join(root, "managed", "hgrc")})
 	if err != nil {
 		t.Fatal(err)
 	}
+	startReads(t, r, root)
 	return r, root
 }
 

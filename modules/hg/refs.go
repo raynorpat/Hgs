@@ -7,10 +7,12 @@ package hg
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -30,19 +32,46 @@ const referencesRevset = "sort((bookmark() or tag()) and not secret(), -rev)"
 // form whatever HGENCODING is, so names arrive unchanged.
 const referencesTemplate = `{dict(rev, node, branch, bookmarks, tags)|json}\n`
 
+// readRefs lists every branch head (closed ones included), bookmark and tag,
+// newest revision first.
+func (r *Runner) readRefs(ctx context.Context, path string) ([]Reference, error) {
+	var out struct {
+		Repo struct {
+			Refs []struct {
+				Kind, NameBase64, Node string
+				Revision               int64
+				Closed                 bool
+			}
+		}
+	}
+	if err := r.readQuery(ctx, path, "Refs", `query Refs($repo: String!) { repo(path: $repo) { refs { kind name nameBase64 node revision closed } } }`, nil, &out); err != nil {
+		return nil, err
+	}
+	refs := []Reference{}
+	for _, g := range out.Repo.Refs {
+		name, err := base64.StdEncoding.DecodeString(g.NameBase64)
+		if err != nil {
+			return nil, fmt.Errorf("%w: reference name: %v", ErrReadService, err)
+		}
+		// Never turn a repository name into a different literal reference.
+		if !utf8.Valid(name) {
+			return nil, ErrUnsupportedEncoding
+		}
+		node, err := ParseNodeID(g.Node)
+		if err != nil || g.Revision < 0 {
+			return nil, fmt.Errorf("hg: unrecognized changeset %q in reference output", g.Node)
+		}
+		refs = append(refs, Reference{Kind: RefKind(strings.ToLower(g.Kind)), Name: string(name), Node: node, Revision: g.Revision, Closed: g.Closed})
+	}
+	return refs, nil
+}
+
 // References lists every branch head (closed ones included), bookmark and
-// tag, newest revision first, with two Mercurial commands.
+// tag, newest revision first.
 func (r *Runner) References(ctx context.Context, path string) ([]Reference, error) {
 	ctx, cancel := context.WithTimeout(ctx, BrowserCommandTimeout)
 	defer cancel()
-	var out bytes.Buffer
-	if err := r.Run(ctx, path, []string{"branches", "--closed", "-T", branchHeadsTemplate}, nil, &out); err != nil {
-		return nil, err
-	}
-	if err := r.Run(ctx, path, []string{"log", "-r", referencesRevset, "-T", referencesTemplate}, nil, &out); err != nil {
-		return nil, err
-	}
-	return parseReferences(out.Bytes())
+	return r.readRefs(ctx, path)
 }
 
 func parseReferences(b []byte) ([]Reference, error) {
@@ -175,12 +204,12 @@ func nodeRevset(node NodeID) string {
 func (r *Runner) served(ctx context.Context, path string, node NodeID) error {
 	ctx, cancel := context.WithTimeout(ctx, BrowserCommandTimeout)
 	defer cancel()
-	var out bytes.Buffer
-	if err := r.Run(ctx, path, []string{"log", "-r", nodeRevset(node), "-T", "{node}"}, nil, &out); err != nil {
-		return err
+	var out struct {
+		Repo struct{ Changeset struct{ ID string } }
 	}
-	if out.String() != string(node) {
+	err := r.readQuery(ctx, path, "Served", `query Served($repo: String!, $id: NodeId!) { repo(path: $repo) { changeset(id: $id) { id } } }`, map[string]interface{}{"id": string(node)}, &out)
+	if err == nil && out.Repo.Changeset.ID != string(node) {
 		return ErrNotFound
 	}
-	return nil
+	return err
 }
