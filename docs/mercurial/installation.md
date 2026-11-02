@@ -57,6 +57,14 @@ SESSION_TIMEOUT = 30
 
 Use OS-appropriate absolute paths on Unix. Invoke the actual binary directly, for example `C:/gogs/gogs.exe web --config C:/gogs-state/app.ini`. Executable-root discovery locates distributed configuration and default assets. Explicitly use absolute SQLite, TLS, custom, static-root overrides, log and persistent-session paths when starting from another CWD; relative SQLite/TLS/session paths depend on CWD. Attachment and uploaded-avatar path settings are joined under the executable root: retain their relative `data/attachments` and `data/avatars` defaults and include those install-root directories in backups. Gravatar cache/default-image discovery uses the configured static root. Do not infer universal CWD independence.
 
+## Read service (`hgqlserve`)
+
+Repository reads (changesets, history, files, listings, references, diffs, review resolve and compare) are served by a managed `hgqlserve` child process on loopback; Hgs starts, restarts and stops it. Writes, `ReviewPublicationState`, `InspectReviewEndpoint`, `ValidateReviewPublication`, `CloneVisible`, snapshot and merge flows, and the wire protocol stay on `hg`.
+
+Build `hgqlserve` from the Mononoke branch `unmapped-reads` or later: `cargo build --release -p cmds --bin hgqlserve`. An older build maps revlogs and breaks `hg` rollback on Windows. Set `[mercurial] HGQLSERVE` to the binary (default `hgqlserve`, looked up on PATH).
+
+`hgqlserve` serves one root: the deepest directory containing both the repository root and `[mercurial] REVIEW_ARTIFACT_ROOT`. They must share a parent below the filesystem root. If they do not, startup refuses with a message naming both paths. Operator steps: move one store (and update its setting) so both sit under a common parent such as `C:/gogs-state` with the service stopped, then start again. The default `data/pull-comparisons` beside a repository root on another drive needs this.
+
 ## Exposure and host identity
 
 HTTPS password/token credentials must travel over TLS. A TLS-terminating reverse proxy must send `X-Forwarded-Proto: https` only from peers enumerated in `TRUSTED_PROXY_CIDRS`; prevent untrusted direct access to that backend. Set `ROOT_URL` to the externally visible URL. Configure the proxy for long transfers and streaming; no native external-proxy deployment was exercised here. Use a trusted certificate for clients; test-only self-signed trust is not a production TLS recipe.

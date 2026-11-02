@@ -10,6 +10,12 @@ Writers are checked at `pretxnopen` and `prepushkey`. Transactions that are alre
 
 Stop public admissions at the listener/proxy and stop all writers before backups. Let active HTTP/SSH/browser work finish; request graceful process shutdown (SIGTERM/interrupt as supported by your process supervisor), and wait for the application and its owned Mercurial/hook children to exit. The service stops admissions, drains, and cancels on its bounded shutdown deadline. Confirm successful clean exit and no remaining writers. A forced kill alone is not a clean-backup guarantee: recover/check the database and stores while isolated before treating a snapshot as consistent. Windows package evidence uses a test-owned hidden console and a targeted CTRL_BREAK to exercise normal shutdown; production Windows service-manager integration remains unverified. Keep a bounded forced-stop fallback for failed shutdown, then investigate before backup.
 
+## Read service
+
+Browsing reads go to `hgqlserve` (see [installation](installation.md)). If it exits, Hgs restarts it with backoff; until it is ready, reads fail with `ErrReadService` and web routes show their normal error page. Pushes, clones and merges are unaffected because they use `hg`. Startup waits for a successful query and fails if `HGQLSERVE` is missing or cannot start.
+
+`/raw` reads a whole file into server memory, where `hg cat` streamed, so large files cost more memory per request. `/src` pages for a file or directory whose path is not valid UTF-8 now fail with an error (they rendered before); `/raw` and directory listings still work.
+
 ## Cold backup and tested SQLite restore
 
 The validated procedure is a **cold, consistent snapshot**, not the retired `dump` command (which is not registered). Use the same executable/assets and Mercurial runtime for initial recovery.

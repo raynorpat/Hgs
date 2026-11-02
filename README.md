@@ -2,7 +2,7 @@
 
 A Mercurial-only branch derived from Gogs. Keep users, permissions, organizations and issues; host fresh, initially empty Mercurial repositories over HTTPS and embedded SSH.
 
-Read [installation](docs/mercurial/installation.md), [operations and cold restore](docs/mercurial/operations.md), and [actual compatibility evidence](docs/mercurial/compatibility.md). Build a native executable with matching assets, then use `go run scripts/package.go -binary <native executable> -out <new zip>`. Mercurial is installed separately; server >=5.0 and native clients >=2.0 are the policy.
+Read [installation](docs/mercurial/installation.md), [operations and cold restore](docs/mercurial/operations.md), and [actual compatibility evidence](docs/mercurial/compatibility.md). Build a native executable with matching assets, then use `go run scripts/package.go -binary <native executable> -out <new zip>`. Mercurial and the `hgqlserve` read service are installed separately; server >=5.0 and native clients >=2.0 are the policy.
 
 Run `gogs web --config <absolute config file>` directly. No Git executable, sshd, ssh-keygen or deployment shell script is required server-side. Generate a unique application secret; preserve the SSH host key and consistent DB/repository/config/upload backups. Only `/hg/<owner>/<repo>` is public HTTPS transport; `.hg` is private storage.
 
