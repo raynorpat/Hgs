@@ -125,15 +125,6 @@ func (r *Runner) readQuery(ctx context.Context, path, operation, query string, v
 	return r.reads.Query(ctx, operation, query, all, out)
 }
 
-// Release drops the repository at path from the read service, so the
-// directory can be removed or renamed.
-func (r *Runner) Release(ctx context.Context, path string) error {
-	if r.reads == nil {
-		return nil
-	}
-	return r.reads.Close(ctx, path)
-}
-
 // Check verifies the executable is a supported Mercurial with the features
 // the application relies on.
 func (r *Runner) Check(ctx context.Context) error {

@@ -147,32 +147,3 @@ func TestRelative(t *testing.T) {
 		}
 	}
 }
-
-func TestCloseRefusedConnectionIsReleased(t *testing.T) {
-	l, _ := net.Listen("tcp", "127.0.0.1:0")
-	addr := l.Addr().String()
-	l.Close()
-	root := t.TempDir()
-	c := NewReadClient(root)
-	c.SetEndpoint(addr, "")
-	if err := c.Close(context.Background(), filepath.Join(root, "r")); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestCloseDroppedConnectionIsAnError(t *testing.T) {
-	c := newTestReadClient(t, func(w http.ResponseWriter, r *http.Request) {
-		conn, _, _ := w.(http.Hijacker).Hijack()
-		conn.Close()
-	})
-	if err := c.Close(context.Background(), filepath.Join(c.root, "r")); !errors.Is(err, ErrReadService) {
-		t.Fatalf("got %v", err)
-	}
-}
-
-func TestCloseWithoutEndpoint(t *testing.T) {
-	root := t.TempDir()
-	if err := NewReadClient(root).Close(context.Background(), filepath.Join(root, "r")); err != nil {
-		t.Fatal(err)
-	}
-}

@@ -690,3 +690,34 @@ func TestStreamWriterErrorNotWrapped(t *testing.T) {
 type writerFunc func([]byte) (int, error)
 
 func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
+
+// A push rejected by a hook rolls its transaction back, which renames and
+// truncates revlogs; a repository read through the service must allow that.
+func TestFailedPushRollsBackAfterRead(t *testing.T) {
+	r := newReadRunner(t)
+	repo := readRepo(t, r, "target")
+	readCommit(t, r, repo, "first")
+	ctx := context.Background()
+	if _, err := r.References(ctx, repo); err != nil {
+		t.Fatal(err)
+	}
+	clone := filepath.Join(r.reads.root, "clone")
+	readHg(t, r, "", "clone", repo, clone)
+	readCommit(t, r, clone, "second")
+
+	hgrc := filepath.Join(repo, ".hg", "hgrc")
+	if err := os.WriteFile(hgrc, []byte("[hooks]\npretxnchangegroup.reject = exit 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Run(ctx, clone, []string{"push"}, nil, io.Discard); err == nil {
+		t.Fatal("push was not rejected")
+	}
+	readHg(t, r, repo, "verify")
+	if err := os.Remove(hgrc); err != nil {
+		t.Fatal(err)
+	}
+	readHg(t, r, clone, "push")
+	if refs, err := r.References(ctx, repo); err != nil || len(refs) != 1 {
+		t.Fatalf("after push: %+v, %v", refs, err)
+	}
+}

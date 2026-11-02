@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -199,34 +197,4 @@ func (f *readFailure) Read(p []byte) (int, error) {
 		f.err = err
 	}
 	return n, err
-}
-
-// Close drops a repository from the service's registry. A service that is not
-// running holds nothing open, so no endpoint or a refused dial counts as
-// released. Any other failure may have reached the service and is an error.
-func (c *ReadClient) Close(ctx context.Context, path string) error {
-	rel, err := c.relative(path)
-	if err != nil {
-		return err
-	}
-	c.mu.RLock()
-	started := c.addr != ""
-	c.mu.RUnlock()
-	if !started {
-		return nil
-	}
-	resp, err := c.do(ctx, http.MethodPost, "/close", url.Values{"repo": {rel}}, nil)
-	if err != nil {
-		var opErr *net.OpError
-		if errors.As(err, &opErr) && opErr.Op == "dial" {
-			return nil
-		}
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		return failure(resp.StatusCode, data)
-	}
-	return nil
 }

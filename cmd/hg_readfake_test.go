@@ -63,10 +63,6 @@ func newFakeReadAPI(t *testing.T, handlers map[string]string) (*hg.ReadClient, *
 }
 
 func (f *readFake) serve(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path == "/close" {
-		fmt.Fprint(w, "{}")
-		return
-	}
 	if r.URL.Path == "/raw" {
 		f.serveRaw(w, r)
 		return

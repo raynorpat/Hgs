@@ -89,3 +89,45 @@ func TestRepositoryProvisionRealMercurial(t *testing.T) {
 		t.Fatal("storage survived deletion")
 	}
 }
+
+// Reading through hgqlserve must not keep the storage open, so deletion
+// succeeds right after a read.
+func TestDeleteAfterRead(t *testing.T) {
+	exe, bin := os.Getenv("GOGS_TEST_HG"), os.Getenv("GOGS_TEST_HGQLSERVE")
+	if exe == "" || bin == "" {
+		t.Skip("GOGS_TEST_HG and GOGS_TEST_HGQLSERVE must be set")
+	}
+	newTestDatabase(t)
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := hg.NewRunner(hg.Config{Executable: exe, ConfigPath: filepath.Join(t.TempDir(), "managed", "hgrc")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	client := hg.NewReadClient(root)
+	s, err := hg.StartReadServer(ctx, bin, root, filepath.Join(t.TempDir(), "tok"), client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Stop(context.Background()) })
+	r.SetReads(client)
+
+	owner := newAccessTestUser(t, "alice", true)
+	repo, err := CreateHgRepository(ctx, r, root, CreateHgRepositoryOptions{OwnerID: owner.Id, Name: "demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := storagePath(t, root, repo.Id)
+	if _, err = r.References(ctx, path); err != nil {
+		t.Fatal(err)
+	}
+	if err = DeleteHgRepository(ctx, root, repo.Id, func(context.Context, int64) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if exists(path) {
+		t.Fatal("storage survived deletion")
+	}
+}

@@ -149,14 +149,11 @@ func TestRestartAfterExit(t *testing.T) {
 }
 
 func TestStopEndsChild(t *testing.T) {
-	s, client, root := startTestReadServer(t)
+	s, client, _ := startTestReadServer(t)
 	if err := s.Stop(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(500 * time.Millisecond)
-	if err := client.Close(context.Background(), filepath.Join(root, "r")); err != nil {
-		t.Fatalf("Close after Stop = %v; want released", err)
-	}
 	var out struct{}
 	if err := client.Query(context.Background(), "Ready", "query Ready { __typename }", nil, &out); !errors.Is(err, ErrReadService) || !strings.Contains(err.Error(), "no endpoint") {
 		t.Fatalf("query after Stop = %v; want ErrReadService with no endpoint", err)
