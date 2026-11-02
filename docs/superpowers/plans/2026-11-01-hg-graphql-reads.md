@@ -182,7 +182,7 @@
 **Interfaces:**
 - Consumes: every read method.
 
-- [ ] **Step 1: Write `TestReadsStartNoProcess`.** A `Runner` whose `Executable` is a test binary that fails and records any invocation calls `Changeset`, `History`, `ReadFile`, `ListDirectory`, `ListPath`, `References`, `Landing`, `Resolve`, `Diff`, `CompareReview`, `CompareReview` and `ResolveReview`, and asserts no invocation.
+- [ ] **Step 1: Write `TestReadsStartNoProcess`.** A `Runner` whose `Executable` is a test binary that fails and records any invocation calls `Changeset`, `History`, `ReadFile`, `ListDirectory`, `ListPath`, `References`, `Landing`, `Resolve`, `Diff`, `CompareReview` and `ResolveReview`, and asserts no invocation.
 - [ ] **Step 2: Run.** `go test ./modules/hg -run TestReadsStartNoProcess`. Expected: PASS. A failure is a read Tasks 3-7 missed: fix it in the owning file.
 - [ ] **Step 3: Update docs.** `CLAUDE.md`: Mercurial child processes now cover writes and the wire protocol, and reads go to `hgqlserve`. `docs/mercurial/`: `HGQLSERVE`, how to install the binary, the root rule and what to do when startup refuses it, `ErrReadService` behaviour, and the `/raw` memory note.
 - [ ] **Step 4: Run all tests on Windows and Linux.** Run: `GOGS_TEST_HGQLSERVE=<path> go test ./...`. Expected: PASS. Linux needs a host with Go, `hg` and a Linux `hgqlserve`; if none exists, report it, and do not install anything.
