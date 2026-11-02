@@ -104,9 +104,6 @@ func (r *Runner) readReviewReferences(ctx context.Context, path string) ([]Refer
 func (r *Runner) ResolveReview(ctx context.Context, path string, selection ReviewSelection) (ReviewEndpoint, error) {
 	ctx, cancel := context.WithTimeout(ctx, BrowserCommandTimeout)
 	defer cancel()
-	if err := r.reviewCapability(ctx); err != nil {
-		return ReviewEndpoint{}, err
-	}
 	return r.resolveReview(ctx, path, selection, true)
 }
 
@@ -300,6 +297,30 @@ func (r *Runner) reviewBases(ctx context.Context, path string, source, target No
 	}
 	return nodes, nil
 }
+
+// readReviewBases is reviewBases through the read service.
+func (r *Runner) readReviewBases(ctx context.Context, path string, source, target NodeID) ([]NodeID, error) {
+	if err := reviewPath(path); err != nil {
+		return nil, err
+	}
+	var out struct {
+		Repo struct{ CommonHeads []gqlChangeset }
+	}
+	err := r.readQuery(ctx, path, "CommonHeads", `query CommonHeads($repo: String!, $a: NodeId!, $b: NodeId!) { repo(path: $repo) { commonHeads(a: $a, b: $b) { `+changesetSelection+` } } }`, map[string]interface{}{"a": string(source), "b": string(target)}, &out)
+	if err != nil {
+		return nil, err
+	}
+	var nodes []NodeID
+	for _, g := range out.Repo.CommonHeads {
+		cs, err := g.changeset()
+		if err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, cs.Node)
+	}
+	return nodes, nil
+}
+
 func (r *Runner) SnapshotReview(ctx context.Context, source, target ReviewEndpoint, output string) (ReviewSnapshot, error) {
 	return r.snapshotReview(ctx, source, target, output, false)
 }

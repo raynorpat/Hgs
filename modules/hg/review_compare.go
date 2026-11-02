@@ -5,11 +5,13 @@
 package hg
 
 import (
-	"bytes"
 	"context"
 	"errors"
+	"net/url"
 )
 
+// CompareReview reads the snapshot through the read service, so the snapshot
+// must lie under the served root.
 func (r *Runner) CompareReview(ctx context.Context, s ReviewSnapshot) (ReviewComparison, error) {
 	ctx, cancel := context.WithTimeout(ctx, BrowserCommandTimeout)
 	defer cancel()
@@ -17,36 +19,42 @@ func (r *Runner) CompareReview(ctx context.Context, s ReviewSnapshot) (ReviewCom
 	if _, err := loadReviewMetadata(s); err != nil {
 		return result, err
 	}
-	if err := r.reviewCapability(ctx); err != nil {
-		return result, err
-	}
-	bases, err := r.reviewBases(ctx, s.Path, s.Source, s.Target)
+	bases, err := r.readReviewBases(ctx, s.Path, s.Source, s.Target)
 	if err != nil {
 		return result, err
 	}
 	if len(bases) != 1 || bases[0] != s.Base {
 		return result, ErrAmbiguousHead
 	}
-	var out bytes.Buffer
-	revset := "sort(ancestors(id(" + string(s.Source) + ")) - ancestors(id(" + string(s.Target) + ")), rev) and not secret()"
-	if err = r.reviewRun(ctx, s.Path, []string{"log", "-r", revset, "-T", changesetTemplate}, &out); err != nil {
-		return result, reviewComparisonError(err)
+	var out struct {
+		Repo struct{ ChangesetsBetween []gqlChangeset }
 	}
-	result.Changesets, err = parseChangesets(out.Bytes())
+	err = r.readQuery(ctx, s.Path, "ChangesetsBetween", `query ChangesetsBetween($repo: String!, $source: NodeId!, $target: NodeId!) { repo(path: $repo) { changesetsBetween(source: $source, target: $target) { `+changesetSelection+` } } }`, map[string]interface{}{"source": string(s.Source), "target": string(s.Target)}, &out)
 	if err != nil {
 		return result, err
+	}
+	for _, g := range out.Repo.ChangesetsBetween {
+		cs, err := g.changeset()
+		if err != nil {
+			return result, err
+		}
+		result.Changesets = append(result.Changesets, cs)
 	}
 	if len(result.Changesets) == 0 {
 		return result, ErrNoChanges
 	}
+	rel, err := r.reads.relative(s.Path)
+	if err != nil {
+		return result, err
+	}
 	w := newDiffWriter()
-	err = r.reviewRun(ctx, s.Path, []string{"diff", "--git", "--nodates", "--no-binary", "-r", string(s.Base), "-r", string(s.Source)}, w)
+	truncated, err := r.reads.Stream(ctx, "/diff", url.Values{"repo": {rel}, "from": {string(s.Base)}, "to": {string(s.Source)}}, w)
 	if err != nil && !errors.Is(err, ErrOutputLimit) {
 		return result, err
 	}
+	w.truncated = w.truncated || truncated
 	result.Diff = w.result()
-	if result.Diff.Truncated || errors.Is(err, ErrOutputLimit) {
-		result.Diff.Truncated = true
+	if result.Diff.Truncated {
 		return result, ErrComparisonTooLarge
 	}
 	return result, nil

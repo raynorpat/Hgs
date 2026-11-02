@@ -681,3 +681,111 @@ func (f *reviewFixture) divergentReviewTarget() {
 	f.commit("target")
 	f.update("base")
 }
+
+func TestCompareReviewMatchesHg(t *testing.T) {
+	f := newReviewFixture(t)
+	f.write("a", "one\n")
+	f.commit("one")
+	f.write("a", "two\n")
+	f.write("b", "new\n")
+	f.hg(f.work, "add", "b")
+	f.commit("two")
+	s := f.snapshot("two", "base")
+	got, err := f.r.CompareReview(f.ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want bytes.Buffer
+	revset := "sort(ancestors(id(" + string(s.Source) + ")) - ancestors(id(" + string(s.Target) + ")), rev) and not secret()"
+	if err = f.r.reviewRun(f.ctx, s.Path, []string{"log", "-r", revset, "-T", changesetTemplate}, &want); err != nil {
+		t.Fatal(err)
+	}
+	wantSets, err := parseChangesets(want.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Changesets) != 2 || !reflect.DeepEqual(got.Changesets, wantSets) {
+		t.Fatalf("changesets: got %+v want %+v", got.Changesets, wantSets)
+	}
+	var diff bytes.Buffer
+	if err = f.r.reviewRun(f.ctx, s.Path, []string{"diff", "--git", "--nodates", "--no-binary", "-r", string(s.Base), "-r", string(s.Source)}, &diff); err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range []string{"diff --git a/a b/a", "diff --git a/b b/b", "+two", "+new"} {
+		if !bytes.Contains(got.Diff.Text, []byte(line)) || !bytes.Contains(diff.Bytes(), []byte(line)) {
+			t.Fatalf("diff lacks %q:\n%s\nhg:\n%s", line, got.Diff.Text, diff.Bytes())
+		}
+	}
+}
+
+func TestCompareNoChanges(t *testing.T) {
+	f := newReviewFixture(t)
+	f.write("a", "source\n")
+	f.commit("source")
+	s, err := f.r.SnapshotMergeReview(f.ctx, f.endpoint(f.work, "base"), f.endpoint(f.work, "source"), filepath.Join(f.root, "snapshot"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.r.CompareReview(f.ctx, s); !errors.Is(err, ErrNoChanges) {
+		t.Fatalf("no changes: %v", err)
+	}
+}
+
+func TestReviewBasesCrissCross(t *testing.T) {
+	f := newReviewFixture(t)
+	f.write("left", "left\n")
+	f.hg(f.work, "add", "left")
+	f.commit("left")
+	f.update("base")
+	f.write("right", "right\n")
+	f.hg(f.work, "add", "right")
+	f.commit("right")
+	f.hg(f.work, "merge", "--tool", ":merge", "-r", string(f.nodes["left"]))
+	f.commit("rightMerge")
+	f.update("left")
+	f.hg(f.work, "merge", "--tool", ":merge", "-r", string(f.nodes["right"]))
+	f.commit("leftMerge")
+	bases, err := f.r.readReviewBases(f.ctx, f.work, f.nodes["leftMerge"], f.nodes["rightMerge"])
+	if err != nil || len(bases) != 2 {
+		t.Fatalf("bases: %v %v", bases, err)
+	}
+	if bases, err = f.r.readReviewBases(f.ctx, f.work, f.nodes["left"], f.nodes["right"]); err != nil || len(bases) != 1 || bases[0] != f.nodes["base"] {
+		t.Fatalf("single base: %v %v", bases, err)
+	}
+}
+
+func TestResolveReviewAmbiguous(t *testing.T) {
+	f := newReviewFixture(t)
+	f.write("a", "one\n")
+	f.commit("one")
+	f.update("base")
+	f.write("a", "two\n")
+	f.commit("two")
+	_, err := f.r.ResolveReview(f.ctx, f.work, ReviewSelection{Ref: RefSelection{Kind: RefBranch, Name: "default"}})
+	if !errors.Is(err, ErrAmbiguousHead) {
+		t.Fatalf("ambiguous: %v", err)
+	}
+}
+
+func TestReadsNeedNoCapabilityProbe(t *testing.T) {
+	f := newReviewFixture(t)
+	f.write("a", "source\n")
+	f.commit("source")
+	s := f.snapshot("source", "base")
+	// An executable that cannot run: any hg process would fail the call.
+	dud := filepath.Join(f.root, "dud")
+	if err := os.WriteFile(dud, []byte("not a program"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	r, err := NewRunner(Config{Executable: dud, ConfigPath: filepath.Join(f.root, "dudcfg", "hgrc")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.SetReads(f.r.reads)
+	if _, err = r.ResolveReview(f.ctx, f.work, ReviewSelection{Ref: RefSelection{Kind: RefBranch, Name: "default"}}); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if _, err = r.CompareReview(f.ctx, s); err != nil {
+		t.Fatalf("compare: %v", err)
+	}
+}
