@@ -42,8 +42,8 @@ func (w viewObservedWriter) Write(p []byte) (int, error) {
 func TestRawFileStoppedReaderDrains(t *testing.T) {
 	a := newViewApp(t)
 	a.populate(t, 1)
-	a.fixture(t, "manifest", "644   large\n")
-	a.fixture(t, "large", "1")
+	a.reads.setManifest("644   large\n")
+	a.reads.setRaw("large")
 	var active, completed atomic.Int64
 	released := make(chan struct{})
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -144,7 +144,7 @@ func TestRawFileNativeFailureAbortsResponse(t *testing.T) {
 		t.Run(transport.name, func(t *testing.T) {
 			a := newViewApp(t)
 			a.populate(t, 1)
-			a.fixture(t, "cat_failure", "1")
+			a.reads.setRaw("fail")
 			server := httptest.NewUnstartedServer(a.handler)
 			server.EnableHTTP2 = transport.http2
 			if transport.tls {
@@ -168,7 +168,7 @@ func TestRawFileNativeFailureAbortsResponse(t *testing.T) {
 				t.Fatalf("prewrite response: %d %q %v", response.StatusCode, data, readErr)
 			}
 			prefix := strings.Repeat("native-prefix\n", 8192)
-			a.fixture(t, "content", prefix)
+			a.reads.setContent(prefix)
 			response, err = client.Get(address)
 			if err != nil {
 				t.Fatal("expected response headers and native prefix", err)
@@ -186,8 +186,8 @@ func TestRawFileNativeFailureAbortsResponse(t *testing.T) {
 			}
 			t.Logf("%s partial native failure: %d bytes, body error: %v", response.Proto, len(data), readErr)
 			// The abort is request-scoped; subsequent healthy reads still work.
-			a.fixture(t, "cat_failure", "")
-			a.fixture(t, "content", "healthy after failure\n")
+			a.reads.setRaw("")
+			a.reads.setContent("healthy after failure\n")
 			response, err = client.Get(address)
 			if err != nil {
 				t.Fatal("healthy read after native failure", err)

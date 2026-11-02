@@ -171,7 +171,7 @@ func (a *viewApp) populate(t *testing.T, n int) {
 	for i := 0; i < n; i++ {
 		fmt.Fprintf(&b, "644   f%03d.txt\n", i)
 	}
-	a.fixture(t, "manifest", b.String())
+	a.reads.setManifest(b.String())
 }
 func TestEmptyRepositoryStillHasIssues(t *testing.T) {
 	a := newViewApp(t)
@@ -201,17 +201,10 @@ func TestTreeViewBoundedInvocations(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 		}
 		background := a.reads.count("History") - historyBefore
-		foreground := 0
 		for _, args := range a.arguments()[before:] {
-			switch {
-			case strings.HasPrefix(args, "manifest "):
-				foreground++
-				t.Logf("tree request: %s", args)
-			default:
-				t.Fatalf("unattributed command: %s", args)
-			}
+			t.Fatalf("unattributed command: %s", args)
 		}
-		foreground += a.reads.total() - readsBefore - background
+		foreground := a.reads.total() - readsBefore - background
 		t.Logf("tree %d latency %s foreground %d background %d", n, time.Since(start), foreground, background)
 		if w.Code != 200 || foreground > 5 || background < 1 || !strings.Contains(w.Body.String(), fmt.Sprintf("f%03d.txt", n-1)) {
 			t.Fatalf("tree %d status %d foreground %d background %d", n, w.Code, foreground, background)
@@ -304,20 +297,20 @@ func (b *viewBrowser) do(t *testing.T, method, path string, form url.Values) *ht
 func TestFileRenderingCannotExecuteMarkup(t *testing.T) {
 	a := newViewApp(t)
 	a.populate(t, 1)
-	a.fixture(t, "manifest", "644   source.txt\n644   README.md\n644   binary\n644   big\n")
+	a.reads.setManifest("644   source.txt\n644   README.md\n644   binary\n644   big\n")
 	for _, name := range []string{"source.txt", "README.md"} {
-		a.fixture(t, "content", "<script>alert(1)</script>\n<img src=x onerror=alert(2)>\n")
+		a.reads.setContent("<script>alert(1)</script>\n<img src=x onerror=alert(2)>\n")
 		w := a.request(t, "GET", "/gogs/alice/project/src/"+viewNode+"/"+name, "", "")
 		if w.Code != 200 || strings.Contains(w.Body.String(), "<script>alert(1)") || strings.Contains(w.Body.String(), "<img src=x") {
 			t.Fatalf("unsafe %s: %d %s", name, w.Code, w.Body.String())
 		}
 	}
-	a.fixture(t, "content", "\x00binary")
+	a.reads.setContent("\x00binary")
 	w := a.request(t, "GET", "/gogs/alice/project/src/"+viewNode+"/binary", "", "")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "Binary content") {
 		t.Fatal("binary notice", w.Code, w.Body.String())
 	}
-	a.fixture(t, "content", strings.Repeat("x", (1<<20)+2))
+	a.reads.setContent(strings.Repeat("x", (1<<20)+2))
 	w = a.request(t, "GET", "/gogs/alice/project/src/"+viewNode+"/big", "", "")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "too large to display") {
 		t.Fatal("oversize notice", w.Code)
@@ -332,9 +325,9 @@ func TestRawPathIdentity(t *testing.T) {
 	a := newViewApp(t)
 	a.populate(t, 1)
 	raw := string([]byte{'d', '/', 0xff})
-	a.fixture(t, "manifest", "644   A #?%.txt\n644   %2f\n644   "+raw+"\n")
+	a.reads.setManifest("644   A #?%.txt\n644   %2f\n644   " + raw + "\n")
 	for _, p := range []string{"A%20%23%3F%25.txt", "%252f", "?path=" + base64.RawURLEncoding.EncodeToString([]byte(raw))} {
-		a.fixture(t, "content", "raw\x00bytes")
+		a.reads.setContent("raw\x00bytes")
 		prefix := "/"
 		if strings.HasPrefix(p, "?") {
 			prefix = ""
@@ -344,7 +337,7 @@ func TestRawPathIdentity(t *testing.T) {
 			t.Fatalf("raw %s %d %v %q", p, w.Code, w.Header(), w.Body.String())
 		}
 	}
-	a.fixture(t, "content", "")
+	a.reads.setContent("")
 	for _, p := range []string{"a%20%23%3F%25.txt", "%2f", "%5c", "x?path=eA"} {
 		w := a.request(t, "GET", "/gogs/alice/project/raw/"+viewNode+"/"+p, "", "")
 		if w.Code != 400 && w.Code != 404 {
@@ -353,16 +346,6 @@ func TestRawPathIdentity(t *testing.T) {
 		if w.Header().Get("Content-Disposition") != "" {
 			t.Errorf("failed raw %s was served as an attachment", p)
 		}
-	}
-}
-func TestRawFileWithManifestOverCommandLimit(t *testing.T) {
-	a := newViewApp(t)
-	a.populate(t, 1)
-	a.fixture(t, "manifest", "644   big\n"+strings.Repeat("644   "+strings.Repeat("d/", 40)+"f\n", 1<<16))
-	a.fixture(t, "content", "raw")
-	w := a.request(t, "GET", "/gogs/alice/project/raw/"+viewNode+"/big", "", "")
-	if w.Code != 200 || w.Body.String() != "raw" {
-		t.Fatalf("raw with a manifest above the command output limit: %d %q", w.Code, w.Body.String())
 	}
 }
 
@@ -672,7 +655,7 @@ func TestMercurialViewHistoryCursor(t *testing.T) {
 func TestRawFileHealthySequentialKeepalive(t *testing.T) {
 	a := newViewApp(t)
 	a.populate(t, 1)
-	a.fixture(t, "content", "raw healthy\n")
+	a.reads.setContent("raw healthy\n")
 	server := httptest.NewServer(a.handler)
 	defer server.Close()
 	client := server.Client()
@@ -784,8 +767,8 @@ func TestMercurialViewEndpointPathIdentity(t *testing.T) {
 				}
 			}
 			a.populate(t, 1)
-			a.fixture(t, "manifest", "644   "+tc.file+"\n")
-			a.fixture(t, "content", "path identity\n")
+			a.reads.setManifest("644   " + tc.file + "\n")
+			a.reads.setContent("path identity\n")
 			base := tc.prefix + "/" + tc.owner + "/" + tc.repo
 			w := a.request(t, "GET", base+"/src/"+viewNode+"/"+tc.file, "", "")
 			if w.Code != 200 || !strings.Contains(w.Body.String(), "path identity") {

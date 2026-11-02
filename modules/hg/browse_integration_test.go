@@ -189,6 +189,19 @@ func TestBrowseRealMercurial(t *testing.T) {
 		}
 	}
 
+	for _, dir := range []string{"", "d"} {
+		got, err := r.ListDirectory(ctx, storage, selected, dir)
+		if want := manifestChildren(t, r, storage, selected, dir); err != nil || !reflect.DeepEqual(got, want) {
+			t.Errorf("ListDirectory(%q) = %+v, %v; manifest says %+v", dir, got, err, want)
+		}
+	}
+	if _, file, err := r.ListPath(ctx, storage, selected, "link"); err != nil || file == nil || !file.Symlink {
+		t.Errorf("ListPath(link) = %+v, %v", file, err)
+	}
+	if _, err := r.ListDirectory(ctx, storage, nodes["secret"], ""); !errors.Is(err, ErrNotFound) {
+		t.Errorf("secret listing: %v", err)
+	}
+
 	ls, err := os.ReadDir(storage)
 	checkoutCreated := err != nil || len(ls) != 1 || ls[0].Name() != ".hg"
 	if selected != nodes["newer"] || tagNode == bookmarkNode || checkoutCreated {

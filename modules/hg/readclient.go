@@ -173,13 +173,32 @@ func (c *ReadClient) Stream(ctx context.Context, endpoint string, params url.Val
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		return false, failure(resp.StatusCode, data)
 	}
-	if _, err := io.Copy(w, resp.Body); err != nil {
+	body := &readFailure{r: resp.Body}
+	if _, err := io.Copy(w, body); err != nil {
 		if ctx.Err() != nil {
 			return false, ctx.Err()
+		}
+		if body.err != nil {
+			// The service died mid-body; Go reports that as an unexpected EOF.
+			return false, fmt.Errorf("%w: %v", ErrReadService, body.err)
 		}
 		return false, err
 	}
 	return resp.Header.Get("X-Truncated") == "true", nil
+}
+
+// readFailure remembers a read error, to tell it from a write error.
+type readFailure struct {
+	r   io.Reader
+	err error
+}
+
+func (f *readFailure) Read(p []byte) (int, error) {
+	n, err := f.r.Read(p)
+	if err != nil && err != io.EOF {
+		f.err = err
+	}
+	return n, err
 }
 
 // Close drops a repository from the service's registry. A service that is not

@@ -32,25 +32,6 @@ func fakeViewHg(args []string) int {
 		fmt.Print(`"pretxnopen" "pretxnclose" "pretxnclose-bookmark" "pretxnclose-phase" "prepushkey"`)
 	case "init":
 		return boolExit(os.MkdirAll(filepath.Join(args[1], ".hg"), 0700))
-	case "manifest":
-		fmt.Print(read("manifest"))
-	case "cat":
-		if read("cat_failure") != "" {
-			fmt.Print(read("content"))
-			return 3
-		}
-		if read("large") != "" {
-			chunk := strings.Repeat("x", 32768)
-			for i := 0; i < 4096; i++ {
-				if _, err := fmt.Print(chunk); err != nil {
-					return 1
-				}
-			}
-		} else if content := read("content"); content == "" {
-			return 1 // hg cat exits 1 when no file matched
-		} else {
-			fmt.Print(content)
-		}
 	case "files":
 		fmt.Print(read("filepath") + "\n")
 	case "diff":

@@ -2,12 +2,15 @@ package profile
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -26,28 +29,6 @@ func TestProfileReadmeBoundedRead(t *testing.T) {
 	}
 }
 
-// The fake executable exercises the actual managed runner and file bounds.
-func TestMain(m *testing.M) {
-	if len(os.Args) > 1 && os.Args[1] == "-R" {
-		args := os.Args[3:]
-		dir := filepath.Dir(os.Getenv("HGRCPATH"))
-		read := func(name string) string { b, _ := os.ReadFile(filepath.Join(dir, name)); return string(b) }
-		if read("fail") == args[0] {
-			os.Exit(3)
-		}
-		switch args[0] {
-		case "manifest":
-			fmt.Print(read("manifest"))
-		case "cat":
-			fmt.Print(read("content"))
-		default:
-			os.Exit(4)
-		}
-		os.Exit(0)
-	}
-	os.Exit(m.Run())
-}
-
 func fixture(t *testing.T, manifest, body string) (*ReadmeService, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -55,28 +36,70 @@ func fixture(t *testing.T, manifest, body string) (*ReadmeService, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(dir, "content"), []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
 	runner, err := hg.NewRunner(hg.Config{Executable: exe, ConfigPath: filepath.Join(dir, "hgrc")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range map[string]string{"manifest": manifest, "content": body} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0600); err != nil {
-			t.Fatal(err)
+	// References, the served check, trees and file bytes come from a fake read
+	// service; a "fail" fixture naming "branches" makes it fail. The manifest
+	// fixture lists files as "hg manifest -v" does.
+	treeOf := func(p string) (string, bool) {
+		entry := ""
+		for _, line := range strings.Split(manifest, "\n") {
+			if len(line) < 7 {
+				continue
+			}
+			name := line[6:]
+			switch {
+			case name == p:
+				return fmt.Sprintf(`{"directory":false,"entries":[{"nameBase64":%q,"directory":false,"executable":false,"symlink":%t}]}`, base64.StdEncoding.EncodeToString([]byte(path.Base(p))), line[:6] == "644 @ "), true
+			case strings.HasPrefix(name, p+"/"):
+				entry = `{"nameBase64":"eA==","directory":false,"executable":false,"symlink":false}`
+			}
 		}
+		if entry == "" {
+			return "", false
+		}
+		return `{"directory":true,"entries":[` + entry + `]}`, true
 	}
-	// References and the served check come from a fake read service; a "fail"
-	// fixture naming "branches" makes it fail.
 	service := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if b, _ := os.ReadFile(filepath.Join(dir, "fail")); string(b) == "branches" {
 			fmt.Fprint(w, `{"errors":[{"message":"fake","extensions":{"code":"INTERNAL"}}]}`)
 			return
 		}
-		body, _ := io.ReadAll(r.Body)
-		if strings.Contains(string(body), `"operationName":"Served"`) {
-			fmt.Fprintf(w, `{"data":{"repo":{"changeset":{"id":%q}}}}`, testNode)
+		notFound := `{"errors":[{"message":"fake","extensions":{"code":"NOT_FOUND"}}]}`
+		if r.URL.Path == "/raw" {
+			if t, ok := treeOf(r.URL.Query().Get("path")); !ok || strings.Contains(t, `"directory":true`) {
+				w.WriteHeader(404)
+				fmt.Fprint(w, notFound)
+				return
+			}
+			content, _ := os.ReadFile(filepath.Join(dir, "content"))
+			w.Write(content)
 			return
 		}
-		fmt.Fprintf(w, `{"data":{"repo":{"refs":[{"kind":"BRANCH","name":"default","nameBase64":"ZGVmYXVsdA==","node":%q,"revision":1,"closed":false}]}}}`, testNode)
+		req, _ := io.ReadAll(r.Body)
+		var q struct {
+			OperationName string
+			Variables     struct{ Path string }
+		}
+		json.Unmarshal(req, &q)
+		switch q.OperationName {
+		case "Served":
+			fmt.Fprintf(w, `{"data":{"repo":{"changeset":{"id":%q}}}}`, testNode)
+		case "Tree":
+			t, ok := treeOf(q.Variables.Path)
+			if !ok {
+				fmt.Fprint(w, notFound)
+				return
+			}
+			fmt.Fprintf(w, `{"data":{"repo":{"tree":%s}}}`, t)
+		default:
+			fmt.Fprintf(w, `{"data":{"repo":{"refs":[{"kind":"BRANCH","name":"default","nameBase64":"ZGVmYXVsdA==","node":%q,"revision":1,"closed":false}]}}}`, testNode)
+		}
 	}))
 	t.Cleanup(service.Close)
 	reads := hg.NewReadClient(dir)

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -23,6 +24,13 @@ type readFake struct {
 	mu       sync.Mutex
 	handlers map[string]string
 	ops      []string
+
+	// manifest lists the repository's files as "hg manifest -v" does, and
+	// answers Tree and /raw. content is what /raw serves for a listed file.
+	manifest, content string
+	// raw changes /raw: "large" streams endlessly-big content, "fail" answers
+	// INTERNAL before any byte if content is empty, else cuts the body short.
+	raw string
 }
 
 // fakeReadAPI returns a client for a fake read service serving handlers. It
@@ -57,17 +65,124 @@ func (f *readFake) serve(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "{}")
 		return
 	}
+	if r.URL.Path == "/raw" {
+		f.serveRaw(w, r)
+		return
+	}
 	body, _ := io.ReadAll(r.Body)
-	var q struct{ OperationName string }
+	var q struct {
+		OperationName string
+		Variables     struct{ Path string }
+	}
 	json.Unmarshal(body, &q)
 	f.mu.Lock()
 	f.ops = append(f.ops, q.OperationName)
 	resp, ok := f.handlers[q.OperationName]
 	f.mu.Unlock()
+	if !ok && q.OperationName == "Tree" {
+		resp, ok = f.treeAnswer(q.Variables.Path)
+	}
 	if !ok {
 		resp = readError("INTERNAL")
 	}
 	fmt.Fprint(w, resp)
+}
+
+// setManifest sets the files the fake lists and serves.
+func (f *readFake) setManifest(manifest string) {
+	f.mu.Lock()
+	f.manifest = manifest
+	f.mu.Unlock()
+}
+
+// setContent sets what /raw serves for any listed file.
+func (f *readFake) setContent(content string) {
+	f.mu.Lock()
+	f.content = content
+	f.mu.Unlock()
+}
+
+// setRaw sets the /raw mode; see the raw field.
+func (f *readFake) setRaw(mode string) {
+	f.mu.Lock()
+	f.raw = mode
+	f.mu.Unlock()
+}
+
+// treeAnswer is the Tree answer for path from the manifest: a directory's
+// children, or the entry of a file. NOT_FOUND if neither exists.
+func (f *readFake) treeAnswer(path string) (string, bool) {
+	f.mu.Lock()
+	manifest := f.manifest
+	f.mu.Unlock()
+	prefix := path
+	if path != "" {
+		prefix += "/"
+	}
+	entry := func(name string, dir, exec, link bool) string {
+		return fmt.Sprintf(`{"nameBase64":%q,"directory":%t,"executable":%t,"symlink":%t}`, base64.StdEncoding.EncodeToString([]byte(name)), dir, exec, link)
+	}
+	byName, names := map[string]string{}, []string{}
+	for _, line := range strings.Split(manifest, "\n") {
+		if len(line) < 7 {
+			continue
+		}
+		flag, name := line[:6], line[6:]
+		if path != "" && name == path {
+			e := entry(name[strings.LastIndexByte(name, '/')+1:], false, flag == "755 * ", flag == "644 @ ")
+			return `{"data":{"repo":{"tree":{"directory":false,"entries":[` + e + `]}}}}`, true
+		}
+		if !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		child, _, dir := strings.Cut(name[len(prefix):], "/")
+		if _, seen := byName[child]; !seen {
+			byName[child] = entry(child, dir, !dir && flag == "755 * ", !dir && flag == "644 @ ")
+			names = append(names, child)
+		}
+	}
+	if path != "" && len(names) == 0 {
+		return readError("NOT_FOUND"), true
+	}
+	sort.Strings(names)
+	entries := []string{}
+	for _, n := range names {
+		entries = append(entries, byName[n])
+	}
+	return `{"data":{"repo":{"tree":{"directory":true,"entries":[` + strings.Join(entries, ",") + `]}}}}`, true
+}
+
+// serveRaw answers /raw for a file in the manifest.
+func (f *readFake) serveRaw(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	f.ops = append(f.ops, "raw")
+	manifest, content, mode := f.manifest, f.content, f.raw
+	f.mu.Unlock()
+	listed := false
+	for _, line := range strings.Split(manifest, "\n") {
+		listed = listed || (len(line) > 6 && line[6:] == r.URL.Query().Get("path"))
+	}
+	switch {
+	case !listed:
+		w.WriteHeader(404)
+		fmt.Fprint(w, readError("NOT_FOUND"))
+	case mode == "large":
+		chunk := strings.Repeat("x", 32768)
+		for i := 0; i < 4096; i++ {
+			if _, err := io.WriteString(w, chunk); err != nil {
+				return
+			}
+		}
+	case mode == "fail" && content == "":
+		w.WriteHeader(500)
+		fmt.Fprint(w, readError("INTERNAL"))
+	case mode == "fail":
+		// Promise more than is sent, as a service that died mid-body does.
+		w.Header().Set("Content-Length", fmt.Sprint(len(content)+1))
+		io.WriteString(w, content)
+	default:
+		io.WriteString(w, content)
+	}
 }
 
 // set adds or replaces handlers.

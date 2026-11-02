@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -447,3 +448,245 @@ func TestHistoryDeletedFileWithAnchor(t *testing.T) {
 		t.Fatalf("anchored at %s: %+v, %v", added, page, err)
 	}
 }
+
+// treePatch is applied with import --bypass: Windows cannot check out a
+// symlink or a latin-1 name, but the repository can hold them.
+const treePatch = "# HG changeset patch\n# User t\n# Date 0 0\ntree\n\n" +
+	"diff --git a/run.sh b/run.sh\nnew file mode 100755\n--- /dev/null\n+++ b/run.sh\n@@ -0,0 +1,1 @@\n+#!/bin/sh\n" +
+	"diff --git a/link b/link\nnew file mode 120000\n--- /dev/null\n+++ b/link\n@@ -0,0 +1,1 @@\n+d/x\n\\ No newline at end of file\n" +
+	"diff --git a/d/x b/d/x\nnew file mode 100644\n--- /dev/null\n+++ b/d/x\n@@ -0,0 +1,1 @@\n+sub\n" +
+	"diff --git a/d/e/f b/d/e/f\nnew file mode 100644\n--- /dev/null\n+++ b/d/e/f\n@@ -0,0 +1,1 @@\n+deep\n" +
+	"diff --git a/caf\xe9 b/caf\xe9\nnew file mode 100644\n--- /dev/null\n+++ b/caf\xe9\n@@ -0,0 +1,1 @@\n+latin-1 name\n"
+
+// treeRepo makes a repository holding treePatch and returns it with its node.
+func treeRepo(t *testing.T, r *Runner, name string, initArgs ...string) (string, NodeID) {
+	t.Helper()
+	repo := filepath.Join(r.reads.root, name)
+	readHg(t, r, "", append([]string{"init"}, append(initArgs, repo)...)...)
+	return repo, importPatch(t, r, repo, treePatch)
+}
+
+// importPatch commits patch to repo without a checkout and returns its node.
+func importPatch(t *testing.T, r *Runner, repo, patch string) NodeID {
+	t.Helper()
+	file := filepath.Join(t.TempDir(), "p.diff")
+	if err := os.WriteFile(file, []byte(patch), 0600); err != nil {
+		t.Fatal(err)
+	}
+	readHg(t, r, repo, "import", "-q", "--bypass", file)
+	return NodeID(readHg(t, r, repo, "log", "-r", "tip", "-T", "{node}"))
+}
+
+// manifestChildren is the immediate children of dir read from "hg manifest -v".
+func manifestChildren(t *testing.T, r *Runner, repo string, node NodeID, dir string) []TreeEntry {
+	t.Helper()
+	prefix := dir
+	if dir != "" {
+		prefix += "/"
+	}
+	byName := map[string]TreeEntry{}
+	for _, line := range strings.Split(readHg(t, r, repo, "manifest", "-v", "-r", string(node)), "\n") {
+		if len(line) < 7 || !strings.HasPrefix(line[6:], prefix) {
+			continue
+		}
+		name, _, isDir := strings.Cut(line[6+len(prefix):], "/")
+		e := TreeEntry{Name: name, Directory: isDir}
+		if !isDir {
+			e.Executable, e.Symlink = line[:6] == "755 * ", line[:6] == "644 @ "
+		}
+		byName[name] = e
+	}
+	want := []TreeEntry{}
+	for _, e := range byName {
+		want = append(want, e)
+	}
+	sort.Slice(want, func(i, j int) bool { return want[i].Name < want[j].Name })
+	return want
+}
+
+func checkListings(t *testing.T, r *Runner, repo string, node NodeID) {
+	t.Helper()
+	for _, dir := range []string{"", "d", "d/e"} {
+		got, err := r.ListDirectory(context.Background(), repo, node, dir)
+		if want := manifestChildren(t, r, repo, node, dir); err != nil || !reflect.DeepEqual(got, want) {
+			t.Errorf("ListDirectory(%q) = %+v, %v\nmanifest says %+v", dir, got, err, want)
+		}
+	}
+}
+
+func TestListDirectoryMatchesHg(t *testing.T) {
+	r := newReadRunner(t)
+	repo, node := treeRepo(t, r, "flat")
+	checkListings(t, r, repo, node)
+	if _, err := r.ListDirectory(context.Background(), repo, node, "missing"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("missing directory: %v", err)
+	}
+}
+
+func TestListDirectoryTreeManifest(t *testing.T) {
+	r := newReadRunner(t)
+	repo, node := treeRepo(t, r, "tree", "--config", "experimental.treemanifest=1")
+	if !strings.Contains(readHg(t, r, repo, "debugrequires"), "treemanifest") {
+		t.Skip("this Mercurial did not make a tree manifest")
+	}
+	checkListings(t, r, repo, node)
+}
+
+func TestListPathFile(t *testing.T) {
+	r := newReadRunner(t)
+	repo, node := treeRepo(t, r, "file")
+	ctx := context.Background()
+	for p, want := range map[string]TreeEntry{
+		"run.sh": {Name: "run.sh", Executable: true},
+		"link":   {Name: "link", Symlink: true},
+		"d/x":    {Name: "x"},
+	} {
+		entries, file, err := r.ListPath(ctx, repo, node, p)
+		if err != nil || len(entries) != 0 || file == nil || *file != want {
+			t.Errorf("ListPath(%q) = %+v, %+v, %v; want file %+v", p, entries, file, err, want)
+		}
+	}
+	entries, file, err := r.ListPath(ctx, repo, node, "d")
+	if err != nil || file != nil || len(entries) != 2 {
+		t.Errorf("ListPath(d) = %+v, %+v, %v", entries, file, err)
+	}
+	if entries, file, err = r.ListPath(ctx, repo, node, ""); err != nil || file != nil || len(entries) != 4 {
+		t.Errorf("ListPath(root) = %+v, %+v, %v", entries, file, err)
+	}
+}
+
+func TestListPathUnknownNotFound(t *testing.T) {
+	r := newReadRunner(t)
+	repo, node := treeRepo(t, r, "unknown")
+	for _, p := range []string{"nope", "d/nope", "run.sh/x", "../a", "D/x"} {
+		if _, _, err := r.ListPath(context.Background(), repo, node, p); !errors.Is(err, ErrNotFound) {
+			t.Errorf("ListPath(%q): %v", p, err)
+		}
+	}
+}
+
+func TestTreeNonUTF8NameExact(t *testing.T) {
+	r := newReadRunner(t)
+	repo, node := treeRepo(t, r, "latin1")
+	entries, err := r.ListDirectory(context.Background(), repo, node, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, e := range entries {
+		found = found || e.Name == "caf\xe9"
+	}
+	if !found {
+		t.Errorf("no entry named %q in %+v", "caf\xe9", entries)
+	}
+	// The service takes directory names as strings.
+	if _, err := r.ListDirectory(context.Background(), repo, node, "d/caf\xe9"); !errors.Is(err, ErrUnsupportedEncoding) {
+		t.Errorf("non-UTF-8 directory: %v", err)
+	}
+	if _, _, err := r.ListPath(context.Background(), repo, node, "caf\xe9"); !errors.Is(err, ErrUnsupportedEncoding) {
+		t.Errorf("non-UTF-8 path: %v", err)
+	}
+}
+
+func TestReadFileBinaryMatchesCat(t *testing.T) {
+	r := newReadRunner(t)
+	repo := readRepo(t, r, "binary")
+	content := make([]byte, 0, 3<<20)
+	for len(content) < 3<<20 {
+		for b := 0; b < 256; b++ {
+			content = append(content, byte(b))
+		}
+	}
+	content = append(content, "\r\n\x00trailing"...)
+	if err := os.WriteFile(filepath.Join(repo, "blob.bin"), content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	node := readCommit(t, r, repo, "binary", "-A")
+	var got bytes.Buffer
+	if err := r.ReadFile(context.Background(), repo, node, "blob.bin", &got); err != nil || !bytes.Equal(got.Bytes(), content) {
+		t.Fatalf("ReadFile returned %d bytes, %v; want %d", got.Len(), err, len(content))
+	}
+	var cat bytes.Buffer
+	if err := r.run(context.Background(), repo, []string{"cat", "-r", string(node), "blob.bin"}, nil, &cat, -1); err != nil || !bytes.Equal(cat.Bytes(), content) {
+		t.Errorf("hg cat returned %d bytes, %v; want %d", cat.Len(), err, len(content))
+	}
+}
+
+func TestReadFilePathsNeedingEscape(t *testing.T) {
+	r := newReadRunner(t)
+	repo := readRepo(t, r, "escape")
+	names := []string{"a b.txt", "100%.txt", "a&b+c.txt", "naïve.txt"}
+	for _, name := range names[:3] {
+		if err := os.WriteFile(filepath.Join(repo, name), []byte("content of "+name+"\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	readCommit(t, r, repo, "names", "-A")
+	// A patch stores the UTF-8 name whatever the platform's file encoding.
+	node := importPatch(t, r, repo, "# HG changeset patch\n# User t\n# Date 0 0\nutf8\n\ndiff --git a/naïve.txt b/naïve.txt\nnew file mode 100644\n--- /dev/null\n+++ b/naïve.txt\n@@ -0,0 +1,1 @@\n+content of naïve.txt\n")
+	for _, name := range names {
+		var got bytes.Buffer
+		if err := r.ReadFile(context.Background(), repo, node, name, &got); err != nil || got.String() != "content of "+name+"\n" {
+			t.Errorf("ReadFile(%q) = %q, %v", name, got.String(), err)
+		}
+	}
+}
+
+func TestReadFileNonUTF8Name(t *testing.T) {
+	r := newReadRunner(t)
+	repo, node := treeRepo(t, r, "rawname")
+	var got bytes.Buffer
+	if err := r.ReadFile(context.Background(), repo, node, "caf\xe9", &got); err != nil || got.String() != "latin-1 name\n" {
+		t.Errorf("ReadFile = %q, %v", got.String(), err)
+	}
+}
+
+func TestReadFileSecretNotFound(t *testing.T) {
+	r := newReadRunner(t)
+	repo := readRepo(t, r, "secretfile")
+	if err := os.WriteFile(filepath.Join(repo, "s.txt"), []byte("s"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	node := readCommit(t, r, repo, "secret", "-A")
+	readHg(t, r, repo, "phase", "-q", "--secret", "--force", "-r", string(node))
+	ctx := context.Background()
+	if err := r.ReadFile(ctx, repo, node, "s.txt", io.Discard); !errors.Is(err, ErrNotFound) {
+		t.Errorf("ReadFile: %v", err)
+	}
+	if _, err := r.ListDirectory(ctx, repo, node, ""); !errors.Is(err, ErrNotFound) {
+		t.Errorf("ListDirectory: %v", err)
+	}
+}
+
+func TestReadFileServiceDiesMidBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Length", "1000")
+		w.Write([]byte("only a part"))
+	}))
+	t.Cleanup(srv.Close)
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := NewReadClient(root)
+	c.SetEndpoint(strings.TrimPrefix(srv.URL, "http://"), "")
+	r := newTestRunner(t, Config{})
+	r.SetReads(c)
+	err = r.ReadFile(context.Background(), filepath.Join(root, "repo"), NodeID(strings.Repeat("a", 40)), "f", io.Discard)
+	if !errors.Is(err, ErrReadService) {
+		t.Fatalf("ReadFile = %v; want ErrReadService", err)
+	}
+}
+
+func TestStreamWriterErrorNotWrapped(t *testing.T) {
+	c := newTestReadClient(t, func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("abc")) })
+	boom := errors.New("boom")
+	_, err := c.Stream(context.Background(), "/raw", nil, writerFunc(func([]byte) (int, error) { return 0, boom }))
+	if !errors.Is(err, boom) || errors.Is(err, ErrReadService) {
+		t.Fatalf("Stream = %v; want the writer's error alone", err)
+	}
+}
+
+type writerFunc func([]byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
