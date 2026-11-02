@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -58,7 +61,7 @@ func TestDiffBoundsBinaryAndLongLines(t *testing.T) {
 func fakeDiffReads(t *testing.T, r *Runner, root string, truncatedHeader bool, body []byte) {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if req.URL.Path != "/diff" || req.URL.Query().Get("parent") == "" {
+		if req.URL.Path != "/diff" || req.URL.Query().Get("parent") == "" || req.URL.Query().Get("max") != strconv.Itoa(MaxDiffBytes) {
 			t.Errorf("request %s", req.URL)
 		}
 		if truncatedHeader {
@@ -101,6 +104,72 @@ func TestDiffOverLimitTruncated(t *testing.T) {
 	d, err := r.Diff(context.Background(), filepath.Join(root, "repo"), Changeset{Node: newerDefaultNode}, 0)
 	if err != nil || !d.Truncated || len(d.Text) != MaxDiffBytes {
 		t.Fatalf("Diff bytes=%d truncated=%v, %v", len(d.Text), d.Truncated, err)
+	}
+}
+
+// compareFake is a review snapshot under a fake service answering
+// ChangesetsBetween with n changesets and /diff with a one-line diff, and the
+// /diff queries it received.
+func compareFake(t *testing.T, n int) (*Runner, ReviewSnapshot, *[]url.Values) {
+	t.Helper()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := ReviewSnapshot{Path: filepath.Join(root, "cmp", "repo"), Base: NodeID(strings.Repeat("b", 40)), Source: NodeID(strings.Repeat("c", 40)), Target: NodeID(strings.Repeat("d", 40))}
+	if err := os.MkdirAll(s.Path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeReviewMetadata(s.Path, reviewMetadata{Version: 1, Source: s.Source, Target: s.Target, Base: s.Base}); err != nil {
+		t.Fatal(err)
+	}
+	cs := func(node NodeID) string {
+		return `{"id":"` + string(node) + `","revision":0,"branch":"default","user":"t","comments":"c","time":{"time":0},"parents":[]}`
+	}
+	between := make([]string, n)
+	for i := range between {
+		between[i] = cs(s.Source)
+	}
+	var diffs []url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path == "/diff" {
+			diffs = append(diffs, req.URL.Query())
+			w.Write([]byte("diff --git a/x b/x\n"))
+			return
+		}
+		body, _ := io.ReadAll(req.Body)
+		switch {
+		case bytes.Contains(body, []byte(`"operationName":"CommonHeads"`)):
+			w.Write([]byte(`{"data":{"repo":{"commonHeads":[` + cs(s.Base) + `]}}}`))
+		case bytes.Contains(body, []byte(`"operationName":"ChangesetsBetween"`)):
+			w.Write([]byte(`{"data":{"repo":{"changesetsBetween":[` + strings.Join(between, ",") + `]}}}`))
+		default:
+			t.Errorf("request %s", body)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	r := newTestRunner(t, Config{})
+	c := NewReadClient(root)
+	c.SetEndpoint(strings.TrimPrefix(srv.URL, "http://"), "")
+	r.SetReads(c)
+	return r, s, &diffs
+}
+
+func TestCompareReviewChangesetCap(t *testing.T) {
+	r, s, diffs := compareFake(t, MaxReviewChangesets)
+	got, err := r.CompareReview(context.Background(), s)
+	if err != nil || len(got.Changesets) != MaxReviewChangesets {
+		t.Fatalf("at the cap: %d changesets, %v", len(got.Changesets), err)
+	}
+	if len(*diffs) != 1 || (*diffs)[0].Get("max") != strconv.Itoa(MaxDiffBytes) {
+		t.Fatalf("diff queries %v", *diffs)
+	}
+	r, s, diffs = compareFake(t, MaxReviewChangesets+1)
+	if _, err := r.CompareReview(context.Background(), s); !errors.Is(err, ErrComparisonTooLarge) {
+		t.Fatalf("over the cap: %v", err)
+	}
+	if len(*diffs) != 0 {
+		t.Fatalf("over the cap still diffed: %v", *diffs)
 	}
 }
 

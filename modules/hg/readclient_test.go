@@ -119,6 +119,17 @@ func TestStreamErrorBody(t *testing.T) {
 	}
 }
 
+func TestQueryOutputLimit(t *testing.T) {
+	c := newTestReadClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"data":{"a":"`))
+		w.Write(bytes.Repeat([]byte("x"), MaxCommandOutput))
+		w.Write([]byte(`"}}`))
+	})
+	if err := c.Query(context.Background(), "Op", "query Op { a }", nil, &struct{}{}); !errors.Is(err, ErrOutputLimit) {
+		t.Fatalf("Query = %v; want ErrOutputLimit", err)
+	}
+}
+
 func TestStreamTruncated(t *testing.T) {
 	c := newTestReadClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("repo") != "r" || r.Header.Get("Authorization") != "Bearer tok" {

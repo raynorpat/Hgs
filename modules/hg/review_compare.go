@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"strconv"
 )
 
 // CompareReview reads the snapshot through the read service, so the snapshot
@@ -30,6 +31,9 @@ func (r *Runner) CompareReview(ctx context.Context, s ReviewSnapshot) (ReviewCom
 		Repo struct{ ChangesetsBetween []gqlChangeset }
 	}
 	err = r.readQuery(ctx, s.Path, "ChangesetsBetween", `query ChangesetsBetween($repo: String!, $source: NodeId!, $target: NodeId!) { repo(path: $repo) { changesetsBetween(source: $source, target: $target) { `+changesetSelection+` } } }`, map[string]interface{}{"source": string(s.Source), "target": string(s.Target)}, &out)
+	if errors.Is(err, ErrOutputLimit) || len(out.Repo.ChangesetsBetween) > MaxReviewChangesets {
+		return result, ErrComparisonTooLarge
+	}
 	if err != nil {
 		return result, err
 	}
@@ -48,7 +52,7 @@ func (r *Runner) CompareReview(ctx context.Context, s ReviewSnapshot) (ReviewCom
 		return result, err
 	}
 	w := newDiffWriter()
-	truncated, err := r.reads.Stream(ctx, "/diff", url.Values{"repo": {rel}, "from": {string(s.Base)}, "to": {string(s.Source)}}, w)
+	truncated, err := r.reads.Stream(ctx, "/diff", url.Values{"repo": {rel}, "from": {string(s.Base)}, "to": {string(s.Source)}, "max": {strconv.Itoa(MaxDiffBytes)}}, w)
 	if err != nil && !errors.Is(err, ErrOutputLimit) {
 		return result, err
 	}

@@ -133,12 +133,15 @@ func (c *ReadClient) Query(ctx context.Context, operation, query string, variabl
 		return err
 	}
 	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, MaxCommandOutput+1))
 	if err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 		return fmt.Errorf("%w: %v", ErrReadService, err)
+	}
+	if len(data) > MaxCommandOutput {
+		return ErrOutputLimit
 	}
 	var env struct {
 		gqlErrors

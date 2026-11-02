@@ -48,6 +48,8 @@ const (
 	MaxRenderedFileBytes = 1 << 20
 	MaxDiffBytes         = 2 << 20
 	MaxDiffLines         = 10000
+	// MaxReviewChangesets bounds the changesets one review comparison lists.
+	MaxReviewChangesets = 1000
 	// MaxCommandOutput bounds Run output: the largest browser payload.
 	MaxCommandOutput = MaxDiffBytes
 

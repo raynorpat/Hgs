@@ -39,7 +39,7 @@ func (r *Runner) Diff(ctx context.Context, path string, cs Changeset, parentInde
 	ctx, cancel := context.WithTimeout(ctx, BrowserCommandTimeout)
 	defer cancel()
 	w := newDiffWriter()
-	truncated, err := r.reads.Stream(ctx, "/diff", url.Values{"repo": {rel}, "changeset": {string(cs.Node)}, "parent": {strconv.Itoa(parentIndex)}}, w)
+	truncated, err := r.reads.Stream(ctx, "/diff", url.Values{"repo": {rel}, "changeset": {string(cs.Node)}, "parent": {strconv.Itoa(parentIndex)}, "max": {strconv.Itoa(MaxDiffBytes)}}, w)
 	if err != nil && !errors.Is(err, ErrOutputLimit) {
 		return DiffResult{}, err
 	}
