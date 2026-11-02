@@ -259,7 +259,6 @@ func TestLiteralReferenceCannotInjectRevset(t *testing.T) {
 		}
 	}
 
-	useFakeReads(t, r, filepath.Dir(repo), map[string]string{"Served": fakeServedData(newerDefaultNode)})
 	fake = useFakeReads(t, r, filepath.Dir(repo), map[string]string{"Served": fakeServedData(newerDefaultNode)})
 	if n, err := r.Resolve(ctx, repo, RefSelection{RefNode, strings.ToUpper(string(newerDefaultNode))}); err != nil || n != newerDefaultNode {
 		t.Errorf("node selection resolved to %s, %v", n, err)

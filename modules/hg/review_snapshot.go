@@ -83,6 +83,18 @@ func (r *Runner) reviewCapability(ctx context.Context) error {
 }
 
 func (r *Runner) reviewReferences(ctx context.Context, path string) ([]Reference, error) {
+	var out bytes.Buffer
+	if err := r.reviewRun(ctx, path, []string{"branches", "--closed", "-T", branchHeadsTemplate}, &out); err != nil {
+		return nil, err
+	}
+	if err := r.reviewRun(ctx, path, []string{"log", "-r", referencesRevset, "-T", referencesTemplate}, &out); err != nil {
+		return nil, err
+	}
+	return parseReferences(out.Bytes())
+}
+
+// readReviewReferences is reviewReferences through the read service.
+func (r *Runner) readReviewReferences(ctx context.Context, path string) ([]Reference, error) {
 	if err := reviewPath(path); err != nil {
 		return nil, err
 	}
@@ -95,9 +107,15 @@ func (r *Runner) ResolveReview(ctx context.Context, path string, selection Revie
 	if err := r.reviewCapability(ctx); err != nil {
 		return ReviewEndpoint{}, err
 	}
-	return r.resolveReview(ctx, path, selection)
+	return r.resolveReview(ctx, path, selection, true)
 }
-func (r *Runner) resolveReview(ctx context.Context, path string, s ReviewSelection) (ReviewEndpoint, error) {
+
+// resolveReview reads with the service when reads is set, else with Mercurial.
+func (r *Runner) resolveReview(ctx context.Context, path string, s ReviewSelection, reads bool) (ReviewEndpoint, error) {
+	changeset, references := r.reviewChangeset, r.reviewReferences
+	if reads {
+		changeset, references = r.readReviewChangeset, r.readReviewReferences
+	}
 	result := ReviewEndpoint{Path: path, Selection: s}
 	if s.Ref.Kind == RefNode {
 		n, err := ParseNodeID(s.Ref.Name)
@@ -107,7 +125,7 @@ func (r *Runner) resolveReview(ctx context.Context, path string, s ReviewSelecti
 		if s.Head != "" && s.Head != n {
 			return result, ErrNotFound
 		}
-		if _, err = r.reviewChangeset(ctx, path, n); err != nil {
+		if _, err = changeset(ctx, path, n); err != nil {
 			return result, err
 		}
 		result.Node = n
@@ -118,7 +136,7 @@ func (r *Runner) resolveReview(ctx context.Context, path string, s ReviewSelecti
 	default:
 		return result, ErrNotFound
 	}
-	refs, err := r.reviewReferences(ctx, path)
+	refs, err := references(ctx, path)
 	if err != nil {
 		return result, err
 	}
@@ -151,6 +169,28 @@ func (r *Runner) resolveReview(ctx context.Context, path string, s ReviewSelecti
 }
 
 func (r *Runner) reviewChangeset(ctx context.Context, path string, node NodeID) (Changeset, error) {
+	if _, err := ParseNodeID(string(node)); err != nil {
+		return Changeset{}, err
+	}
+	var out bytes.Buffer
+	if err := r.reviewRun(ctx, path, []string{"log", "-r", nodeRevset(node), "-T", changesetTemplate}, &out); err != nil {
+		return Changeset{}, err
+	}
+	entries, err := parseChangesets(out.Bytes())
+	if err != nil {
+		return Changeset{}, err
+	}
+	if len(entries) == 0 {
+		return Changeset{}, ErrNotFound
+	}
+	if len(entries) != 1 || entries[0].Node != node {
+		return Changeset{}, errors.New("hg: unexpected review changeset result")
+	}
+	return entries[0], nil
+}
+
+// readReviewChangeset is reviewChangeset through the read service.
+func (r *Runner) readReviewChangeset(ctx context.Context, path string, node NodeID) (Changeset, error) {
 	if _, err := ParseNodeID(string(node)); err != nil {
 		return Changeset{}, err
 	}
@@ -279,7 +319,7 @@ func (r *Runner) snapshotReview(ctx context.Context, source, target ReviewEndpoi
 		return result, err
 	}
 	for _, endpoint := range []ReviewEndpoint{source, target} {
-		current, err := r.resolveReview(ctx, endpoint.Path, endpoint.Selection)
+		current, err := r.resolveReview(ctx, endpoint.Path, endpoint.Selection, false)
 		if err != nil {
 			return result, err
 		}
@@ -398,9 +438,6 @@ func (r *Runner) CloneVisible(ctx context.Context, sourcePath, outputPath string
 			_ = os.RemoveAll(outputPath)
 		}
 	}()
-	// The reads below open outputPath in the service; release it before the
-	// caller renames it or the cleanup above removes it.
-	defer func() { _ = r.Release(ctx, outputPath) }()
 	if err := r.reviewRun(ctx, "", []string{"clone", "--pull", "-U", "--", sourcePath, outputPath}, nil); err != nil {
 		return err
 	}
