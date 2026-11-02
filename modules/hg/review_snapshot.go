@@ -403,15 +403,6 @@ func (r *Runner) snapshotReview(ctx context.Context, source, target ReviewEndpoi
 	return result, nil
 }
 
-// Make all review commands obey both process and payload bounds. ErrOutputLimit
-// is mapped only at comparison boundaries, not confused with a merge conflict.
-func reviewComparisonError(err error) error {
-	if errors.Is(err, ErrOutputLimit) {
-		return ErrComparisonTooLarge
-	}
-	return err
-}
-
 // reviewOperationContext is the overall bound for a private heavy operation.
 func (r *Runner) reviewOperationContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	limit := r.cfg.SessionTimeout
