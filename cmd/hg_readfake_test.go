@@ -31,6 +31,8 @@ type readFake struct {
 	// raw changes /raw: "large" streams endlessly-big content, "fail" answers
 	// INTERNAL before any byte if content is empty, else cuts the body short.
 	raw string
+	// diff is what /diff serves.
+	diff string
 }
 
 // fakeReadAPI returns a client for a fake read service serving handlers. It
@@ -69,6 +71,14 @@ func (f *readFake) serve(w http.ResponseWriter, r *http.Request) {
 		f.serveRaw(w, r)
 		return
 	}
+	if r.URL.Path == "/diff" {
+		f.mu.Lock()
+		f.ops = append(f.ops, "diff")
+		diff := f.diff
+		f.mu.Unlock()
+		io.WriteString(w, diff)
+		return
+	}
 	body, _ := io.ReadAll(r.Body)
 	var q struct {
 		OperationName string
@@ -99,6 +109,13 @@ func (f *readFake) setManifest(manifest string) {
 func (f *readFake) setContent(content string) {
 	f.mu.Lock()
 	f.content = content
+	f.mu.Unlock()
+}
+
+// setDiff sets what /diff serves.
+func (f *readFake) setDiff(diff string) {
+	f.mu.Lock()
+	f.diff = diff
 	f.mu.Unlock()
 }
 

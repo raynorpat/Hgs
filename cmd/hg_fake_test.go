@@ -34,8 +34,6 @@ func fakeViewHg(args []string) int {
 		return boolExit(os.MkdirAll(filepath.Join(args[1], ".hg"), 0700))
 	case "files":
 		fmt.Print(read("filepath") + "\n")
-	case "diff":
-		fmt.Print(read("patch"))
 	case "log":
 		all := strings.Join(args, " ")
 		switch {

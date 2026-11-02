@@ -9,7 +9,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
+	"net/url"
+	"strconv"
 )
 
 type DiffResult struct {
@@ -25,22 +26,24 @@ func (r *Runner) Diff(ctx context.Context, path string, cs Changeset, parentInde
 	if parentIndex < 0 || parentIndex > 1 {
 		return DiffResult{}, fmt.Errorf("hg: invalid diff parent %d", parentIndex)
 	}
+	if parentIndex >= max(len(cs.Parents), 1) {
+		return DiffResult{}, fmt.Errorf("hg: changeset has no parent %d", parentIndex)
+	}
+	if r.reads == nil {
+		return DiffResult{}, fmt.Errorf("%w: no read client", ErrReadService)
+	}
+	rel, err := r.reads.relative(path)
+	if err != nil {
+		return DiffResult{}, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, BrowserCommandTimeout)
 	defer cancel()
-	parent := strings.Repeat("0", 40)
-	if len(cs.Parents) > 0 {
-		if parentIndex >= len(cs.Parents) {
-			return DiffResult{}, fmt.Errorf("hg: changeset has no parent %d", parentIndex)
-		}
-		parent = string(cs.Parents[parentIndex])
-	} else if parentIndex != 0 {
-		return DiffResult{}, fmt.Errorf("hg: root changeset has no parent %d", parentIndex)
-	}
 	w := newDiffWriter()
-	err := r.run(ctx, path, []string{"diff", "--git", "--nodates", "--no-binary", "-r", parent, "-r", string(cs.Node)}, nil, w, -1)
+	truncated, err := r.reads.Stream(ctx, "/diff", url.Values{"repo": {rel}, "changeset": {string(cs.Node)}, "parent": {strconv.Itoa(parentIndex)}}, w)
 	if err != nil && !errors.Is(err, ErrOutputLimit) {
 		return DiffResult{}, err
 	}
+	w.truncated = w.truncated || truncated
 	return w.result(), nil
 }
 

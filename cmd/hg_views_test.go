@@ -315,7 +315,7 @@ func TestFileRenderingCannotExecuteMarkup(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "too large to display") {
 		t.Fatal("oversize notice", w.Code)
 	}
-	a.fixture(t, "patch", "+<script>alert(99)</script>\n")
+	a.reads.setDiff("+<script>alert(99)</script>\n")
 	w = a.request(t, "GET", "/gogs/alice/project/commit/"+viewNode, "", "")
 	if w.Code != 200 || strings.Contains(w.Body.String(), "<script>alert(99)") || !strings.Contains(w.Body.String(), "&lt;script&gt;") {
 		t.Fatal("patch escaped", w.Code, w.Body.String())
@@ -379,7 +379,7 @@ func TestHomeListsReferencesOnce(t *testing.T) {
 func TestCommitPageLooksUpChangesetOnce(t *testing.T) {
 	a := newViewApp(t)
 	a.populate(t, 1)
-	a.fixture(t, "patch", "diff --git a/f000.txt b/f000.txt\n")
+	a.reads.setDiff("diff --git a/f000.txt b/f000.txt\n")
 	if w := a.request(t, "GET", "/gogs/alice/project/commit/"+viewNode, "", ""); w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
