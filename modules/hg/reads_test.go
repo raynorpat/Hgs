@@ -276,3 +276,174 @@ func fakeChangesetData(node NodeID) string {
 func fakeServedData(node NodeID) string {
 	return `{"data":{"repo":{"changeset":{"id":"` + string(node) + `"}}}}`
 }
+
+// historyFakeRunner is a Runner reading from a fake service that answers the
+// History operation with data, and the repository it reads.
+func historyFakeRunner(t *testing.T, data string) (*Runner, string, *fakeReads) {
+	t.Helper()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newTestRunner(t, Config{})
+	f := useFakeReads(t, r, root, map[string]string{"History": data})
+	return r, filepath.Join(root, "repo"), f
+}
+
+const fakeHistoryEmpty = `{"data":{"repo":{"history":{"snapshot":"` + "0123456789012345678901234567890123456789" + `","snapshotRevision":0,"nextBefore":0,"hasMore":false,"entries":[]}}}}`
+
+func TestHistoryCursorErrors(t *testing.T) {
+	r, repo, f := historyFakeRunner(t, fakeHistoryEmpty)
+	node := NodeID(strings.Repeat("a", 40))
+	for name, q := range map[string]HistoryQuery{
+		"before below -1":             {BeforeRevision: -2},
+		"negative limit":              {BeforeRevision: -1, Limit: -1},
+		"before without snapshot":     {BeforeRevision: 3},
+		"malformed snapshot":          {Snapshot: "tip", SnapshotRevision: 5, BeforeRevision: -1},
+		"negative snapshot revision":  {Snapshot: node, SnapshotRevision: -1, BeforeRevision: -1},
+		"before beyond snapshot":      {Snapshot: node, SnapshotRevision: 5, BeforeRevision: 6},
+		"unusable snapshot, no limit": {Snapshot: "", SnapshotRevision: 0, BeforeRevision: 0},
+	} {
+		if _, err := r.History(context.Background(), repo, q); !errors.Is(err, ErrInvalidCursor) {
+			t.Errorf("%s: %v; want ErrInvalidCursor", name, err)
+		}
+	}
+	if n := len(f.requests()); n != 0 {
+		t.Errorf("%d requests for invalid queries", n)
+	}
+	// A cursor only the service can tell is stale also maps.
+	r, repo, _ = historyFakeRunner(t, fakeError("INVALID_CURSOR"))
+	if _, err := r.History(context.Background(), repo, HistoryQuery{Snapshot: node, SnapshotRevision: 5, BeforeRevision: 2}); !errors.Is(err, ErrInvalidCursor) {
+		t.Errorf("service INVALID_CURSOR: %v", err)
+	}
+}
+
+func TestHistoryEmptyPathOmitted(t *testing.T) {
+	r, repo, f := historyFakeRunner(t, fakeHistoryEmpty)
+	if _, err := r.History(context.Background(), repo, HistoryQuery{BeforeRevision: -1}); err != nil {
+		t.Fatal(err)
+	}
+	var body struct{ Variables map[string]interface{} }
+	reqs := f.requests()
+	if len(reqs) != 1 || json.Unmarshal([]byte(reqs[0]), &body) != nil {
+		t.Fatalf("requests %q", reqs)
+	}
+	for _, k := range []string{"path", "snapshot", "snapshotRevision"} {
+		if v, ok := body.Variables[k]; ok {
+			t.Errorf("variable %s = %v sent", k, v)
+		}
+	}
+}
+
+func TestHistoryNonUTF8PathUnsupported(t *testing.T) {
+	r, repo, f := historyFakeRunner(t, fakeHistoryEmpty)
+	if _, err := r.History(context.Background(), repo, HistoryQuery{BeforeRevision: -1, Path: "caf\xe9"}); !errors.Is(err, ErrUnsupportedEncoding) {
+		t.Fatalf("History = %v; want ErrUnsupportedEncoding", err)
+	}
+	if n := len(f.requests()); n != 0 {
+		t.Errorf("%d requests", n)
+	}
+}
+
+func TestHistoryEmpty(t *testing.T) {
+	r := newReadRunner(t)
+	repo := readRepo(t, r, "empty")
+	if _, err := r.History(context.Background(), repo, HistoryQuery{BeforeRevision: -1}); !errors.Is(err, ErrEmptyRepository) {
+		t.Fatalf("History = %v; want ErrEmptyRepository", err)
+	}
+}
+
+// historyNodes walks every page of q and returns the nodes in order.
+func historyNodes(t *testing.T, r *Runner, repo string, q HistoryQuery) []NodeID {
+	t.Helper()
+	got := []NodeID{}
+	for {
+		page, err := r.History(context.Background(), repo, q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, cs := range page.Entries {
+			got = append(got, cs.Node)
+		}
+		if !page.HasMore {
+			return got
+		}
+		q.Snapshot, q.SnapshotRevision, q.BeforeRevision = page.Snapshot, page.SnapshotRevision, page.NextBefore
+	}
+}
+
+func hgNodes(t *testing.T, r *Runner, repo string, args ...string) []NodeID {
+	t.Helper()
+	nodes := []NodeID{}
+	for _, n := range strings.Fields(readHg(t, r, repo, append([]string{"log", "-T", "{node}\n"}, args...)...)) {
+		nodes = append(nodes, NodeID(n))
+	}
+	return nodes
+}
+
+func TestHistoryPagesMatchHg(t *testing.T) {
+	r := newReadRunner(t)
+	repo := readRepo(t, r, "pages")
+	readHg(t, r, repo, "debugbuilddag", "+250")
+	readHg(t, r, repo, "phase", "-q", "--secret", "--force", "-r", "tip")
+	want := hgNodes(t, r, repo, "-r", "sort((0:249) and not secret(), -rev)")
+	if len(want) != 249 {
+		t.Fatalf("hg lists %d changesets", len(want))
+	}
+	got := historyNodes(t, r, repo, HistoryQuery{BeforeRevision: -1, Limit: 30})
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("History lists %d changesets, hg %d; first difference differs", len(got), len(want))
+	}
+}
+
+func TestFileHistoryFollowsRenames(t *testing.T) {
+	r := newReadRunner(t)
+	repo := readRepo(t, r, "follow")
+	write := func(name, text string) {
+		if err := os.WriteFile(filepath.Join(repo, name), []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("old", "one\n")
+	readHg(t, r, repo, "add", "old")
+	readCommit(t, r, repo, "created")
+	readHg(t, r, repo, "rename", "old", "new")
+	readCommit(t, r, repo, "renamed")
+	write("other", "x\n")
+	readHg(t, r, repo, "add", "other")
+	readCommit(t, r, repo, "unrelated")
+	write("new", "two\n")
+	readCommit(t, r, repo, "edited")
+	want := hgNodes(t, r, repo, "--follow", "-r", "max(not secret())", "--", "path:new")
+	if len(want) != 3 {
+		t.Fatalf("hg follows %d changesets", len(want))
+	}
+	for _, limit := range []int{1, 2, 30} {
+		if got := historyNodes(t, r, repo, HistoryQuery{BeforeRevision: -1, Path: "new", Limit: limit}); !reflect.DeepEqual(got, want) {
+			t.Errorf("limit %d: %v; want %v", limit, got, want)
+		}
+	}
+	if _, err := r.History(context.Background(), repo, HistoryQuery{BeforeRevision: -1, Path: "old"}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("path absent at the tip: %v", err)
+	}
+}
+
+func TestHistoryDeletedFileWithAnchor(t *testing.T) {
+	r := newReadRunner(t)
+	repo := readRepo(t, r, "deleted")
+	if err := os.WriteFile(filepath.Join(repo, "f"), []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	readHg(t, r, repo, "add", "f")
+	added := readCommit(t, r, repo, "added")
+	readHg(t, r, repo, "remove", "f")
+	readCommit(t, r, repo, "removed")
+	ctx := context.Background()
+	if _, err := r.History(ctx, repo, HistoryQuery{BeforeRevision: -1, Path: "f"}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deleted at the tip: %v; want ErrNotFound", err)
+	}
+	page, err := r.History(ctx, repo, HistoryQuery{Snapshot: added, SnapshotRevision: 0, BeforeRevision: -1, Path: "f"})
+	if err != nil || len(page.Entries) != 1 || page.Entries[0].Node != added {
+		t.Fatalf("anchored at %s: %+v, %v", added, page, err)
+	}
+}

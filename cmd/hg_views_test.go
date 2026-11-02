@@ -189,21 +189,21 @@ func TestTreeViewBoundedInvocations(t *testing.T) {
 	a := newViewApp(t)
 	for _, n := range []int{1, 200} {
 		a.populate(t, n)
-		a.fixture(t, "tree-index-overlap", "1")
-		a.fixture(t, "tree-entered", "")
-		a.fixture(t, "index-finished", "")
-		before, readsBefore := len(a.arguments()), a.reads.total()
+		a.reads.set(map[string]string{"History": viewHistory(viewNode, 1, 0, false, 1, 1)})
+		before, readsBefore, historyBefore := len(a.arguments()), a.reads.total(), a.reads.count("History")
 		if err := models.EnqueueContribution(context.Background(), "repository", a.repo.Id); err != nil {
 			t.Fatal(err)
 		}
 		start := time.Now()
 		w := a.request(t, "GET", "/gogs/alice/project/src/"+viewNode, "", "")
-		foreground, background := 0, 0
+		// The contribution worker now reads history from the service, in the background.
+		for deadline := time.Now().Add(5 * time.Second); a.reads.count("History") == historyBefore && time.Now().Before(deadline); {
+			time.Sleep(10 * time.Millisecond)
+		}
+		background := a.reads.count("History") - historyBefore
+		foreground := 0
 		for _, args := range a.arguments()[before:] {
 			switch {
-			case strings.HasPrefix(args, "log -r max(not secret()) "), strings.HasPrefix(args, "log -r sort(((0:1) and not secret()), -rev) -l 101 "):
-				background++
-				t.Logf("contribution worker: %s", args)
 			case strings.HasPrefix(args, "manifest "):
 				foreground++
 				t.Logf("tree request: %s", args)
@@ -211,9 +211,9 @@ func TestTreeViewBoundedInvocations(t *testing.T) {
 				t.Fatalf("unattributed command: %s", args)
 			}
 		}
-		foreground += a.reads.total() - readsBefore
+		foreground += a.reads.total() - readsBefore - background
 		t.Logf("tree %d latency %s foreground %d background %d", n, time.Since(start), foreground, background)
-		if w.Code != 200 || foreground > 5 || background < 2 || !strings.Contains(w.Body.String(), fmt.Sprintf("f%03d.txt", n-1)) {
+		if w.Code != 200 || foreground > 5 || background < 1 || !strings.Contains(w.Body.String(), fmt.Sprintf("f%03d.txt", n-1)) {
 			t.Fatalf("tree %d status %d foreground %d background %d", n, w.Code, foreground, background)
 		}
 	}
@@ -624,16 +624,7 @@ func TestIssueWorkflowNotificationDelivery(t *testing.T) {
 func TestMercurialViewHistoryCursor(t *testing.T) {
 	a := newViewApp(t)
 	a.populate(t, 1)
-	changeset := func(rev int) string {
-		return fmt.Sprintf(`{"node":%q,"rev":%d,"p1node":%q,"p2node":%q,"author":"t","desc":"revision %d","branch":"default","date":[1,0]}`+"\n", viewNode, rev, strings.Repeat("0", 40), strings.Repeat("0", 40), rev)
-	}
-	a.fixture(t, "changeset", changeset(31))
-	a.reads.set(map[string]string{"Changeset": viewChangeset(viewNode, 31, "revision 31")})
-	var history strings.Builder
-	for rev := 31; rev >= 0; rev-- {
-		history.WriteString(changeset(rev))
-	}
-	a.fixture(t, "history", history.String())
+	a.reads.set(map[string]string{"Changeset": viewChangeset(viewNode, 31, "revision 31"), "History": viewHistory(viewNode, 31, 2, true, 31, 2)})
 	w := a.request(t, "GET", "/gogs/alice/project/commits", "", "")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "revision 31") {
 		t.Fatal("first history", w.Code, w.Body.String())
@@ -662,16 +653,13 @@ func TestMercurialViewHistoryCursor(t *testing.T) {
 	if c.Version != 1 || c.Node != viewNode || c.Revision != 31 || c.Before != 2 || c.Path != "" {
 		t.Fatalf("changed history snapshot/bound: %s", data)
 	}
-	a.fixture(t, "history", changeset(1)+changeset(0))
+	a.reads.set(map[string]string{"History": viewHistory(viewNode, 31, 0, false, 1, 0)})
 	w = a.request(t, "GET", next, "", "")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "revision 1") || strings.Contains(w.Body.String(), "revision 31") {
 		t.Fatal("later history", w.Code, w.Body.String())
 	}
-	args, _ := os.ReadFile(filepath.Join(a.config, "arguments"))
-	if !strings.Contains(string(args), `and (0:1)`) {
-		t.Fatalf("history lost exclusive before bound: %s", args)
-	}
 	// A cursor with a revision that does not match its node must fail, never reset.
+	a.reads.set(map[string]string{"History": readError("INVALID_CURSOR")})
 	c.Revision = 30
 	c.Before = -1
 	bad, _ := json.Marshal(c)

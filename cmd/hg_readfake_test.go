@@ -129,3 +129,13 @@ func viewChangeset(node string, revision int, comments string) string {
 func viewServed(node string) string {
 	return fmt.Sprintf(`{"data":{"repo":{"changeset":{"id":%q}}}}`, node)
 }
+
+// viewHistory is the History answer for a page of changesets from revision
+// high down to low, with revision text "revision N".
+func viewHistory(snapshot string, snapshotRevision, nextBefore int, hasMore bool, high, low int) string {
+	entries := []string{}
+	for rev := high; rev >= low; rev-- {
+		entries = append(entries, fmt.Sprintf(`{"id":%q,"revision":%d,"branch":"default","user":"Author <a@example.test>","comments":"revision %d","time":{"time":1,"tz":0},"parents":[]}`, snapshot, rev, rev))
+	}
+	return fmt.Sprintf(`{"data":{"repo":{"history":{"snapshot":%q,"snapshotRevision":%d,"nextBefore":%d,"hasMore":%t,"entries":[%s]}}}}`, snapshot, snapshotRevision, nextBefore, hasMore, strings.Join(entries, ","))
+}

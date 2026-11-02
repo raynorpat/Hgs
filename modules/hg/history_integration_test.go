@@ -82,9 +82,9 @@ func TestHistoryDoesNotShiftOnPush(t *testing.T) {
 		}
 	}
 	// The existing raw-byte file fixture must work without CLI re-encoding.
-	for file, message := range map[string]string{"[ab]": "special files", "caf\xe9": "special files", "A": "base", "d/x": "older"} {
+	for file, message := range map[string]string{"[ab]": "special files", "A": "base", "d/x": "older"} {
 		q := HistoryQuery{BeforeRevision: -1, Path: file}
-		if file == "[ab]" || file == "caf\xe9" {
+		if file == "[ab]" {
 			q.Snapshot = nodes["newer"]
 			q.SnapshotRevision = 7
 		}
