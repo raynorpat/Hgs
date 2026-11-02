@@ -140,6 +140,13 @@ func fakeHg(args []string) int {
 		flood(args[1])
 	case "sleep":
 		time.Sleep(time.Minute)
+	case "--root":
+		// An HGQLSERVE that fails before it listens.
+		for i := 1; i <= 10; i++ {
+			fmt.Fprintln(os.Stderr, "line", i)
+		}
+		fmt.Fprintln(os.Stderr, strings.Repeat("x", 10000))
+		return 1
 	case "tree":
 		// The grandchild shares stdout, so stdout reaches EOF only once it dies.
 		gc := exec.Command(os.Args[0], "sleep")

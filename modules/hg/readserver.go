@@ -89,6 +89,9 @@ func StartReadServer(ctx context.Context, binary, root, tokenDir string, client 
 	if binary == "" {
 		return nil, errors.New("hg: HGQLSERVE is not set")
 	}
+	if !filepath.IsAbs(binary) {
+		return nil, fmt.Errorf("hg: HGQLSERVE %q is not an absolute path", binary)
+	}
 	if fi, err := os.Stat(binary); err != nil || fi.IsDir() {
 		return nil, fmt.Errorf("hg: HGQLSERVE %q is missing: %v", binary, err)
 	}
@@ -114,6 +117,10 @@ func (s *ReadServer) launch(ctx context.Context) (*Child, error) {
 	}
 	token := hex.EncodeToString(raw)
 	// The service reads the file once at start, so each start gets a new one.
+	// Removing it first stops an existing file keeping wider permissions.
+	if err := os.Remove(s.tokenFile); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("hg: remove old token file: %v", err)
+	}
 	if err := os.WriteFile(s.tokenFile, []byte(token), 0600); err != nil {
 		return nil, fmt.Errorf("hg: write token file: %v", err)
 	}
@@ -133,7 +140,8 @@ func (s *ReadServer) launch(ctx context.Context) (*Child, error) {
 		c.Stdin.Close()
 		close(c.done)
 	}()
-	go io.Copy(io.Discard, c.Stderr)
+	stderr := &stderrTail{done: make(chan struct{})}
+	go stderr.scan(c.Stderr)
 
 	ctx, cancel := context.WithTimeout(ctx, StartupTimeout)
 	defer cancel()
@@ -165,7 +173,7 @@ func (s *ReadServer) launch(ctx context.Context) (*Child, error) {
 	case a := <-addr:
 		s.client.SetEndpoint(a, token)
 	case <-c.done:
-		return fail(errors.New("hg: HGQLSERVE exited before listening"))
+		return fail(fmt.Errorf("hg: HGQLSERVE exited before listening: %s", stderr.last()))
 	case <-ctx.Done():
 		return fail(fmt.Errorf("hg: HGQLSERVE did not start listening: %w", ctx.Err()))
 	}
@@ -181,6 +189,51 @@ func (s *ReadServer) launch(ctx context.Context) (*Child, error) {
 			return fail(fmt.Errorf("hg: HGQLSERVE was not ready: %w", ctx.Err()))
 		}
 	}
+}
+
+const (
+	stderrLineMax = 1024
+	stderrTailMax = 5
+)
+
+// stderrTail logs a child's stderr line by line and keeps the last few lines.
+type stderrTail struct {
+	mu    sync.Mutex
+	lines []string
+	done  chan struct{}
+}
+
+func (t *stderrTail) scan(r io.Reader) {
+	defer close(t.done)
+	br := bufio.NewReaderSize(r, stderrLineMax)
+	rest := false // still in a line already cut at stderrLineMax
+	for {
+		line, more, err := br.ReadLine()
+		if err != nil {
+			return
+		}
+		if !rest {
+			s := strings.ToValidUTF8(string(line), "?")
+			log.Warn("hgqlserve: %s", s)
+			t.mu.Lock()
+			if t.lines = append(t.lines, s); len(t.lines) > stderrTailMax {
+				t.lines = t.lines[1:]
+			}
+			t.mu.Unlock()
+		}
+		rest = more
+	}
+}
+
+// last waits briefly for stderr to end, then returns its last lines.
+func (t *stderrTail) last() string {
+	select {
+	case <-t.done:
+	case <-time.After(time.Second):
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return strings.Join(t.lines, "; ")
 }
 
 const (

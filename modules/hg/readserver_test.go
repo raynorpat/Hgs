@@ -91,12 +91,44 @@ func startTestReadServer(t *testing.T) (*ReadServer, *ReadClient, string) {
 }
 
 func TestStartMissingBinary(t *testing.T) {
-	for _, bin := range []string{"", filepath.Join(t.TempDir(), "nope")} {
+	for _, bin := range []string{"", filepath.Join(t.TempDir(), "nope"), "hgqlserve"} {
 		root := t.TempDir()
 		_, err := StartReadServer(context.Background(), bin, root, t.TempDir(), NewReadClient(root))
 		if err == nil || !strings.Contains(err.Error(), "HGQLSERVE") {
 			t.Errorf("binary %q: error %v lacks HGQLSERVE", bin, err)
 		}
+	}
+}
+
+func TestStartRelativeBinary(t *testing.T) {
+	root := t.TempDir()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(filepath.Dir(exe))
+	_, err = StartReadServer(context.Background(), filepath.Base(exe), root, t.TempDir(), NewReadClient(root))
+	if err == nil || !strings.Contains(err.Error(), "not an absolute path") {
+		t.Fatalf("relative HGQLSERVE: %v", err)
+	}
+}
+
+func TestStartReportsStderr(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	_, err = StartReadServer(context.Background(), exe, root, t.TempDir(), NewReadClient(root))
+	if err == nil || !strings.Contains(err.Error(), "exited before listening") {
+		t.Fatalf("start: %v", err)
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "line 7") || !strings.Contains(msg, "line 10") || strings.Contains(msg, "line 6") {
+		t.Errorf("error lacks the last stderr lines: %q", msg)
+	}
+	if len(msg) > 2000 {
+		t.Errorf("error holds an unbounded line: %d bytes", len(msg))
 	}
 }
 
@@ -118,6 +150,13 @@ func TestTokenFileMode(t *testing.T) {
 	}
 	bin := hgqlserveBinary(t)
 	root, dir := t.TempDir(), filepath.Join(t.TempDir(), "tok")
+	// A token file left with wider permissions must not keep them.
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "token"), []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	s, err := StartReadServer(context.Background(), bin, root, dir, NewReadClient(root))
 	if err != nil {
 		t.Fatal(err)
