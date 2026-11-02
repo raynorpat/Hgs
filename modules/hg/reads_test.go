@@ -346,6 +346,21 @@ func TestHistoryNonUTF8PathUnsupported(t *testing.T) {
 	}
 }
 
+// The service sends commit time as a Long, a JSON float.
+func TestChangesetTimeAfter2038(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := NodeID(strings.Repeat("a", 40))
+	r := newTestRunner(t, Config{})
+	useFakeReads(t, r, root, map[string]string{"Changeset": `{"data":{"repo":{"changeset":{"id":"` + string(node) + `","revision":0,"branch":"default","user":"t","comments":"c","time":{"time":2208988800.0,"tz":0},"parents":[]}}}}`})
+	cs, err := r.Changeset(context.Background(), filepath.Join(root, "repo"), node)
+	if err != nil || cs.Date.Unix() != 2208988800 {
+		t.Fatalf("Changeset = %v, %v", cs.Date, err)
+	}
+}
+
 func TestHistoryEmpty(t *testing.T) {
 	r := newReadRunner(t)
 	repo := readRepo(t, r, "empty")

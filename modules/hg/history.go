@@ -55,7 +55,7 @@ const changesetSelection = `id revision branch user comments time { time } paren
 type gqlChangeset struct {
 	ID, Branch, User, Comments string
 	Revision                   int64
-	Time                       struct{ Time int64 }
+	Time                       struct{ Time float64 } // a Long, sent as a JSON float
 	Parents                    []struct{ ID string }
 }
 
@@ -64,7 +64,7 @@ func (g gqlChangeset) changeset() (Changeset, error) {
 	if err != nil || g.Revision < 0 {
 		return Changeset{}, errors.New("hg: invalid changeset metadata")
 	}
-	cs := Changeset{Node: node, Revision: g.Revision, User: g.User, Message: g.Comments, Branch: g.Branch, Date: time.Unix(g.Time.Time, 0).UTC(), Parents: []NodeID{}}
+	cs := Changeset{Node: node, Revision: g.Revision, User: g.User, Message: g.Comments, Branch: g.Branch, Date: time.Unix(int64(g.Time.Time), 0).UTC(), Parents: []NodeID{}}
 	for _, p := range g.Parents {
 		parent, err := ParseNodeID(p.ID)
 		if err != nil {
