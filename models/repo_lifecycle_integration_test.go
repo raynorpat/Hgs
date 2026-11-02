@@ -91,7 +91,7 @@ func TestRepositoryProvisionRealMercurial(t *testing.T) {
 }
 
 // Reading through hgqlserve must not keep the storage open, so deletion
-// succeeds right after a read.
+// succeeds right after a read. The failure this guards against only occurs on Windows.
 func TestDeleteAfterRead(t *testing.T) {
 	exe, bin := os.Getenv("GOGS_TEST_HG"), os.Getenv("GOGS_TEST_HGQLSERVE")
 	if exe == "" || bin == "" {
@@ -121,8 +121,13 @@ func TestDeleteAfterRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := storagePath(t, root, repo.Id)
-	if _, err = r.References(ctx, path); err != nil {
+	// An empty repository has no revlogs to map, so give it history.
+	var out bytes.Buffer
+	if err = r.Run(ctx, path, []string{"commit", "-q", "--config", "ui.allowemptycommit=1", "-u", "t <t@example.test>", "-m", "first"}, nil, &out); err != nil {
 		t.Fatal(err)
+	}
+	if refs, err := r.References(ctx, path); err != nil || len(refs) != 1 {
+		t.Fatalf("refs %+v, %v", refs, err)
 	}
 	if err = DeleteHgRepository(ctx, root, repo.Id, func(context.Context, int64) error { return nil }); err != nil {
 		t.Fatal(err)

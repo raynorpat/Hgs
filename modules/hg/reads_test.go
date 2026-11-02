@@ -691,6 +691,7 @@ type writerFunc func([]byte) (int, error)
 
 func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
 
+// The failure this guards against only occurs on Windows, where mapped files cannot be renamed.
 // A push rejected by a hook rolls its transaction back, which renames and
 // truncates revlogs; a repository read through the service must allow that.
 func TestFailedPushRollsBackAfterRead(t *testing.T) {
@@ -703,21 +704,21 @@ func TestFailedPushRollsBackAfterRead(t *testing.T) {
 	}
 	clone := filepath.Join(r.reads.root, "clone")
 	readHg(t, r, "", "clone", repo, clone)
-	readCommit(t, r, clone, "second")
+	second := readCommit(t, r, clone, "second")
 
 	hgrc := filepath.Join(repo, ".hg", "hgrc")
 	if err := os.WriteFile(hgrc, []byte("[hooks]\npretxnchangegroup.reject = exit 1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Run(ctx, clone, []string{"push"}, nil, io.Discard); err == nil {
-		t.Fatal("push was not rejected")
+	if err := r.Run(ctx, clone, []string{"push"}, nil, io.Discard); err == nil || !strings.Contains(err.Error(), "pretxnchangegroup.reject") {
+		t.Fatalf("push error %v; want the hook's rejection", err)
 	}
 	readHg(t, r, repo, "verify")
 	if err := os.Remove(hgrc); err != nil {
 		t.Fatal(err)
 	}
 	readHg(t, r, clone, "push")
-	if refs, err := r.References(ctx, repo); err != nil || len(refs) != 1 {
-		t.Fatalf("after push: %+v, %v", refs, err)
+	if refs, err := r.References(ctx, repo); err != nil || len(refs) != 1 || refs[0].Node != second {
+		t.Fatalf("after push: %+v, %v; want head %s", refs, err, second)
 	}
 }
