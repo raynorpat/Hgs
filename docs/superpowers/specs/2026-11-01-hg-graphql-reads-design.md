@@ -68,10 +68,9 @@ One new key, `[mercurial] HGQLSERVE`: the absolute path of the binary.
 | `ReadFile` | `/raw`, streamed to the writer |
 | `Diff` | `/diff?changeset=&parent=` through the existing `diffWriter` |
 | `CompareReview` | `changesetsBetween` and `/diff?from=&to=` |
-| `ResolveReview`, `InspectReviewEndpoint` | Existing matching over `refs` |
-| `ReviewPublicationState`, `ValidateReviewPublication` | Their reads use the methods above |
+| `ResolveReview` | Existing matching over `refs` |
 
-`reviewCapability` and `publicationCapability` stay for the `hg` operations that need them, and are no longer required before a read.
+`reviewCapability` and `publicationCapability` stay for the `hg` operations that need them. `reviewCapability` is no longer required before `ResolveReview` or `CompareReview`.
 
 ### Staying on `hg`
 
@@ -79,20 +78,14 @@ Reads inside write flows run on stores those flows are building, so they move wi
 
 - the manifest read in `PrepareReviewMerge`
 - the `log` checks in `SnapshotReview` and `SnapshotMergeReview`
-- `tags` and `verify` in `CloneVisible`
+- all reads in `CloneVisible`
+- `ReviewPublicationState`, `InspectReviewEndpoint` and `ValidateReviewPublication`, which publication hooks and their preflight call
 - `debuglocks` in `RecoverReviewPublication`
 - startup checks in `Runner.Check`
 
-## Releasing repositories
+## Repository handles
 
-An open repository's memory-mapped files block delete and rename on Windows. `POST /close` runs before:
-
-- repository deletion, through the existing `DrainRepository` hook, which runs before `DeleteHgRepository` touches storage
-- removal of comparison and prepared-merge artifacts
-
-Fork and provisioning staging renames need no `/close`, because the service never opened those stores.
-
-A failed `/close` stops the operation, so it cannot half-finish on a locked repository. If the service is down, no repository is held open by it, so the client treats a refused connection as released.
+`hgqlserve` reads revlogs without mapping them, on the Mononoke branch `unmapped-reads`, which this work requires. On Windows `hg` can therefore roll back after a read, and an open repository can be deleted or renamed, so Hgs does not call `POST /close`.
 
 ## Failure
 
@@ -120,7 +113,7 @@ A failed `/close` stops the operation, so it cannot half-finish on a locked repo
 - A test whose fake `hg` fails on any read command proves no read starts a process. `cmd/hg_fake_test.go` keeps its fake `hg` for write paths.
 - Tests asserting exact diff hunks change to comparing headers and the applied tree.
 - `readserver` tests cover restart after exit, startup wait, the root refusals and stop on shutdown.
-- Delete and rename tests cover `/close`, including a failed `/close` stopping the operation.
+- A test proves a failed push rolls back after a read, and a repository can be deleted after a read.
 
 ## Done means
 

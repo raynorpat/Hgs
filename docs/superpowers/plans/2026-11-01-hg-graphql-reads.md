@@ -67,7 +67,7 @@
   - `func CommonRoot(a, b string) (string, error)`, with `ErrNoCommonRoot`.
   - `type ReadServer` with `StartReadServer(ctx context.Context, binary, root, tokenDir string, client *ReadClient) (*ReadServer, error)` and `Stop(ctx context.Context) error`.
   - `func (r *Runner) SetReads(c *ReadClient)`, and field `reads *ReadClient`.
-  - `func (r *Runner) Release(ctx context.Context, path string) error`, calling `Close`.
+  - `func (r *Runner) Release(ctx context.Context, path string) error`, calling `Close`, removed again in Task 8.
 
 - [ ] **Step 1: Write failing tests.** `TestCommonRoot`: `/srv/hg/repos` and `/srv/hg/review` give `/srv/hg`; `/srv/hg` and `/opt/x` give `ErrNoCommonRoot`; on Windows `C:\a\b` and `D:\a\b` give `ErrNoCommonRoot`, and `C:\Hg\A` and `c:\hg\B` give the same parent. `TestCommonRootFollowsSymlinks`: a symlinked store resolves through `filepath.EvalSymlinks` first, skipped where links are refused. `TestStartMissingBinary`: the error contains `HGQLSERVE`. `TestReadsWaitForReady`: `StartReadServer` returns only after a query succeeds, bounded by `StartupTimeout`. `TestRestartAfterExit`: kill the child, then a query through the client succeeds within 10 seconds on the new address. `TestStopEndsChild`: no restart follows `Stop`. `TestTokenFileMode`: mode is `0600` on Unix.
 - [ ] **Step 2: Run.** `go test ./modules/hg -run 'CommonRoot|Start|Reads|Restart|Stop|Token'`. Expected: FAIL.
@@ -151,30 +151,27 @@
 
 **Interfaces:**
 - Consumes: `readChangeset`, `readRefs`, `Stream`.
-- Produces: `reviewBases` over `commonHeads`, `CompareReview` over `changesetsBetween` and `/diff?from=&to=`.
+- Produces: `reviewBases` over `commonHeads`, `CompareReview` over `changesetsBetween` and `/diff?from=&to=`, `ResolveReview` over `readRefs`. `ReviewPublicationState`, `InspectReviewEndpoint`, `ValidateReviewPublication` and `CloneVisible` stay on `hg`.
 
-- [ ] **Step 1: Write failing tests.** `TestCompareReviewMatchesHg`: changesets equal the old revset, and the diff passes the header and apply checks of Task 6. `TestCompareTooLarge`: gives `ErrComparisonTooLarge`. `TestCompareNoChanges`: gives `ErrNoChanges`. `TestReviewBasesCrissCross`: two bases give `ErrAmbiguousHead`. `TestResolveReviewAmbiguous`. `TestInspectEndpointSeesPublish`: a read straight after `PublishReview` sees the imported node. `TestReadsNeedNoCapabilityProbe`: `ResolveReview` runs no `hg` process. Keep `loadReviewMetadata`, `checkReviewJournal` and `reviewPath` checks as they are.
+- [ ] **Step 1: Write failing tests.** `TestCompareReviewMatchesHg`: changesets equal the old revset, and the diff passes the header and apply checks of Task 6. `TestCompareTooLarge`: gives `ErrComparisonTooLarge`. `TestCompareNoChanges`: gives `ErrNoChanges`. `TestReviewBasesCrissCross`: two bases give `ErrAmbiguousHead`. `TestResolveReviewAmbiguous`. `TestReadsNeedNoCapabilityProbe`: `ResolveReview` runs no `hg` process. Keep `loadReviewMetadata`, `checkReviewJournal` and `reviewPath` checks as they are.
 - [ ] **Step 2: Run.** Expected: FAIL.
 - [ ] **Step 3: Implement.** Replace `reviewRun` read calls with the service, and remove `reviewCapability` and `publicationCapability` calls from these read methods only. `reviewCapability` remains for snapshot and merge. `reviewBases` is shared with snapshot creation, so its snapshot-path caller must still work: if it runs on a staging store outside the served state, keep a separate `hg` read there and note it in the commit.
 - [ ] **Step 4: Run.** `go test ./modules/hg ./modules/collaboration ./modules/hosting`. Expected: PASS.
 - [ ] **Step 5: Commit** as `hg: read review state from the service`.
 
-### Task 8: Releasing repositories
+### Task 8: Handles after reads
 
 **Files:**
-- Modify: `modules/hosting/service.go:248-250`, `modules/collaboration/comparison_artifacts.go:237`, `modules/collaboration/merge_artifacts.go:103`, their callers and tests
+- Modify: `modules/hg/readclient.go`, `modules/hg/readserver.go` or `runner.go`, `modules/hg/review_snapshot.go`, `modules/hg/reads_test.go`
 
 **Interfaces:**
-- Consumes: `Runner.Release`.
-- Produces: `/close` before each removal. `models/` does not change, because `DeleteHgRepository` already calls the `DrainRepository` hook before storage is touched.
+- Removes: `ReadClient.Close`, `Runner.Release`.
 
-The fork and provisioning renames in `models` move staging stores the service never opened, so they need no `/close`.
-
-- [ ] **Step 1: Write failing tests.** `TestDeleteAfterRead`: read a repo through the service, then `DeleteHgRepository` succeeds, on Windows too. `TestDrainFailsWhenCloseFails`: a `/close` 500 stops the delete, with the row kept. `TestComparisonArtifactRemovedAfterRead`: `CompareReview`, then remove the artifact. `TestPreparedMergeRemovedAfterRead`.
-- [ ] **Step 2: Run.** `go test ./modules/hosting ./modules/collaboration`. Expected: FAIL on Windows, and on the close assertion elsewhere.
-- [ ] **Step 3: Implement.** `Service.DrainRepository` calls `s.runner.Release` with the repository's storage path after sessions drain. Pass a `func(context.Context, string) error` release into the two artifact removal functions from their callers, which hold the host.
-- [ ] **Step 4: Run.** Expected: PASS.
-- [ ] **Step 5: Commit** as `hosting: release repositories before removing their storage`.
+- [ ] **Step 1: Write failing tests.** `TestFailedPushRollsBackAfterRead`: read a repo through the service, run a push rejected by a hook, and assert `hg verify` passes and the next push works. `TestDeleteAfterRead`: `DeleteHgRepository` succeeds right after a read.
+- [ ] **Step 2: Run.** With a binary from Mononoke `unmapped-reads` they pass; confirm that against the binary, and record that an older binary fails them if one is available.
+- [ ] **Step 3: Remove `Close`, `Release` and their tests,** and the deferred `Release` in `CloneVisible`.
+- [ ] **Step 4: Run.** `go test ./modules/hg ./modules/hosting ./modules/collaboration`. Expected: PASS.
+- [ ] **Step 5: Commit** as `hg: drop repository release, which unmapped reads make unnecessary`.
 
 ### Task 9: Proof and documentation
 
@@ -185,7 +182,7 @@ The fork and provisioning renames in `models` move staging stores the service ne
 **Interfaces:**
 - Consumes: every read method.
 
-- [ ] **Step 1: Write `TestReadsStartNoProcess`.** A `Runner` whose `Executable` is a test binary that fails and records any invocation calls `Changeset`, `History`, `ReadFile`, `ListDirectory`, `ListPath`, `References`, `Landing`, `Resolve`, `Diff`, `CompareReview`, `ResolveReview`, `InspectReviewEndpoint`, `ReviewPublicationState` and `ValidateReviewPublication`, and asserts no invocation.
+- [ ] **Step 1: Write `TestReadsStartNoProcess`.** A `Runner` whose `Executable` is a test binary that fails and records any invocation calls `Changeset`, `History`, `ReadFile`, `ListDirectory`, `ListPath`, `References`, `Landing`, `Resolve`, `Diff`, `CompareReview`, `CompareReview` and `ResolveReview`, and asserts no invocation.
 - [ ] **Step 2: Run.** `go test ./modules/hg -run TestReadsStartNoProcess`. Expected: PASS. A failure is a read Tasks 3-7 missed: fix it in the owning file.
 - [ ] **Step 3: Update docs.** `CLAUDE.md`: Mercurial child processes now cover writes and the wire protocol, and reads go to `hgqlserve`. `docs/mercurial/`: `HGQLSERVE`, how to install the binary, the root rule and what to do when startup refuses it, `ErrReadService` behaviour, and the `/raw` memory note.
 - [ ] **Step 4: Run all tests on Windows and Linux.** Run: `GOGS_TEST_HGQLSERVE=<path> go test ./...`. Expected: PASS. Linux needs a host with Go, `hg` and a Linux `hgqlserve`; if none exists, report it, and do not install anything.
